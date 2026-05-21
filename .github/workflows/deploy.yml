@@ -4,10 +4,6 @@ on:
   push:
     branches: [main]
 
-permissions:
-  id-token: write
-  contents: read
-
 jobs:
   deploy:
     name: Deploy
@@ -21,9 +17,7 @@ jobs:
       - name: Fetch secrets from Doppler
         uses: ./.github/actions/fetch-secrets
         with:
-          env: prd
-          project: gaff
-          identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
 
       - name: Deploy
         run: bun run deploy
