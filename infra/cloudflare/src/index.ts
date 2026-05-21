@@ -46,6 +46,7 @@ const accessApp = new cloudflare.ZeroTrustAccessApplication(`${projectName}-acce
 });
 
 export const accessAppId = accessApp.id;
+export const accessAppAud = accessApp.aud;
 export const accessPolicyId = accessPolicy.id;
 
 export const kvNamespaceId = kv.id;
