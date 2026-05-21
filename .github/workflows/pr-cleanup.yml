@@ -1,0 +1,38 @@
+name: PR Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+# No `if: merged == true` gate — we also want to clean up when a PR is closed
+# without merging, since the Neon branch was already provisioned for that ref.
+# The head-ref is passed through an env var (HEAD_REF) and quoted in the shell
+# invocation to prevent command injection.
+
+concurrency:
+  group: pr-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Delete Neon branch for closed PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Fetch Secrets
+        uses: ./.github/actions/fetch-secrets
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+
+      - name: Cleanup PR Neon branch
+        env:
+          NEON_API_KEY: ${{ env.NEON_API_KEY }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: bun scripts/database/cleanup-pr.ts "$HEAD_REF"
