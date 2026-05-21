@@ -23,7 +23,7 @@ jobs:
         with:
           env: prd
           project: gaff
-          identity-id: $
+          identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}
 
       - name: Deploy
         run: bun run deploy
