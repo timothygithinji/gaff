@@ -1,0 +1,41 @@
+name: Fetch Secrets
+description: Fetch secrets from Doppler via OIDC and export them as env vars
+
+inputs:
+  env:
+    description: Doppler config name (e.g. prd, stg, dev)
+    required: false
+    default: prd
+  project:
+    description: Doppler project slug (usually the scaffolded project name)
+    required: true
+  identity-id:
+    description: Doppler Identity UUID used for OIDC auth
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install Doppler CLI
+      uses: dopplerhq/cli-action@v3
+
+    - name: Authenticate to Doppler via OIDC
+      shell: bash
+      run: |
+        JWT=$(curl -fsSL \
+          -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doppler" | jq -r '.value')
+        doppler oidc login \
+          --identity="$" \
+          --token="$JWT" \
+          --scope=.
+
+    - name: Export secrets to GITHUB_ENV
+      shell: bash
+      run: |
+        doppler secrets download \
+          --no-file \
+          --format=docker \
+          --project="$" \
+          --config="$" \
+          --scope=. >> "$GITHUB_ENV"

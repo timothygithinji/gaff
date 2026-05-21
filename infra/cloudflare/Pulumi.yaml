@@ -1,0 +1,4 @@
+name: gaff-cloudflare
+runtime: nodejs
+description: gaff Cloudflare infra
+main: src/index.ts

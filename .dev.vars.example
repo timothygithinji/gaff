@@ -1,0 +1,5 @@
+# Run `t-stack secrets pull --env dev` to populate this from Doppler.
+# Or directly:
+#   doppler secrets download --no-file --format=env --project=gaff --config=dev > .dev.vars
+DATABASE_URL=
+TRIGGER_SECRET_KEY=

@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      increment:
+        description: "Semver increment (patch | minor | major) or explicit version"
+        required: false
+        default: "patch"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: $
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release-it
+        env:
+          GITHUB_TOKEN: $
+          INCREMENT: $
+        run: bunx release-it "$INCREMENT" --ci
