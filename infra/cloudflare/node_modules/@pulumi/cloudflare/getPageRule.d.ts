@@ -1,0 +1,172 @@
+import * as pulumi from "@pulumi/pulumi";
+/**
+ * Accepted Permissions
+ *
+ * - `Access: Apps and Policies Read`
+ * - `Access: Apps and Policies Revoke`
+ * - `Access: Apps and Policies Write`
+ * - `Access: Mutual TLS Certificates Write`
+ * - `Access: Organizations, Identity Providers, and Groups Write`
+ * - `Analytics Read`
+ * - `Apps Write`
+ * - `Cache Purge`
+ * - `DNS Read`
+ * - `DNS Write`
+ * - `Firewall Services Read`
+ * - `Firewall Services Write`
+ * - `Load Balancers Read`
+ * - `Load Balancers Write`
+ * - `Logs Read`
+ * - `Logs Write`
+ * - `Page Rules Read`
+ * - `Page Rules Write`
+ * - `SSL and Certificates Read`
+ * - `SSL and Certificates Write`
+ * - `Stream Read`
+ * - `Stream Write`
+ * - `Trust and Safety Read`
+ * - `Trust and Safety Write`
+ * - `Workers Routes Read`
+ * - `Workers Routes Write`
+ * - `Workers Scripts Read`
+ * - `Workers Scripts Write`
+ * - `Zaraz Admin`
+ * - `Zaraz Edit`
+ * - `Zaraz Read`
+ * - `Zero Trust: PII Read`
+ * - `Zone Read`
+ * - `Zone Settings Read`
+ * - `Zone Settings Write`
+ * - `Zone Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const examplePageRule = cloudflare.getPageRule({
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     pageruleId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getPageRule(args: GetPageRuleArgs, opts?: pulumi.InvokeOptions): Promise<GetPageRuleResult>;
+/**
+ * A collection of arguments for invoking getPageRule.
+ */
+export interface GetPageRuleArgs {
+    /**
+     * Identifier.
+     */
+    pageruleId: string;
+    /**
+     * Identifier.
+     */
+    zoneId?: string;
+}
+/**
+ * A collection of values returned by getPageRule.
+ */
+export interface GetPageRuleResult {
+    /**
+     * The timestamp of when the Page Rule was created.
+     */
+    readonly createdOn: string;
+    /**
+     * Identifier.
+     */
+    readonly id: string;
+    /**
+     * The timestamp of when the Page Rule was last modified.
+     */
+    readonly modifiedOn: string;
+    /**
+     * Identifier.
+     */
+    readonly pageruleId: string;
+    /**
+     * The priority of the rule, used to define which Page Rule is processed
+     * over another. A higher number indicates a higher priority. For example,
+     * if you have a catch-all Page Rule (rule A: `/images/*`) but want a more
+     * specific Page Rule to take precedence (rule B: `/images/special/*`),
+     * specify a higher priority for rule B so it overrides rule A.
+     */
+    readonly priority: number;
+    /**
+     * The status of the Page Rule.
+     * Available values: "active", "disabled".
+     */
+    readonly status: string;
+    /**
+     * Identifier.
+     */
+    readonly zoneId?: string;
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Access: Apps and Policies Read`
+ * - `Access: Apps and Policies Revoke`
+ * - `Access: Apps and Policies Write`
+ * - `Access: Mutual TLS Certificates Write`
+ * - `Access: Organizations, Identity Providers, and Groups Write`
+ * - `Analytics Read`
+ * - `Apps Write`
+ * - `Cache Purge`
+ * - `DNS Read`
+ * - `DNS Write`
+ * - `Firewall Services Read`
+ * - `Firewall Services Write`
+ * - `Load Balancers Read`
+ * - `Load Balancers Write`
+ * - `Logs Read`
+ * - `Logs Write`
+ * - `Page Rules Read`
+ * - `Page Rules Write`
+ * - `SSL and Certificates Read`
+ * - `SSL and Certificates Write`
+ * - `Stream Read`
+ * - `Stream Write`
+ * - `Trust and Safety Read`
+ * - `Trust and Safety Write`
+ * - `Workers Routes Read`
+ * - `Workers Routes Write`
+ * - `Workers Scripts Read`
+ * - `Workers Scripts Write`
+ * - `Zaraz Admin`
+ * - `Zaraz Edit`
+ * - `Zaraz Read`
+ * - `Zero Trust: PII Read`
+ * - `Zone Read`
+ * - `Zone Settings Read`
+ * - `Zone Settings Write`
+ * - `Zone Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const examplePageRule = cloudflare.getPageRule({
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     pageruleId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getPageRuleOutput(args: GetPageRuleOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetPageRuleResult>;
+/**
+ * A collection of arguments for invoking getPageRule.
+ */
+export interface GetPageRuleOutputArgs {
+    /**
+     * Identifier.
+     */
+    pageruleId: pulumi.Input<string>;
+    /**
+     * Identifier.
+     */
+    zoneId?: pulumi.Input<string | undefined>;
+}
+//# sourceMappingURL=getPageRule.d.ts.map

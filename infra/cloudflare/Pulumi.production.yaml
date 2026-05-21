@@ -1,0 +1,6 @@
+config:
+  # CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID are passed via env var by `t-stack provision`.
+  # The Cloudflare provider (v5+) reads them from the environment; no provider-level config here.
+  gaff-cloudflare:accountId: e7b0889e7b8934b346f10a6af314c86f
+  gaff-cloudflare:domain: gaff.timothygithinji.com
+  gaff-cloudflare:zoneId: c1a377bb7343234ebc51f2a428012cb9

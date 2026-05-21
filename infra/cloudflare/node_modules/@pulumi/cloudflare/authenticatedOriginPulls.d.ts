@@ -1,0 +1,201 @@
+import * as pulumi from "@pulumi/pulumi";
+import * as inputs from "./types/input";
+import * as outputs from "./types/output";
+/**
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleAuthenticatedOriginPulls = new cloudflare.AuthenticatedOriginPulls("example_authenticated_origin_pulls", {
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     configs: [{
+ *         certId: "2458ce5a-0c35-4c7f-82c7-8e9487d3ff60",
+ *         enabled: true,
+ *         hostname: "app.example.com",
+ *     }],
+ * });
+ * ```
+ *
+ * ## Import
+ *
+ * ```sh
+ * $ pulumi import cloudflare:index/authenticatedOriginPulls:AuthenticatedOriginPulls example '<zone_id>/<hostname>'
+ * ```
+ */
+export declare class AuthenticatedOriginPulls extends pulumi.CustomResource {
+    /**
+     * Get an existing AuthenticatedOriginPulls resource's state with the given name, ID, and optional extra
+     * properties used to qualify the lookup.
+     *
+     * @param name The _unique_ name of the resulting resource.
+     * @param id The _unique_ provider ID of the resource to lookup.
+     * @param state Any extra arguments used during the lookup.
+     * @param opts Optional settings to control the behavior of the CustomResource.
+     */
+    static get(name: string, id: pulumi.Input<pulumi.ID>, state?: AuthenticatedOriginPullsState, opts?: pulumi.CustomResourceOptions): AuthenticatedOriginPulls;
+    /**
+     * Returns true if the given object is an instance of AuthenticatedOriginPulls.  This is designed to work even
+     * when multiple copies of the Pulumi SDK have been loaded into the same process.
+     */
+    static isInstance(obj: any): obj is AuthenticatedOriginPulls;
+    /**
+     * Identifier.
+     */
+    readonly certId: pulumi.Output<string>;
+    /**
+     * Status of the certificate or the association.
+     * Available values: "initializing", "pending*deployment", "pending*deletion", "active", "deleted", "deployment*timed*out", "deletion*timed*out".
+     */
+    readonly certStatus: pulumi.Output<string>;
+    /**
+     * The time when the certificate was updated.
+     */
+    readonly certUpdatedAt: pulumi.Output<string>;
+    /**
+     * The time when the certificate was uploaded.
+     */
+    readonly certUploadedOn: pulumi.Output<string>;
+    /**
+     * The hostname certificate.
+     */
+    readonly certificate: pulumi.Output<string>;
+    readonly configs: pulumi.Output<outputs.AuthenticatedOriginPullsConfig[]>;
+    /**
+     * The time when the certificate was created.
+     */
+    readonly createdAt: pulumi.Output<string>;
+    /**
+     * Indicates whether hostname-level authenticated origin pulls is enabled. A null value voids the association.
+     */
+    readonly enabled: pulumi.Output<boolean>;
+    /**
+     * The date when the certificate expires.
+     */
+    readonly expiresOn: pulumi.Output<string>;
+    /**
+     * The hostname on the origin for which the client certificate uploaded will be used.
+     */
+    readonly hostname: pulumi.Output<string>;
+    /**
+     * The certificate authority that issued the certificate.
+     */
+    readonly issuer: pulumi.Output<string>;
+    /**
+     * The hostname certificate's private key.
+     */
+    readonly privateKey: pulumi.Output<string>;
+    /**
+     * The serial number on the uploaded certificate.
+     */
+    readonly serialNumber: pulumi.Output<string>;
+    /**
+     * The type of hash used for the certificate.
+     */
+    readonly signature: pulumi.Output<string>;
+    /**
+     * Status of the certificate or the association.
+     * Available values: "initializing", "pending*deployment", "pending*deletion", "active", "deleted", "deployment*timed*out", "deletion*timed*out".
+     */
+    readonly status: pulumi.Output<string>;
+    /**
+     * The time when the certificate was updated.
+     */
+    readonly updatedAt: pulumi.Output<string>;
+    /**
+     * Identifier.
+     */
+    readonly zoneId: pulumi.Output<string>;
+    /**
+     * Create a AuthenticatedOriginPulls resource with the given unique name, arguments, and options.
+     *
+     * @param name The _unique_ name of the resource.
+     * @param args The arguments to use to populate this resource's properties.
+     * @param opts A bag of options that control this resource's behavior.
+     */
+    constructor(name: string, args: AuthenticatedOriginPullsArgs, opts?: pulumi.CustomResourceOptions);
+}
+/**
+ * Input properties used for looking up and filtering AuthenticatedOriginPulls resources.
+ */
+export interface AuthenticatedOriginPullsState {
+    /**
+     * Identifier.
+     */
+    certId?: pulumi.Input<string | undefined>;
+    /**
+     * Status of the certificate or the association.
+     * Available values: "initializing", "pending*deployment", "pending*deletion", "active", "deleted", "deployment*timed*out", "deletion*timed*out".
+     */
+    certStatus?: pulumi.Input<string | undefined>;
+    /**
+     * The time when the certificate was updated.
+     */
+    certUpdatedAt?: pulumi.Input<string | undefined>;
+    /**
+     * The time when the certificate was uploaded.
+     */
+    certUploadedOn?: pulumi.Input<string | undefined>;
+    /**
+     * The hostname certificate.
+     */
+    certificate?: pulumi.Input<string | undefined>;
+    configs?: pulumi.Input<pulumi.Input<inputs.AuthenticatedOriginPullsConfig>[] | undefined>;
+    /**
+     * The time when the certificate was created.
+     */
+    createdAt?: pulumi.Input<string | undefined>;
+    /**
+     * Indicates whether hostname-level authenticated origin pulls is enabled. A null value voids the association.
+     */
+    enabled?: pulumi.Input<boolean | undefined>;
+    /**
+     * The date when the certificate expires.
+     */
+    expiresOn?: pulumi.Input<string | undefined>;
+    /**
+     * The hostname on the origin for which the client certificate uploaded will be used.
+     */
+    hostname?: pulumi.Input<string | undefined>;
+    /**
+     * The certificate authority that issued the certificate.
+     */
+    issuer?: pulumi.Input<string | undefined>;
+    /**
+     * The hostname certificate's private key.
+     */
+    privateKey?: pulumi.Input<string | undefined>;
+    /**
+     * The serial number on the uploaded certificate.
+     */
+    serialNumber?: pulumi.Input<string | undefined>;
+    /**
+     * The type of hash used for the certificate.
+     */
+    signature?: pulumi.Input<string | undefined>;
+    /**
+     * Status of the certificate or the association.
+     * Available values: "initializing", "pending*deployment", "pending*deletion", "active", "deleted", "deployment*timed*out", "deletion*timed*out".
+     */
+    status?: pulumi.Input<string | undefined>;
+    /**
+     * The time when the certificate was updated.
+     */
+    updatedAt?: pulumi.Input<string | undefined>;
+    /**
+     * Identifier.
+     */
+    zoneId?: pulumi.Input<string | undefined>;
+}
+/**
+ * The set of arguments for constructing a AuthenticatedOriginPulls resource.
+ */
+export interface AuthenticatedOriginPullsArgs {
+    configs: pulumi.Input<pulumi.Input<inputs.AuthenticatedOriginPullsConfig>[]>;
+    /**
+     * Identifier.
+     */
+    zoneId: pulumi.Input<string>;
+}
+//# sourceMappingURL=authenticatedOriginPulls.d.ts.map

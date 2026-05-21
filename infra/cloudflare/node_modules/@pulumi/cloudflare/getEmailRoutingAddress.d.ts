@@ -1,0 +1,110 @@
+import * as pulumi from "@pulumi/pulumi";
+import * as inputs from "./types/input";
+import * as outputs from "./types/output";
+/**
+ * Accepted Permissions
+ *
+ * - `Email Routing Addresses Read`
+ * - `Email Routing Addresses Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleEmailRoutingAddress = cloudflare.getEmailRoutingAddress({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     destinationAddressIdentifier: "ea95132c15732412d22c1476fa83f27a",
+ * });
+ * ```
+ */
+export declare function getEmailRoutingAddress(args?: GetEmailRoutingAddressArgs, opts?: pulumi.InvokeOptions): Promise<GetEmailRoutingAddressResult>;
+/**
+ * A collection of arguments for invoking getEmailRoutingAddress.
+ */
+export interface GetEmailRoutingAddressArgs {
+    /**
+     * Identifier.
+     */
+    accountId?: string;
+    /**
+     * Destination address identifier.
+     */
+    destinationAddressIdentifier?: string;
+    filter?: inputs.GetEmailRoutingAddressFilter;
+}
+/**
+ * A collection of values returned by getEmailRoutingAddress.
+ */
+export interface GetEmailRoutingAddressResult {
+    /**
+     * Identifier.
+     */
+    readonly accountId?: string;
+    /**
+     * The date and time the destination address has been created.
+     */
+    readonly created: string;
+    /**
+     * Destination address identifier.
+     */
+    readonly destinationAddressIdentifier?: string;
+    /**
+     * The contact email address of the user.
+     */
+    readonly email: string;
+    readonly filter?: outputs.GetEmailRoutingAddressFilter;
+    /**
+     * Destination address identifier.
+     */
+    readonly id: string;
+    /**
+     * The date and time the destination address was last modified.
+     */
+    readonly modified: string;
+    /**
+     * Destination address tag. (Deprecated, replaced by destination address identifier)
+     *
+     * @deprecated This attribute is deprecated.
+     */
+    readonly tag: string;
+    /**
+     * The date and time the destination address has been verified. Null means not verified yet.
+     */
+    readonly verified: string;
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Email Routing Addresses Read`
+ * - `Email Routing Addresses Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleEmailRoutingAddress = cloudflare.getEmailRoutingAddress({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     destinationAddressIdentifier: "ea95132c15732412d22c1476fa83f27a",
+ * });
+ * ```
+ */
+export declare function getEmailRoutingAddressOutput(args?: GetEmailRoutingAddressOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetEmailRoutingAddressResult>;
+/**
+ * A collection of arguments for invoking getEmailRoutingAddress.
+ */
+export interface GetEmailRoutingAddressOutputArgs {
+    /**
+     * Identifier.
+     */
+    accountId?: pulumi.Input<string | undefined>;
+    /**
+     * Destination address identifier.
+     */
+    destinationAddressIdentifier?: pulumi.Input<string | undefined>;
+    filter?: pulumi.Input<inputs.GetEmailRoutingAddressFilterArgs | undefined>;
+}
+//# sourceMappingURL=getEmailRoutingAddress.d.ts.map

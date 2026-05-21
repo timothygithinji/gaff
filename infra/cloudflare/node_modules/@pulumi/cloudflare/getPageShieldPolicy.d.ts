@@ -1,0 +1,112 @@
+import * as pulumi from "@pulumi/pulumi";
+/**
+ * Accepted Permissions
+ *
+ * - `Domain Page Shield`
+ * - `Domain Page Shield Read`
+ * - `Page Shield`
+ * - `Page Shield Read`
+ * - `Zone Settings Read`
+ * - `Zone Settings Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const examplePageShieldPolicy = cloudflare.getPageShieldPolicy({
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     policyId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getPageShieldPolicy(args: GetPageShieldPolicyArgs, opts?: pulumi.InvokeOptions): Promise<GetPageShieldPolicyResult>;
+/**
+ * A collection of arguments for invoking getPageShieldPolicy.
+ */
+export interface GetPageShieldPolicyArgs {
+    /**
+     * Identifier
+     */
+    policyId: string;
+    /**
+     * Identifier
+     */
+    zoneId?: string;
+}
+/**
+ * A collection of values returned by getPageShieldPolicy.
+ */
+export interface GetPageShieldPolicyResult {
+    /**
+     * The action to take if the expression matches
+     * Available values: "allow", "log", "add*reporting*directives".
+     */
+    readonly action: string;
+    /**
+     * A description for the policy
+     */
+    readonly description: string;
+    /**
+     * Whether the policy is enabled
+     */
+    readonly enabled: boolean;
+    /**
+     * The expression which must match for the policy to be applied, using the Cloudflare Firewall rule expression syntax
+     */
+    readonly expression: string;
+    /**
+     * Identifier
+     */
+    readonly id: string;
+    /**
+     * Identifier
+     */
+    readonly policyId: string;
+    /**
+     * The policy which will be applied
+     */
+    readonly value: string;
+    /**
+     * Identifier
+     */
+    readonly zoneId?: string;
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Domain Page Shield`
+ * - `Domain Page Shield Read`
+ * - `Page Shield`
+ * - `Page Shield Read`
+ * - `Zone Settings Read`
+ * - `Zone Settings Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const examplePageShieldPolicy = cloudflare.getPageShieldPolicy({
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     policyId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getPageShieldPolicyOutput(args: GetPageShieldPolicyOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetPageShieldPolicyResult>;
+/**
+ * A collection of arguments for invoking getPageShieldPolicy.
+ */
+export interface GetPageShieldPolicyOutputArgs {
+    /**
+     * Identifier
+     */
+    policyId: pulumi.Input<string>;
+    /**
+     * Identifier
+     */
+    zoneId?: pulumi.Input<string | undefined>;
+}
+//# sourceMappingURL=getPageShieldPolicy.d.ts.map

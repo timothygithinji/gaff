@@ -1,0 +1,112 @@
+import * as pulumi from "@pulumi/pulumi";
+import * as outputs from "./types/output";
+/**
+ * Accepted Permissions
+ *
+ * - `Account Settings Read`
+ * - `Account Settings Write`
+ * - `SCIM Provisioning`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleResourceGroups = cloudflare.getResourceGroups({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     id: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     name: "NameOfTheResourceGroup",
+ * });
+ * ```
+ */
+export declare function getResourceGroups(args?: GetResourceGroupsArgs, opts?: pulumi.InvokeOptions): Promise<GetResourceGroupsResult>;
+/**
+ * A collection of arguments for invoking getResourceGroups.
+ */
+export interface GetResourceGroupsArgs {
+    /**
+     * Account identifier tag.
+     */
+    accountId?: string;
+    /**
+     * ID of the resource group to be fetched.
+     */
+    id?: string;
+    /**
+     * Max items to fetch, default: 1000
+     */
+    maxItems?: number;
+    /**
+     * Name of the resource group to be fetched.
+     */
+    name?: string;
+}
+/**
+ * A collection of values returned by getResourceGroups.
+ */
+export interface GetResourceGroupsResult {
+    /**
+     * Account identifier tag.
+     */
+    readonly accountId?: string;
+    /**
+     * ID of the resource group to be fetched.
+     */
+    readonly id?: string;
+    /**
+     * Max items to fetch, default: 1000
+     */
+    readonly maxItems?: number;
+    /**
+     * Name of the resource group to be fetched.
+     */
+    readonly name?: string;
+    /**
+     * The items returned by the data source
+     */
+    readonly results: outputs.GetResourceGroupsResult[];
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Account Settings Read`
+ * - `Account Settings Write`
+ * - `SCIM Provisioning`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleResourceGroups = cloudflare.getResourceGroups({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     id: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     name: "NameOfTheResourceGroup",
+ * });
+ * ```
+ */
+export declare function getResourceGroupsOutput(args?: GetResourceGroupsOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetResourceGroupsResult>;
+/**
+ * A collection of arguments for invoking getResourceGroups.
+ */
+export interface GetResourceGroupsOutputArgs {
+    /**
+     * Account identifier tag.
+     */
+    accountId?: pulumi.Input<string | undefined>;
+    /**
+     * ID of the resource group to be fetched.
+     */
+    id?: pulumi.Input<string | undefined>;
+    /**
+     * Max items to fetch, default: 1000
+     */
+    maxItems?: pulumi.Input<number | undefined>;
+    /**
+     * Name of the resource group to be fetched.
+     */
+    name?: pulumi.Input<string | undefined>;
+}
+//# sourceMappingURL=getResourceGroups.d.ts.map

@@ -1,0 +1,37 @@
+{
+  // Worker entry for gaff.
+  "name": "gaff",
+  "main": "src/server.ts",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+
+  // Custom domain route. Managed by Pulumi DNS in infra/cloudflare.
+  "routes": [
+    {
+      "pattern": "gaff.timothygithinji.com",
+      "custom_domain": true
+    }
+  ],
+
+  // Bindings below are managed by Pulumi via `t-stack provision`. Do not edit manually.
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "7f0a2fb2189f4affa7e033cff5996e8b"
+    }
+  ],
+
+  // Bindings below are managed by Pulumi via `t-stack provision`. Do not edit manually.
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "gaff"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

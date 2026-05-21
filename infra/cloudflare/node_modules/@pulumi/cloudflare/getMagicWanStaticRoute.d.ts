@@ -1,0 +1,89 @@
+import * as pulumi from "@pulumi/pulumi";
+import * as outputs from "./types/output";
+/**
+ * Accepted Permissions
+ *
+ * - `Magic Transit Read`
+ * - `Magic Transit Write`
+ * - `Magic WAN Read`
+ * - `Magic WAN Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleMagicWanStaticRoute = cloudflare.getMagicWanStaticRoute({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     routeId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getMagicWanStaticRoute(args: GetMagicWanStaticRouteArgs, opts?: pulumi.InvokeOptions): Promise<GetMagicWanStaticRouteResult>;
+/**
+ * A collection of arguments for invoking getMagicWanStaticRoute.
+ */
+export interface GetMagicWanStaticRouteArgs {
+    /**
+     * Identifier
+     */
+    accountId?: string;
+    /**
+     * Identifier
+     */
+    routeId: string;
+}
+/**
+ * A collection of values returned by getMagicWanStaticRoute.
+ */
+export interface GetMagicWanStaticRouteResult {
+    /**
+     * Identifier
+     */
+    readonly accountId?: string;
+    /**
+     * Identifier
+     */
+    readonly id: string;
+    readonly route: outputs.GetMagicWanStaticRouteRoute;
+    /**
+     * Identifier
+     */
+    readonly routeId: string;
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Magic Transit Read`
+ * - `Magic Transit Write`
+ * - `Magic WAN Read`
+ * - `Magic WAN Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleMagicWanStaticRoute = cloudflare.getMagicWanStaticRoute({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     routeId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getMagicWanStaticRouteOutput(args: GetMagicWanStaticRouteOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetMagicWanStaticRouteResult>;
+/**
+ * A collection of arguments for invoking getMagicWanStaticRoute.
+ */
+export interface GetMagicWanStaticRouteOutputArgs {
+    /**
+     * Identifier
+     */
+    accountId?: pulumi.Input<string | undefined>;
+    /**
+     * Identifier
+     */
+    routeId: pulumi.Input<string>;
+}
+//# sourceMappingURL=getMagicWanStaticRoute.d.ts.map

@@ -1,0 +1,103 @@
+import * as pulumi from "@pulumi/pulumi";
+/**
+ * Accepted Permissions
+ *
+ * - `Domain Page Shield`
+ * - `Domain Page Shield Read`
+ * - `Page Shield`
+ * - `Page Shield Read`
+ * - `Zone Settings Read`
+ * - `Zone Settings Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const examplePageShieldConnections = cloudflare.getPageShieldConnections({
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     connectionId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getPageShieldConnections(args: GetPageShieldConnectionsArgs, opts?: pulumi.InvokeOptions): Promise<GetPageShieldConnectionsResult>;
+/**
+ * A collection of arguments for invoking getPageShieldConnections.
+ */
+export interface GetPageShieldConnectionsArgs {
+    /**
+     * Identifier
+     */
+    connectionId: string;
+    /**
+     * Identifier
+     */
+    zoneId?: string;
+}
+/**
+ * A collection of values returned by getPageShieldConnections.
+ */
+export interface GetPageShieldConnectionsResult {
+    readonly addedAt: string;
+    /**
+     * Identifier
+     */
+    readonly connectionId: string;
+    readonly domainReportedMalicious: boolean;
+    readonly firstPageUrl: string;
+    readonly firstSeenAt: string;
+    readonly host: string;
+    /**
+     * Identifier
+     */
+    readonly id: string;
+    readonly lastSeenAt: string;
+    readonly maliciousDomainCategories: string[];
+    readonly maliciousUrlCategories: string[];
+    readonly pageUrls: string[];
+    readonly url: string;
+    readonly urlContainsCdnCgiPath: boolean;
+    readonly urlReportedMalicious: boolean;
+    /**
+     * Identifier
+     */
+    readonly zoneId?: string;
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Domain Page Shield`
+ * - `Domain Page Shield Read`
+ * - `Page Shield`
+ * - `Page Shield Read`
+ * - `Zone Settings Read`
+ * - `Zone Settings Write`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const examplePageShieldConnections = cloudflare.getPageShieldConnections({
+ *     zoneId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     connectionId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getPageShieldConnectionsOutput(args: GetPageShieldConnectionsOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetPageShieldConnectionsResult>;
+/**
+ * A collection of arguments for invoking getPageShieldConnections.
+ */
+export interface GetPageShieldConnectionsOutputArgs {
+    /**
+     * Identifier
+     */
+    connectionId: pulumi.Input<string>;
+    /**
+     * Identifier
+     */
+    zoneId?: pulumi.Input<string | undefined>;
+}
+//# sourceMappingURL=getPageShieldConnections.d.ts.map

@@ -1,0 +1,108 @@
+import * as pulumi from "@pulumi/pulumi";
+import * as inputs from "./types/input";
+import * as outputs from "./types/output";
+/**
+ * Accepted Permissions
+ *
+ * - `Account Settings Read`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleWebAnalyticsSite = cloudflare.getWebAnalyticsSite({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     siteId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getWebAnalyticsSite(args?: GetWebAnalyticsSiteArgs, opts?: pulumi.InvokeOptions): Promise<GetWebAnalyticsSiteResult>;
+/**
+ * A collection of arguments for invoking getWebAnalyticsSite.
+ */
+export interface GetWebAnalyticsSiteArgs {
+    /**
+     * Identifier.
+     */
+    accountId?: string;
+    filter?: inputs.GetWebAnalyticsSiteFilter;
+    /**
+     * Identifier.
+     */
+    siteId?: string;
+}
+/**
+ * A collection of values returned by getWebAnalyticsSite.
+ */
+export interface GetWebAnalyticsSiteResult {
+    /**
+     * Identifier.
+     */
+    readonly accountId?: string;
+    /**
+     * If enabled, the JavaScript snippet is automatically injected for orange-clouded sites.
+     */
+    readonly autoInstall: boolean;
+    readonly created: string;
+    readonly filter?: outputs.GetWebAnalyticsSiteFilter;
+    /**
+     * Identifier.
+     */
+    readonly id: string;
+    /**
+     * A list of rules.
+     */
+    readonly rules: outputs.GetWebAnalyticsSiteRule[];
+    readonly ruleset: outputs.GetWebAnalyticsSiteRuleset;
+    /**
+     * Identifier.
+     */
+    readonly siteId?: string;
+    /**
+     * The Web Analytics site identifier.
+     */
+    readonly siteTag: string;
+    /**
+     * The Web Analytics site token.
+     */
+    readonly siteToken: string;
+    /**
+     * Encoded JavaScript snippet.
+     */
+    readonly snippet: string;
+}
+/**
+ * Accepted Permissions
+ *
+ * - `Account Settings Read`
+ *
+ * ## Example Usage
+ *
+ * ```typescript
+ * import * as pulumi from "@pulumi/pulumi";
+ * import * as cloudflare from "@pulumi/cloudflare";
+ *
+ * const exampleWebAnalyticsSite = cloudflare.getWebAnalyticsSite({
+ *     accountId: "023e105f4ecef8ad9ca31a8372d0c353",
+ *     siteId: "023e105f4ecef8ad9ca31a8372d0c353",
+ * });
+ * ```
+ */
+export declare function getWebAnalyticsSiteOutput(args?: GetWebAnalyticsSiteOutputArgs, opts?: pulumi.InvokeOutputOptions): pulumi.Output<GetWebAnalyticsSiteResult>;
+/**
+ * A collection of arguments for invoking getWebAnalyticsSite.
+ */
+export interface GetWebAnalyticsSiteOutputArgs {
+    /**
+     * Identifier.
+     */
+    accountId?: pulumi.Input<string | undefined>;
+    filter?: pulumi.Input<inputs.GetWebAnalyticsSiteFilterArgs | undefined>;
+    /**
+     * Identifier.
+     */
+    siteId?: pulumi.Input<string | undefined>;
+}
+//# sourceMappingURL=getWebAnalyticsSite.d.ts.map

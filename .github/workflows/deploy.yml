@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Fetch secrets from Doppler
+        uses: ./.github/actions/fetch-secrets
+        with:
+          env: prd
+          project: gaff
+          identity-id: $
+
+      - name: Deploy
+        run: bun run deploy

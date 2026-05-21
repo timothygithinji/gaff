@@ -1,0 +1,24 @@
+# Local R2 emulation via MinIO for gaff.
+# Boot with: `docker compose up -d`
+# Console: http://localhost:9001  |  S3 API: http://localhost:9000
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: gaff-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: "minio-admin-change-me"
+      MINIO_ROOT_PASSWORD: "minio-password-change-me"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  minio-data:
