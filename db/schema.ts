@@ -1,17 +1,567 @@
-import { pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgEnum,
+  pgTable,
+  pgView,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
-export const users = pgTable(
-  "users",
+// -----------------------------------------------------------------------------
+// Better Auth tables — mirrors what `@better-auth/cli generate` would emit
+// for a postgres provider. Owned by Better Auth; do not redefine `user`
+// elsewhere. See src/lib/auth.ts for the runtime wiring.
+// -----------------------------------------------------------------------------
+
+export const user = pgTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  image: text("image"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const session = pgTable(
+  "session",
   {
-    id: serial("id").primaryKey(),
-    email: text("email").notNull(),
-    name: text("name"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
   },
-  (t) => ({
-    emailIdx: uniqueIndex("users_email_idx").on(t.email),
-  }),
+  (t) => [index("session_user_id_idx").on(t.userId)]
 );
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export const account = pgTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [index("account_user_id_idx").on(t.userId)]
+);
+
+export const verification = pgTable(
+  "verification",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [index("verification_identifier_idx").on(t.identifier)]
+);
+
+// -----------------------------------------------------------------------------
+// Gaff domain enums
+// -----------------------------------------------------------------------------
+
+export const householdRoleEnum = pgEnum("household_role", ["owner", "member"]);
+
+export const listingStatusEnum = pgEnum("listing_status", [
+  "active",
+  "let_agreed",
+  "removed",
+]);
+
+export const swipeOutcomeEnum = pgEnum("swipe_outcome", [
+  "keep",
+  "skip",
+  "shortlist",
+]);
+
+export const jobStatusEnum = pgEnum("job_status", [
+  "running",
+  "success",
+  "failure",
+]);
+
+// -----------------------------------------------------------------------------
+// Gaff domain tables
+// -----------------------------------------------------------------------------
+
+export const households = pgTable("households", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const householdMembers = pgTable(
+  "household_members",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: householdRoleEnum("role").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("household_members_household_user_uniq").on(
+      t.householdId,
+      t.userId
+    ),
+    index("household_members_user_id_idx").on(t.userId),
+  ]
+);
+
+export const searches = pgTable(
+  "searches",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    portals: text("portals").array().notNull(),
+    outcodes: text("outcodes").array().notNull(),
+    minBedrooms: integer("min_bedrooms"),
+    maxBedrooms: integer("max_bedrooms"),
+    minPrice: integer("min_price"),
+    maxPrice: integer("max_price"),
+    propertyTypes: text("property_types").array().notNull(),
+    commuteTargets: jsonb("commute_targets")
+      .$type<
+        Array<{
+          label: string;
+          lat: number;
+          lng: number;
+          maxMinutes: number;
+          mode: string;
+        }>
+      >()
+      .notNull(),
+    aiRules: jsonb("ai_rules").notNull(),
+    active: boolean("active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [index("searches_household_id_idx").on(t.householdId)]
+);
+
+export const propertyClusters = pgTable(
+  "property_clusters",
+  {
+    id: text("id").primaryKey(),
+    // Flat/unit numbers MUST be preserved by callers — normalisation logic
+    // lives in src/lib/cluster/normalise.ts.
+    normalisedAddress: text("normalised_address").notNull(),
+    postcode: text("postcode"),
+    lat: numeric("lat", { precision: 9, scale: 6 }),
+    lng: numeric("lng", { precision: 10, scale: 6 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("property_clusters_normalised_address_uniq").on(
+      t.normalisedAddress
+    ),
+  ]
+);
+
+export const listings = pgTable(
+  "listings",
+  {
+    id: text("id").primaryKey(),
+    portal: text("portal").notNull(),
+    portalListingId: text("portal_listing_id").notNull(),
+    clusterId: text("cluster_id").references(() => propertyClusters.id, {
+      onDelete: "set null",
+    }),
+    searchId: text("search_id")
+      .notNull()
+      .references(() => searches.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    addressRaw: text("address_raw").notNull(),
+    postcode: text("postcode"),
+    bedrooms: integer("bedrooms"),
+    bathrooms: integer("bathrooms"),
+    priceMonthly: integer("price_monthly"),
+    propertyType: text("property_type"),
+    lat: numeric("lat", { precision: 9, scale: 6 }),
+    lng: numeric("lng", { precision: 10, scale: 6 }),
+    firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    availableFrom: timestamp("available_from"),
+    status: listingStatusEnum("status").default("active").notNull(),
+    rawJson: jsonb("raw_json").notNull(),
+  },
+  (t) => [
+    // A physical listing can surface in multiple searches (e.g. two
+    // households scraping the same outcode). Each (search, portal listing)
+    // is its own row; cross-portal/cross-search dedupe happens via clusterId.
+    uniqueIndex("listings_search_portal_listing_id_uniq").on(
+      t.searchId,
+      t.portal,
+      t.portalListingId
+    ),
+    index("listings_portal_listing_id_idx").on(t.portal, t.portalListingId),
+    index("listings_cluster_id_idx").on(t.clusterId),
+    index("listings_search_id_idx").on(t.searchId),
+    index("listings_status_idx").on(t.status),
+  ]
+);
+
+export const listingPhotos = pgTable(
+  "listing_photos",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    r2Key: text("r2_key"),
+    position: integer("position").notNull(),
+  },
+  (t) => [index("listing_photos_listing_id_idx").on(t.listingId)]
+);
+
+export const aiRuns = pgTable("ai_runs", {
+  id: text("id").primaryKey(),
+  listingId: text("listing_id").references(() => listings.id, {
+    onDelete: "set null",
+  }),
+  promptVersion: text("prompt_version").notNull(),
+  model: text("model").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  status: jobStatusEnum("status").notNull(),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costUsd: numeric("cost_usd"),
+  errorMessage: text("error_message"),
+});
+
+export const enrichments = pgTable(
+  "enrichments",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    promptVersion: text("prompt_version").notNull(),
+    features: jsonb("features")
+      .$type<{
+        hasGarden?: boolean;
+        allowsPets?: boolean;
+        hasParking?: boolean;
+        hasWasher?: boolean;
+        isFurnished?: boolean;
+        broadband?: string;
+        councilTaxBand?: string;
+        [key: string]: unknown;
+      }>()
+      .notNull(),
+    epc: jsonb("epc"),
+    commuteMinutes: jsonb("commute_minutes").$type<Record<string, number>>(),
+    aiRunId: text("ai_run_id").references(() => aiRuns.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("enrichments_listing_prompt_version_uniq").on(
+      t.listingId,
+      t.promptVersion
+    ),
+  ]
+);
+
+export const swipes = pgTable(
+  "swipes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    clusterId: text("cluster_id")
+      .notNull()
+      // Restrict — swipes record user decisions and must not be silently
+      // dropped if a cluster row is ever removed.
+      .references(() => propertyClusters.id, { onDelete: "restrict" }),
+    searchId: text("search_id")
+      .notNull()
+      .references(() => searches.id, { onDelete: "cascade" }),
+    outcome: swipeOutcomeEnum("outcome").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("swipes_user_cluster_search_uniq").on(
+      t.userId,
+      t.clusterId,
+      t.searchId
+    ),
+    index("swipes_cluster_search_idx").on(t.clusterId, t.searchId),
+    index("swipes_user_id_idx").on(t.userId),
+  ]
+);
+
+export const scrapeRuns = pgTable("scrape_runs", {
+  id: text("id").primaryKey(),
+  searchId: text("search_id")
+    .notNull()
+    .references(() => searches.id, { onDelete: "cascade" }),
+  portal: text("portal").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  status: jobStatusEnum("status").notNull(),
+  listingsFound: integer("listings_found").default(0).notNull(),
+  newListings: integer("new_listings").default(0).notNull(),
+  errorMessage: text("error_message"),
+  costUsd: numeric("cost_usd"),
+});
+
+// -----------------------------------------------------------------------------
+// Views
+// -----------------------------------------------------------------------------
+
+// v_mutual_matches: a mutual match exists when both members of a household have
+// swiped `keep` OR `shortlist` on the same (clusterId, searchId). Asymmetric
+// outcomes (one keep / one skip) are excluded so the disappointed partner does
+// not see the cluster. Self-join on `swipes` constrained to user_a.id < user_b.id
+// to avoid duplicate (A,B) and (B,A) rows.
+export const vMutualMatches = pgView("v_mutual_matches", {
+  clusterId: text("cluster_id").notNull(),
+  searchId: text("search_id").notNull(),
+  householdId: text("household_id").notNull(),
+  userAOutcome: swipeOutcomeEnum("user_a_outcome").notNull(),
+  userBOutcome: swipeOutcomeEnum("user_b_outcome").notNull(),
+  matchedAt: timestamp("matched_at").notNull(),
+}).as(sql`
+  SELECT
+    sa.cluster_id AS cluster_id,
+    sa.search_id AS search_id,
+    s.household_id AS household_id,
+    sa.outcome AS user_a_outcome,
+    sb.outcome AS user_b_outcome,
+    GREATEST(sa.created_at, sb.created_at) AS matched_at
+  FROM swipes sa
+  JOIN swipes sb
+    ON sa.cluster_id = sb.cluster_id
+   AND sa.search_id = sb.search_id
+   AND sa.user_id < sb.user_id
+  JOIN searches s
+    ON s.id = sa.search_id
+  JOIN household_members hma
+    ON hma.household_id = s.household_id AND hma.user_id = sa.user_id
+  JOIN household_members hmb
+    ON hmb.household_id = s.household_id AND hmb.user_id = sb.user_id
+  WHERE sa.outcome IN ('keep', 'shortlist')
+    AND sb.outcome IN ('keep', 'shortlist')
+`);
+
+// -----------------------------------------------------------------------------
+// Relations
+// -----------------------------------------------------------------------------
+
+export const userRelations = relations(user, ({ many }) => ({
+  sessions: many(session),
+  accounts: many(account),
+  householdMemberships: many(householdMembers),
+  swipes: many(swipes),
+}));
+
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(user, {
+    fields: [session.userId],
+    references: [user.id],
+  }),
+}));
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(user, {
+    fields: [account.userId],
+    references: [user.id],
+  }),
+}));
+
+export const householdRelations = relations(households, ({ many }) => ({
+  members: many(householdMembers),
+  searches: many(searches),
+}));
+
+export const householdMembersRelations = relations(
+  householdMembers,
+  ({ one }) => ({
+    household: one(households, {
+      fields: [householdMembers.householdId],
+      references: [households.id],
+    }),
+    user: one(user, {
+      fields: [householdMembers.userId],
+      references: [user.id],
+    }),
+  })
+);
+
+export const searchesRelations = relations(searches, ({ one, many }) => ({
+  household: one(households, {
+    fields: [searches.householdId],
+    references: [households.id],
+  }),
+  listings: many(listings),
+  swipes: many(swipes),
+  scrapeRuns: many(scrapeRuns),
+}));
+
+export const propertyClustersRelations = relations(
+  propertyClusters,
+  ({ many }) => ({
+    listings: many(listings),
+    swipes: many(swipes),
+  })
+);
+
+export const listingsRelations = relations(listings, ({ one, many }) => ({
+  cluster: one(propertyClusters, {
+    fields: [listings.clusterId],
+    references: [propertyClusters.id],
+  }),
+  search: one(searches, {
+    fields: [listings.searchId],
+    references: [searches.id],
+  }),
+  photos: many(listingPhotos),
+  enrichments: many(enrichments),
+  aiRuns: many(aiRuns),
+}));
+
+export const listingPhotosRelations = relations(listingPhotos, ({ one }) => ({
+  listing: one(listings, {
+    fields: [listingPhotos.listingId],
+    references: [listings.id],
+  }),
+}));
+
+export const enrichmentsRelations = relations(enrichments, ({ one }) => ({
+  listing: one(listings, {
+    fields: [enrichments.listingId],
+    references: [listings.id],
+  }),
+  aiRun: one(aiRuns, {
+    fields: [enrichments.aiRunId],
+    references: [aiRuns.id],
+  }),
+}));
+
+export const swipesRelations = relations(swipes, ({ one }) => ({
+  user: one(user, {
+    fields: [swipes.userId],
+    references: [user.id],
+  }),
+  cluster: one(propertyClusters, {
+    fields: [swipes.clusterId],
+    references: [propertyClusters.id],
+  }),
+  search: one(searches, {
+    fields: [swipes.searchId],
+    references: [searches.id],
+  }),
+}));
+
+export const scrapeRunsRelations = relations(scrapeRuns, ({ one }) => ({
+  search: one(searches, {
+    fields: [scrapeRuns.searchId],
+    references: [searches.id],
+  }),
+}));
+
+export const aiRunsRelations = relations(aiRuns, ({ one, many }) => ({
+  listing: one(listings, {
+    fields: [aiRuns.listingId],
+    references: [listings.id],
+  }),
+  enrichments: many(enrichments),
+}));
+
+// -----------------------------------------------------------------------------
+// Inferred types
+// -----------------------------------------------------------------------------
+
+export type User = typeof user.$inferSelect;
+export type NewUser = typeof user.$inferInsert;
+
+export type Session = typeof session.$inferSelect;
+export type NewSession = typeof session.$inferInsert;
+
+export type Account = typeof account.$inferSelect;
+export type NewAccount = typeof account.$inferInsert;
+
+export type Verification = typeof verification.$inferSelect;
+export type NewVerification = typeof verification.$inferInsert;
+
+export type Household = typeof households.$inferSelect;
+export type NewHousehold = typeof households.$inferInsert;
+
+export type HouseholdMember = typeof householdMembers.$inferSelect;
+export type NewHouseholdMember = typeof householdMembers.$inferInsert;
+
+export type Search = typeof searches.$inferSelect;
+export type NewSearch = typeof searches.$inferInsert;
+
+export type Listing = typeof listings.$inferSelect;
+export type NewListing = typeof listings.$inferInsert;
+
+export type PropertyCluster = typeof propertyClusters.$inferSelect;
+export type NewPropertyCluster = typeof propertyClusters.$inferInsert;
+
+export type ListingPhoto = typeof listingPhotos.$inferSelect;
+export type NewListingPhoto = typeof listingPhotos.$inferInsert;
+
+export type Enrichment = typeof enrichments.$inferSelect;
+export type NewEnrichment = typeof enrichments.$inferInsert;
+
+export type Swipe = typeof swipes.$inferSelect;
+export type NewSwipe = typeof swipes.$inferInsert;
+
+export type ScrapeRun = typeof scrapeRuns.$inferSelect;
+export type NewScrapeRun = typeof scrapeRuns.$inferInsert;
+
+export type AiRun = typeof aiRuns.$inferSelect;
+export type NewAiRun = typeof aiRuns.$inferInsert;
