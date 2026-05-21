@@ -20,6 +20,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "db/**/*", "drizzle.config.ts", "vite.config.ts", "trigger.config.ts"],
-  "exclude": ["node_modules", "dist", "infra", ".wrangler"]
+  "include": ["src/**/*", "db/**/*", "scripts/**/*", "drizzle.config.ts", "vite.config.ts", "trigger.config.ts"],
+  "exclude": ["node_modules", "dist", "infra", ".wrangler", "scripts/verify"]
 }
