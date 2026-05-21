@@ -20,4 +20,7 @@ jobs:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
 
       - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bun run deploy
