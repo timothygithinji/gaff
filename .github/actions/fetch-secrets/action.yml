@@ -26,7 +26,7 @@ runs:
           -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
           "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=doppler" | jq -r '.value')
         doppler oidc login \
-          --identity="$" \
+          --identity="${{ inputs.identity-id }}" \
           --token="$JWT" \
           --scope=.
 
@@ -36,6 +36,6 @@ runs:
         doppler secrets download \
           --no-file \
           --format=docker \
-          --project="$" \
-          --config="$" \
+          --project="${{ inputs.project }}" \
+          --config="${{ inputs.env }}" \
           --scope=. >> "$GITHUB_ENV"
