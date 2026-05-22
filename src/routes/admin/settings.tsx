@@ -21,9 +21,8 @@ export const Route = createFileRoute("/admin/settings")({
 function AdminSettingsPage() {
   return (
     <OwnerGate>
-      <div className="flex min-h-screen bg-background">
-        <AdminSidebar />
-        <main className="flex-1 px-10 py-8">
+      <AdminSidebar>
+        <div className="flex-1 px-10 py-8">
           <header className="mb-8">
             <p className="font-semibold text-[11px] text-primary uppercase tracking-[0.14em]">
               System · Settings
@@ -44,8 +43,8 @@ function AdminSettingsPage() {
               for now.
             </p>
           </div>
-        </main>
-      </div>
+        </div>
+      </AdminSidebar>
     </OwnerGate>
   );
 }

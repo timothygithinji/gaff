@@ -103,28 +103,25 @@ type Props = { data?: DesktopReviewData };
 
 export function DesktopReview({ data = DESKTOP_REVIEW_PLACEHOLDER }: Props) {
   return (
-    <div className="hidden min-h-screen bg-ground md:flex">
-      <AdminSidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <DesktopReviewHeader data={data} />
-        <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
-          <QueueRail
-            current={data.queue.current}
-            remaining={data.queue.remaining}
-            upcoming={data.queue.upcoming}
-          />
-          <HeroColumn hero={data.hero} />
-          <ContextRail
-            activity={data.activity}
-            keptToday={data.keptToday}
-            leftToday={data.leftToday}
-            skippedToday={data.skippedToday}
-            tip={data.tip}
-            totalToday={data.totalToday}
-          />
-        </div>
-      </main>
-    </div>
+    <AdminSidebar mode="desktop-only">
+      <DesktopReviewHeader data={data} />
+      <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
+        <QueueRail
+          current={data.queue.current}
+          remaining={data.queue.remaining}
+          upcoming={data.queue.upcoming}
+        />
+        <HeroColumn hero={data.hero} />
+        <ContextRail
+          activity={data.activity}
+          keptToday={data.keptToday}
+          leftToday={data.leftToday}
+          skippedToday={data.skippedToday}
+          tip={data.tip}
+          totalToday={data.totalToday}
+        />
+      </div>
+    </AdminSidebar>
   );
 }
 

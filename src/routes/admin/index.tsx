@@ -77,9 +77,8 @@ function AdminDashboard() {
   const { data: runs } = useSuspenseQuery(recentRunsQueryOptions(filter));
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AdminSidebar />
-      <main className="flex-1 px-10 py-8">
+    <AdminSidebar>
+      <div className="flex-1 px-10 py-8">
         <DashboardHeader />
         <MetricCardsRow metrics={metrics} />
         <section className="mt-10">
@@ -93,8 +92,8 @@ function AdminDashboard() {
           </div>
           <RunsTable rows={runs} />
         </section>
-      </main>
-    </div>
+      </div>
+    </AdminSidebar>
   );
 }
 

@@ -56,22 +56,19 @@ export function DesktopListingDetail({
   onShortlist,
 }: Props) {
   return (
-    <div className="hidden min-h-screen bg-ground md:flex">
-      <AdminSidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar headline={data.headline} mySwipe={data.mySwipe} />
-        <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
-          <MediaColumn data={data} />
-          <InfoColumn
-            data={data}
-            disabled={disabled}
-            onKeep={onKeep}
-            onShortlist={onShortlist}
-            onSkip={onSkip}
-          />
-        </div>
-      </main>
-    </div>
+    <AdminSidebar mode="desktop-only">
+      <TopBar headline={data.headline} mySwipe={data.mySwipe} />
+      <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
+        <MediaColumn data={data} />
+        <InfoColumn
+          data={data}
+          disabled={disabled}
+          onKeep={onKeep}
+          onShortlist={onShortlist}
+          onSkip={onSkip}
+        />
+      </div>
+    </AdminSidebar>
   );
 }
 

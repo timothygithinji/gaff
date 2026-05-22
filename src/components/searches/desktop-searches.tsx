@@ -40,27 +40,24 @@ type Props = {
 export function DesktopSearches({ searches }: Props) {
   const activeCount = searches.filter((s) => s.active).length;
   return (
-    <div className="hidden min-h-screen bg-ground md:flex">
-      <AdminSidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <PageHeader />
-        <MetricStrip activeCount={activeCount} totalCount={searches.length} />
-        <div className="flex min-w-0 flex-1 gap-6 px-10 py-6">
-          <div className="flex min-w-0 flex-1 flex-wrap content-start gap-4">
-            {searches.length === 0 ? (
-              <EmptyState />
-            ) : (
-              searches.map((s) => <SearchCard key={s.id} search={s} />)
-            )}
-          </div>
-          <aside className="flex w-[300px] shrink-0 flex-col gap-3.5">
-            <PulseCard />
-            <SuggestionsCard />
-            <ArchivedCard />
-          </aside>
+    <AdminSidebar mode="desktop-only">
+      <PageHeader />
+      <MetricStrip activeCount={activeCount} totalCount={searches.length} />
+      <div className="flex min-w-0 flex-1 gap-6 px-10 py-6">
+        <div className="flex min-w-0 flex-1 flex-wrap content-start gap-4">
+          {searches.length === 0 ? (
+            <EmptyState />
+          ) : (
+            searches.map((s) => <SearchCard key={s.id} search={s} />)
+          )}
         </div>
-      </main>
-    </div>
+        <aside className="flex w-[300px] shrink-0 flex-col gap-3.5">
+          <PulseCard />
+          <SuggestionsCard />
+          <ArchivedCard />
+        </aside>
+      </div>
+    </AdminSidebar>
   );
 }
 

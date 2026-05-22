@@ -1,7 +1,18 @@
 /**
- * Desktop admin sidebar — matches the 1440px Admin artboard. Wordmark
- * at the top, two nav sections (HOUSE + SYSTEM) with Hugeicons icons,
- * and a user block at the bottom showing who's signed in. Hidden on `md-`.
+ * Desktop app shell — composes the shadcn `<Sidebar>` primitive with the
+ * Gaff brand, HOUSE / SYSTEM nav groups, and user footer block.
+ *
+ * Consumers wrap their page content in `<AdminSidebar>...</AdminSidebar>`
+ * (the children render inside `<SidebarInset>`, which is the main column
+ * pinned next to the sidebar). The component takes care of mounting the
+ * `<SidebarProvider>` so callers don't have to.
+ *
+ * Visual tokens flow from `--sidebar-*` CSS vars defined in
+ * `src/styles/globals.css`, which alias the mineral palette:
+ *   - `bg-sidebar`           = paper
+ *   - `text-sidebar-foreground` = ink
+ *   - active item bg         = ground (via `--sidebar-accent`)
+ *   - active item foreground = copper (via `--sidebar-accent-foreground`)
  */
 import {
   Calendar03Icon,
@@ -11,21 +22,40 @@ import {
   Settings02Icon,
   StarIcon,
   SwipeRight03Icon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useRouterState } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from "../../components/ui/sidebar";
 import { useHouseholdOptional } from "../../lib/household-context";
-import { cn } from "../../lib/utils";
 
 type IconRef = typeof SwipeRight03Icon;
 
-type NavLink = { to: string; label: string; icon: IconRef };
+type NavLink = {
+  to: string;
+  label: string;
+  icon: IconRef;
+  badge?: number;
+};
 
 const HOUSE_LINKS: NavLink[] = [
   { to: "/", label: "Review", icon: SwipeRight03Icon },
-  { to: "/shortlist", label: "Shortlist", icon: StarIcon },
+  { to: "/shortlist", label: "Shortlist", icon: StarIcon, badge: 3 },
   { to: "/searches", label: "Searches", icon: Search01Icon },
 ];
 
@@ -37,89 +67,120 @@ const SYSTEM_LINKS: NavLink[] = [
   { to: "/admin/settings", label: "Settings", icon: Settings02Icon },
 ];
 
-export function AdminSidebar() {
+/**
+ * Optional `mode="desktop-only"` hides the entire shell below `md` so
+ * the existing mobile flow can render alongside it (the same pattern
+ * the desktop layouts used pre-migration). Default `mode="responsive"`
+ * keeps the shell visible everywhere — used by `/admin/*` routes that
+ * never had a mobile variant.
+ */
+type Props = {
+  children?: ReactNode;
+  mode?: "responsive" | "desktop-only";
+};
+
+export function AdminSidebar({ children, mode = "responsive" }: Props) {
+  const desktopOnly = mode === "desktop-only";
+  return (
+    <div className={desktopOnly ? "hidden md:contents" : "contents"}>
+      {/* Pin the whole shell to the viewport so the inset becomes a
+       * scrollable region of fixed height rather than a page that
+       * grows past the fold. Children that need to scroll handle it
+       * with their own `overflow-y-auto` on an internal flex-1 child. */}
+      <SidebarProvider className="h-svh min-h-0 overflow-hidden">
+        <Sidebar collapsible="icon">
+          <Brand />
+          <SidebarContent>
+            <NavSection label="House" links={HOUSE_LINKS} />
+            <NavSection label="System" links={SYSTEM_LINKS} />
+          </SidebarContent>
+          <UserFooter />
+        </Sidebar>
+        <SidebarInset className="h-svh min-h-0 overflow-y-auto bg-ground">
+          {children}
+        </SidebarInset>
+      </SidebarProvider>
+    </div>
+  );
+}
+
+function Brand() {
+  return (
+    <SidebarHeader className="px-3 pt-4">
+      <div className="flex items-center gap-2">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <span className="font-bold font-serif text-lg leading-none">g</span>
+        </span>
+        <span className="font-serif text-foreground text-xl group-data-[collapsible=icon]:hidden">
+          Gaff
+        </span>
+      </div>
+    </SidebarHeader>
+  );
+}
+
+function NavSection({ label, links }: { label: string; links: NavLink[] }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {links.map((link) => {
+            const active = isActive(pathname, link.to);
+            return (
+              <SidebarMenuItem key={link.to}>
+                <SidebarMenuButton
+                  isActive={active}
+                  render={<Link to={link.to} />}
+                  tooltip={link.label}
+                >
+                  <HugeiconsIcon
+                    icon={link.icon}
+                    size={16}
+                    strokeWidth={active ? 2 : 1.6}
+                  />
+                  <span>{link.label}</span>
+                </SidebarMenuButton>
+                {link.badge ? (
+                  <SidebarMenuBadge>{link.badge}</SidebarMenuBadge>
+                ) : null}
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+function UserFooter() {
   const household = useHouseholdOptional();
   const me = household?.members.find(
     (m) => m.userId === household.currentUserId
   );
   const initial = (me?.name || me?.email || "?").charAt(0).toUpperCase();
-
+  const displayName = me?.name ?? me?.email ?? "—";
   return (
-    <aside className="hidden h-screen w-60 flex-col justify-between border-border border-r bg-card px-4 py-6 md:flex">
-      <div className="space-y-6">
-        <div className="flex items-center gap-2 px-3 pb-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <span className="font-bold font-serif text-lg">g</span>
-          </span>
-          <span className="font-serif text-foreground text-xl">Gaff</span>
-        </div>
-        <SidebarSection label="House" links={HOUSE_LINKS} pathname={pathname} />
-        <SidebarSection
-          label="System"
-          links={SYSTEM_LINKS}
-          pathname={pathname}
-        />
-      </div>
-      <div className="flex items-center gap-3 border-border border-t pt-4">
-        <Avatar>
+    <SidebarFooter className="border-sidebar-border border-t px-3 py-3">
+      <div className="flex items-center gap-3">
+        <Avatar className="h-8 w-8">
           <AvatarFallback className="bg-primary font-medium text-primary-foreground text-sm">
             {initial}
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
           <p className="truncate font-medium text-foreground text-sm">
-            {me?.name ?? me?.email ?? "—"}
+            {displayName}
           </p>
           <p className="text-muted-foreground text-xs">via Cloudflare Access</p>
         </div>
       </div>
-    </aside>
+    </SidebarFooter>
   );
 }
 
-function SidebarSection({
-  label,
-  links,
-  pathname,
-}: {
-  label: string;
-  links: NavLink[];
-  pathname: string;
-}) {
-  return (
-    <div>
-      <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-        {label}
-      </p>
-      <ul className="space-y-1">
-        {links.map((link) => {
-          const exactMatch = link.to === "/" || link.to === "/admin";
-          const active = exactMatch
-            ? pathname === link.to
-            : pathname.startsWith(link.to);
-          return (
-            <li key={link.to}>
-              <Link
-                to={link.to}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-muted font-medium text-primary"
-                    : "text-foreground hover:bg-muted"
-                )}
-              >
-                <HugeiconsIcon
-                  icon={link.icon}
-                  size={16}
-                  strokeWidth={active ? 2 : 1.6}
-                />
-                {link.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
+function isActive(pathname: string, to: string): boolean {
+  const exactMatch = to === "/" || to === "/admin";
+  return exactMatch ? pathname === to : pathname.startsWith(to);
 }
