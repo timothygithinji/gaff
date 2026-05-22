@@ -20,6 +20,7 @@
 import { Cancel01Icon, MapPinIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm, useStore } from "@tanstack/react-form";
+import { useEffect } from "react";
 import { z } from "zod";
 import {
   type Portal,
@@ -109,6 +110,13 @@ type Props = {
   onCancel?: () => void;
   onReset?: () => void;
   onSubmit: (values: SearchFormValues) => void;
+  /**
+   * Fires whenever a tracked field changes (outcodes / portals /
+   * cadence / price / name / aiRules / etc.). Used by the desktop
+   * wrapper to power a live estimate panel that lives outside the
+   * form's render tree.
+   */
+  onValuesChange?: (values: SearchFormValues) => void;
 };
 
 export function SearchForm({
@@ -118,6 +126,7 @@ export function SearchForm({
   onCancel,
   onReset,
   onSubmit,
+  onValuesChange,
 }: Props) {
   const defaults: SearchFormValues = { ...DEFAULT_FORM_VALUES, ...initial };
   const form = useForm({
@@ -136,6 +145,14 @@ export function SearchForm({
   const minPrice = useStore(form.store, (s) => s.values.minPrice);
   const maxPrice = useStore(form.store, (s) => s.values.maxPrice);
   const name = useStore(form.store, (s) => s.values.name);
+
+  // Mirror the full form values out to interested parents on every
+  // change. We read straight from the store so the broadcast picks up
+  // fields the cost panel doesn't render directly (e.g. aiRules).
+  const allValues = useStore(form.store, (s) => s.values);
+  useEffect(() => {
+    onValuesChange?.(allValues);
+  }, [allValues, onValuesChange]);
 
   const cadence = findCadenceById(cadenceId);
   const cost = estimateCost({

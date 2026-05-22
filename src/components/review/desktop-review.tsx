@@ -26,7 +26,9 @@ import {
   AiMagicIcon,
   Alert01Icon,
   ArrowDown01Icon,
+  ArrowLeft01Icon,
   ArrowReloadHorizontalIcon,
+  ArrowRight01Icon,
   ArrowUp01Icon,
   BulbIcon,
   Cancel01Icon,
@@ -36,9 +38,16 @@ import {
   Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ReactNode } from "react";
+import useEmblaCarousel from "embla-carousel-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "../ui/dialog";
 
 /* ---------------- Types ---------------- */
 
@@ -81,9 +90,7 @@ export type DesktopReviewData = {
     remaining: number;
   };
   hero: {
-    photo: string;
-    photoIndex: number;
-    photoCount: number;
+    photos: string[];
     alsoOn: string;
     price: string;
     priceUnit: string;
@@ -94,24 +101,57 @@ export type DesktopReviewData = {
     verdicts: VerdictChip[];
   };
   activity: ActivityEntry[];
-  tip: { title: string; body: string };
+  /**
+   * Optional. When omitted the bottom-of-rail tip card is hidden. The
+   * placeholder still ships one so unauthenticated previews stay full.
+   */
+  tip?: { title: string; body: string };
 };
 
 /* ---------------- Component ---------------- */
 
-type Props = { data?: DesktopReviewData };
+type Props = {
+  data?: DesktopReviewData;
+  onKeep?: () => void;
+  onSkip?: () => void;
+  onShortlist?: () => void;
+  onUndo?: () => void;
+  onOpenDetail?: () => void;
+  onSelectQueueItem?: (clusterId: string) => void;
+  onChangeSearch?: () => void;
+  disabled?: boolean;
+};
 
-export function DesktopReview({ data = DESKTOP_REVIEW_PLACEHOLDER }: Props) {
+export function DesktopReview({
+  data = DESKTOP_REVIEW_PLACEHOLDER,
+  onKeep,
+  onSkip,
+  onShortlist,
+  onUndo,
+  onOpenDetail,
+  onSelectQueueItem,
+  onChangeSearch,
+  disabled,
+}: Props) {
   return (
     <AdminSidebar mode="desktop-only">
-      <DesktopReviewHeader data={data} />
+      <DesktopReviewHeader data={data} onChangeSearch={onChangeSearch} />
       <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
         <QueueRail
           current={data.queue.current}
+          onSelectQueueItem={onSelectQueueItem}
           remaining={data.queue.remaining}
           upcoming={data.queue.upcoming}
         />
-        <HeroColumn hero={data.hero} />
+        <HeroColumn
+          disabled={disabled}
+          hero={data.hero}
+          onKeep={onKeep}
+          onOpenDetail={onOpenDetail}
+          onShortlist={onShortlist}
+          onSkip={onSkip}
+          onUndo={onUndo}
+        />
         <ContextRail
           activity={data.activity}
           keptToday={data.keptToday}
@@ -127,14 +167,25 @@ export function DesktopReview({ data = DESKTOP_REVIEW_PLACEHOLDER }: Props) {
 
 /* ---------------- Header ---------------- */
 
-function DesktopReviewHeader({ data }: { data: DesktopReviewData }) {
+function DesktopReviewHeader({
+  data,
+  onChangeSearch,
+}: {
+  data: DesktopReviewData;
+  onChangeSearch?: () => void;
+}) {
   return (
     <header className="flex items-end justify-between px-10 pt-9 pb-6">
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2.5">
           <Eyebrow>Reviewing</Eyebrow>
           <button
-            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-foreground text-xs"
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-foreground text-xs",
+              onChangeSearch && "hover:bg-ground active:scale-[0.98]"
+            )}
+            disabled={!onChangeSearch}
+            onClick={onChangeSearch}
             type="button"
           >
             <span className="font-medium">{data.searchPill}</span>
@@ -178,10 +229,12 @@ function QueueRail({
   current,
   upcoming,
   remaining,
+  onSelectQueueItem,
 }: {
   current: QueueItem;
   upcoming: QueueItem[];
   remaining: number;
+  onSelectQueueItem?: (clusterId: string) => void;
 }) {
   return (
     <aside className="flex w-[260px] shrink-0 flex-col gap-3">
@@ -199,14 +252,27 @@ function QueueRail({
       </div>
       <ul className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
         <li>
-          <QueueRow item={current} isCurrent />
+          <QueueRow
+            isCurrent
+            item={current}
+            onSelect={
+              onSelectQueueItem
+                ? () => onSelectQueueItem(current.id)
+                : undefined
+            }
+          />
         </li>
         {upcoming.map((item, i) => (
           <li
             className={cn(i < upcoming.length - 1 && "border-bone border-b")}
             key={item.id}
           >
-            <QueueRow item={item} />
+            <QueueRow
+              item={item}
+              onSelect={
+                onSelectQueueItem ? () => onSelectQueueItem(item.id) : undefined
+              }
+            />
           </li>
         ))}
       </ul>
@@ -217,20 +283,18 @@ function QueueRail({
 function QueueRow({
   item,
   isCurrent = false,
+  onSelect,
 }: {
   item: QueueItem;
   isCurrent?: boolean;
+  onSelect?: () => void;
 }) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-3 px-3.5 py-2.5",
-        isCurrent && "bg-ground"
-      )}
-    >
+  const interactive = Boolean(onSelect);
+  const body = (
+    <>
       <span
-        className={cn("h-9 w-1 shrink-0 rounded-sm", isCurrent && "bg-primary")}
         aria-hidden="true"
+        className={cn("h-9 w-1 shrink-0 rounded-sm", isCurrent && "bg-primary")}
       />
       {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
       <img
@@ -244,7 +308,7 @@ function QueueRow({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p
           className={cn(
-            "truncate font-serif text-foreground",
+            "truncate text-left font-serif text-foreground",
             isCurrent ? "text-sm" : "text-[13px]"
           )}
         >
@@ -260,8 +324,21 @@ function QueueRow({
         </div>
       </div>
       <QueueRowTrailing item={item} isCurrent={isCurrent} />
-    </div>
+    </>
   );
+  const className = cn(
+    "flex w-full items-center gap-3 px-3.5 py-2.5 text-left",
+    isCurrent && "bg-ground",
+    interactive && "transition-colors hover:bg-ground"
+  );
+  if (interactive) {
+    return (
+      <button className={className} onClick={onSelect} type="button">
+        {body}
+      </button>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
 
 function QueueRowTrailing({
@@ -297,17 +374,28 @@ function QueueRowTrailing({
 
 /* ---------------- Hero column (center) ---------------- */
 
-function HeroColumn({ hero }: { hero: DesktopReviewData["hero"] }) {
+function HeroColumn({
+  hero,
+  onKeep,
+  onSkip,
+  onShortlist,
+  onUndo,
+  onOpenDetail,
+  disabled,
+}: {
+  hero: DesktopReviewData["hero"];
+  onKeep?: () => void;
+  onSkip?: () => void;
+  onShortlist?: () => void;
+  onUndo?: () => void;
+  onOpenDetail?: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <section className="flex w-[540px] shrink-0 flex-col gap-3.5">
-      <article className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
-        <HeroPhoto
-          alsoOn={hero.alsoOn}
-          photo={hero.photo}
-          photoCount={hero.photoCount}
-          photoIndex={hero.photoIndex}
-        />
-        <div className="flex flex-col gap-4 px-7 pt-6">
+    <section className="flex min-h-0 w-[540px] shrink-0 flex-1 flex-col gap-3.5">
+      <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+        <HeroPhoto alsoOn={hero.alsoOn} photos={hero.photos} />
+        <div className="flex shrink-0 flex-col gap-4 px-7 pt-6">
           <HeroPriceRow
             cheapestPortal={hero.cheapestPortal}
             price={hero.price}
@@ -318,56 +406,298 @@ function HeroColumn({ hero }: { hero: DesktopReviewData["hero"] }) {
           <HeroSpecRow spec={hero.spec} />
           <HeroVerdicts verdicts={hero.verdicts} />
         </div>
-        <HeroActions />
+        <HeroActions
+          disabled={disabled}
+          onKeep={onKeep}
+          onOpenDetail={onOpenDetail}
+          onShortlist={onShortlist}
+          onSkip={onSkip}
+          onUndo={onUndo}
+        />
       </article>
     </section>
   );
 }
 
 function HeroPhoto({
-  photo,
-  photoIndex,
-  photoCount,
+  photos,
   alsoOn,
 }: {
-  photo: string;
-  photoIndex: number;
-  photoCount: number;
+  photos: string[];
   alsoOn: string;
 }) {
+  const photoCount = photos.length;
+  const canPaginate = photoCount > 1;
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
+    align: "start",
+    duration: 28,
+    watchDrag: canPaginate,
+  });
+  const [index, setIndex] = useState(0);
+
+  // Keep our progress + counter overlays in sync with whatever slide
+  // Embla settles on (drag, click, keyboard, programmatic).
+  useEffect(() => {
+    if (!emblaApi) {
+      return;
+    }
+    const sync = () => setIndex(emblaApi.selectedScrollSnap());
+    sync();
+    emblaApi.on("select", sync);
+    emblaApi.on("reInit", sync);
+    return () => {
+      emblaApi.off("select", sync);
+      emblaApi.off("reInit", sync);
+    };
+  }, [emblaApi]);
+
+  // New card → snap back to the first photo without animation.
+  useEffect(() => {
+    if (!emblaApi) {
+      return;
+    }
+    emblaApi.scrollTo(0, true);
+  }, [emblaApi, photos]);
+
+  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const openLightbox = useCallback(() => setLightboxOpen(true), []);
+
+  if (photoCount === 0) {
+    return (
+      <div className="relative flex min-h-[280px] w-full flex-1 items-center justify-center bg-muted">
+        <span className="text-muted-foreground text-xs">No photos</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative h-[280px] w-full">
-      {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
-      <img
-        alt="Listing hero"
-        className="absolute inset-0 h-full w-full object-cover"
-        src={photo}
-      />
+    <div className="relative min-h-[280px] w-full flex-1 select-none">
+      <div className="h-full w-full overflow-hidden" ref={emblaRef}>
+        <div className="flex h-full touch-pan-y">
+          {photos.map((src, i) => (
+            <div
+              className="relative h-full min-w-0 flex-[0_0_100%]"
+              key={`slide-${src}-${i}`}
+            >
+              {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
+              <img
+                alt={`Listing photo ${i + 1}`}
+                className="h-full w-full object-cover"
+                draggable={false}
+                src={src}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/45 to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/45 to-transparent"
       />
-      <span className="absolute top-3.5 left-3.5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1.5">
+      <button
+        aria-label="Open full-size photo"
+        className="absolute inset-y-0 left-1/4 right-1/4 cursor-zoom-in"
+        onClick={openLightbox}
+        type="button"
+      />
+      {canPaginate ? (
+        <>
+          <button
+            aria-label="Previous photo"
+            className="absolute inset-y-0 left-0 w-1/4 cursor-w-resize"
+            onClick={scrollPrev}
+            type="button"
+          />
+          <button
+            aria-label="Next photo"
+            className="absolute inset-y-0 right-0 w-1/4 cursor-e-resize"
+            onClick={scrollNext}
+            type="button"
+          />
+        </>
+      ) : null}
+      <PhotoLightbox
+        onOpenChange={setLightboxOpen}
+        open={lightboxOpen}
+        photos={photos}
+        startIndex={index}
+      />
+      <span className="pointer-events-none absolute top-3.5 left-3.5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-[#E2B584]" />
         <span className="font-semibold text-[10px] text-white uppercase tracking-wider">
           {alsoOn}
         </span>
       </span>
-      <span className="absolute top-3.5 right-3.5 rounded-full bg-black/55 px-2.5 py-1 font-semibold text-[11px] text-white">
-        {photoIndex} / {photoCount}
+      <span className="pointer-events-none absolute top-3.5 right-3.5 rounded-full bg-black/55 px-2.5 py-1 font-semibold text-[11px] text-white">
+        {index + 1} / {photoCount}
       </span>
-      <div className="absolute right-4 bottom-3.5 left-4 flex gap-1">
-        {Array.from({ length: photoCount }, (_, i) => i).map((i) => (
+      <div className="pointer-events-none absolute right-4 bottom-3.5 left-4 flex gap-1">
+        {photos.map((src, i) => (
           <span
             className={cn(
-              "h-[3px] flex-1 rounded-sm",
-              i < photoIndex ? "bg-white" : "bg-white/35"
+              "h-[3px] flex-1 rounded-sm transition-colors",
+              i <= index ? "bg-white" : "bg-white/35"
             )}
-            key={`progress-${i}`}
+            key={`progress-${src}-${i}`}
           />
         ))}
       </div>
     </div>
+  );
+}
+
+function PhotoLightbox({
+  open,
+  onOpenChange,
+  photos,
+  startIndex,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  photos: string[];
+  startIndex: number;
+}) {
+  const photoCount = photos.length;
+  const canPaginate = photoCount > 1;
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
+    align: "start",
+    duration: 28,
+    startIndex,
+    watchDrag: canPaginate,
+  });
+  const [index, setIndex] = useState(startIndex);
+
+  useEffect(() => {
+    if (!emblaApi) {
+      return;
+    }
+    const sync = () => setIndex(emblaApi.selectedScrollSnap());
+    sync();
+    emblaApi.on("select", sync);
+    emblaApi.on("reInit", sync);
+    return () => {
+      emblaApi.off("select", sync);
+      emblaApi.off("reInit", sync);
+    };
+  }, [emblaApi]);
+
+  // Re-sync the carousel position when the lightbox opens to whatever
+  // slide the small carousel is currently showing. Embla's `startIndex`
+  // only applies on first mount.
+  useEffect(() => {
+    if (open && emblaApi) {
+      emblaApi.scrollTo(startIndex, true);
+    }
+  }, [open, emblaApi, startIndex]);
+
+  // Keyboard handling while the lightbox is open. Runs in the capture
+  // phase and calls `stopImmediatePropagation` so the page-level
+  // keep/skip/shortlist/undo shortcuts in `routes/index.tsx` don't also
+  // fire — e.g. ArrowRight inside the lightbox should only advance the
+  // photo, never `keep` the card. Esc is handled by base-ui Dialog.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const swallow = new Set([
+      "ArrowLeft",
+      "ArrowRight",
+      "s",
+      "S",
+      "z",
+      "Z",
+      "i",
+      "I",
+    ]);
+    const onKey = (e: KeyboardEvent) => {
+      if (!swallow.has(e.key)) {
+        return;
+      }
+      e.stopImmediatePropagation();
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        emblaApi?.scrollPrev();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        emblaApi?.scrollNext();
+      }
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
+  }, [open, emblaApi]);
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent
+        className="grid h-[95vh] w-[95vw] max-w-none place-items-stretch gap-0 overflow-hidden border-0 bg-black/95 p-0 ring-0 sm:max-w-none"
+        showCloseButton={false}
+      >
+        <DialogTitle className="sr-only">Listing photos</DialogTitle>
+        <div className="relative flex h-full w-full items-center justify-center">
+          <div className="h-full w-full overflow-hidden" ref={emblaRef}>
+            <div className="flex h-full touch-pan-y">
+              {photos.map((src, i) => (
+                <div
+                  className="relative flex h-full min-w-0 flex-[0_0_100%] items-center justify-center"
+                  key={`lightbox-slide-${src}-${i}`}
+                >
+                  {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
+                  <img
+                    alt={`Listing photo ${i + 1}`}
+                    className="max-h-full max-w-full object-contain"
+                    draggable={false}
+                    src={src}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          {canPaginate ? (
+            <>
+              <button
+                aria-label="Previous photo"
+                className="absolute top-1/2 left-4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                onClick={() => emblaApi?.scrollPrev()}
+                type="button"
+              >
+                <HugeiconsIcon
+                  icon={ArrowLeft01Icon}
+                  size={20}
+                  strokeWidth={2}
+                />
+              </button>
+              <button
+                aria-label="Next photo"
+                className="absolute top-1/2 right-4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                onClick={() => emblaApi?.scrollNext()}
+                type="button"
+              >
+                <HugeiconsIcon
+                  icon={ArrowRight01Icon}
+                  size={20}
+                  strokeWidth={2}
+                />
+              </button>
+            </>
+          ) : null}
+          <span className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white text-xs backdrop-blur">
+            {index + 1} / {photoCount}
+          </span>
+          <DialogClose
+            aria-label="Close"
+            className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={2} />
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -497,36 +827,65 @@ function Verdict({
   );
 }
 
-function HeroActions() {
+function HeroActions({
+  onKeep,
+  onSkip,
+  onShortlist,
+  onUndo,
+  onOpenDetail,
+  disabled,
+}: {
+  onKeep?: () => void;
+  onSkip?: () => void;
+  onShortlist?: () => void;
+  onUndo?: () => void;
+  onOpenDetail?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="mt-4 flex items-center justify-between border-bone border-t px-7 pt-4 pb-6">
       <div className="flex items-center gap-3.5">
         <ActionPad
+          disabled={disabled}
           hint="Z · Undo"
           icon={ArrowReloadHorizontalIcon}
           label="Undo last swipe"
+          onClick={onUndo}
           size="sm"
         />
-        <ActionPad hint="← Skip" icon={Cancel01Icon} label="Skip" size="md" />
         <ActionPad
+          disabled={disabled}
+          hint="← Skip"
+          icon={Cancel01Icon}
+          label="Skip"
+          onClick={onSkip}
+          size="md"
+        />
+        <ActionPad
+          disabled={disabled}
           hint="I · Detail"
           icon={InformationCircleIcon}
           label="Details"
+          onClick={onOpenDetail}
           size="sm"
         />
       </div>
       <div className="flex items-center gap-3.5">
         <ActionPad
+          disabled={disabled}
           hint="→ Keep"
           icon={FavouriteIcon}
           label="Keep"
+          onClick={onKeep}
           size="md"
           variant="primary"
         />
         <ActionPad
+          disabled={disabled}
           hint="S · Star"
           icon={StarIcon}
           label="Shortlist"
+          onClick={onShortlist}
           size="sm"
         />
       </div>
@@ -540,24 +899,32 @@ function ActionPad({
   hint,
   size,
   variant = "ghost",
+  onClick,
+  disabled,
 }: {
   icon: typeof FavouriteIcon;
   label: string;
   hint: string;
   size: "sm" | "md";
   variant?: "ghost" | "primary";
+  onClick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
       <button
         aria-label={label}
         className={cn(
-          "flex items-center justify-center rounded-full",
+          "flex items-center justify-center rounded-full transition-opacity",
           size === "sm" ? "h-11 w-11" : "h-16 w-16",
           variant === "primary"
             ? "bg-primary text-primary-foreground shadow-[0_6px_18px_rgba(155,90,62,0.28)]"
-            : "border border-border bg-card text-foreground"
+            : "border border-border bg-card text-foreground",
+          (!onClick || disabled) && "cursor-not-allowed opacity-40",
+          onClick && !disabled && "hover:opacity-90 active:scale-[0.97]"
         )}
+        disabled={!onClick || disabled}
+        onClick={onClick}
         type="button"
       >
         <HugeiconsIcon
@@ -603,7 +970,7 @@ function ContextRail({
   skippedToday: number;
   leftToday: number;
   totalToday: number;
-  tip: DesktopReviewData["tip"];
+  tip?: DesktopReviewData["tip"];
 }) {
   return (
     <aside className="flex w-[280px] shrink-0 flex-col gap-3.5">
@@ -614,7 +981,7 @@ function ContextRail({
         skippedToday={skippedToday}
         totalToday={totalToday}
       />
-      <TipCard tip={tip} />
+      {tip ? <TipCard tip={tip} /> : null}
     </aside>
   );
 }
@@ -623,21 +990,16 @@ function ActivityCard({ activity }: { activity: ActivityEntry[] }) {
   return (
     <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-4.5 py-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#C7A87C] font-bold text-[11px] text-foreground">
-            P
-          </span>
-          <span className="font-semibold text-[13px] text-foreground">
-            Peareace · last 2h
-          </span>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-bone px-2 py-0.5">
-          <span className="h-[5px] w-[5px] rounded-full bg-[#2E8B57]" />
-          <span className="font-semibold text-[#5D7A4A] text-[10px]">
-            Online
-          </span>
+        <Eyebrow>Your activity · today</Eyebrow>
+        <span className="text-[11px] text-muted-foreground">
+          {activity.length} {activity.length === 1 ? "swipe" : "swipes"}
         </span>
       </div>
+      {activity.length === 0 ? (
+        <p className="text-[12px] text-muted-foreground">
+          No swipes yet today. Get going.
+        </p>
+      ) : null}
       <ul className="flex flex-col gap-3">
         {activity.map((entry) => (
           <li
@@ -744,7 +1106,7 @@ function DecisionStat({
   );
 }
 
-function TipCard({ tip }: { tip: DesktopReviewData["tip"] }) {
+function TipCard({ tip }: { tip: NonNullable<DesktopReviewData["tip"]> }) {
   return (
     <div className="flex items-start gap-2.5 rounded-xl bg-ground px-3.5 py-3">
       <HugeiconsIcon
@@ -861,9 +1223,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
     ],
   },
   hero: {
-    photo: PHOTO_HERO,
-    photoIndex: 1,
-    photoCount: 12,
+    photos: [PHOTO_HERO, PHOTO_BEDROOM, PHOTO_COOKING],
     alsoOn: "Also on Zoopla · Rightmove",
     price: "£2,450",
     priceUnit: "/mo",

@@ -1,22 +1,18 @@
 /**
- * Desktop Shortlist — two-column workspace shown above the `md`
- * breakpoint. Mirrors the `Desktop · Shortlist` artboard:
+ * Desktop Shortlist — full-width workspace shown above the `md`
+ * breakpoint:
  *
- *   - HEADER : "You & <Other>" eyebrow + page title + Sort + Plan-
- *              viewing-day actions, plus a tab strip (Mutual · Yours ·
- *              other members' lists · Archived).
- *   - LEFT   : cinematic featured banner (photo with gradient overlay +
+ *   - HEADER : "You & <Other>" eyebrow + page title + Sort, plus a tab
+ *              strip (Mutual · Yours · other members' lists).
+ *   - BODY   : cinematic featured banner (photo with gradient overlay +
  *              big address/price + Plan a viewing CTA) followed by a
- *              three-column card grid of "Other mutual picks".
- *   - RIGHT  : Saturday-plan summary card (mock until viewing planner
- *              ships) and Shared notes thread (also mock).
+ *              three-column card grid of mutual picks.
  *
- * The notes / plan cards are intentionally placeholder fixtures — the
- * server-side viewing-planner + chat features don't exist yet. The card
- * grid and featured banner consume real `MutualMatch` rows.
+ * The viewing-planner + shared-notes right rail used to live here as
+ * static fixtures; both features need a real domain model + product
+ * decisions (notes must respect the blind-review timing rule) before
+ * they can be re-introduced.
  */
-import { Add01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { ReactNode } from "react";
 import {
   SortDropdown,
@@ -90,28 +86,22 @@ export function DesktopShortlist({
           />
         </div>
       ) : null}
-      <div className="flex min-w-0 flex-1 gap-6 px-10 py-7">
-        <div className="flex min-w-0 flex-1 flex-col gap-5">
-          {featured ? (
-            <FeaturedBanner
-              ageLabel={featuredAgeLabel ?? ""}
-              match={featured}
-              onOpen={() => onOpen(featured.clusterId)}
-              onPlanViewing={() => onPlanViewing(featured)}
-            />
-          ) : null}
-          <SectionHead label={sectionLabel} rowCount={rows.length} />
-          <CardGrid
-            memberCount={memberCount}
-            onOpen={onOpen}
-            rowAgeLabel={rowAgeLabel}
-            rows={rows}
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-10 py-7">
+        {featured ? (
+          <FeaturedBanner
+            ageLabel={featuredAgeLabel ?? ""}
+            match={featured}
+            onOpen={() => onOpen(featured.clusterId)}
+            onPlanViewing={() => onPlanViewing(featured)}
           />
-        </div>
-        <aside className="flex w-[300px] shrink-0 flex-col gap-3.5">
-          <SaturdayPlanCard plan={DEFAULT_PLAN} />
-          <NotesCard notes={DEFAULT_NOTES} />
-        </aside>
+        ) : null}
+        <SectionHead label={sectionLabel} rowCount={rows.length} />
+        <CardGrid
+          memberCount={memberCount}
+          onOpen={onOpen}
+          rowAgeLabel={rowAgeLabel}
+          rows={rows}
+        />
       </div>
     </AdminSidebar>
   );
@@ -140,16 +130,7 @@ function Header({
           Shortlist
         </h1>
       </div>
-      <div className="flex items-center gap-2.5">
-        <SortDropdown onChange={onSortChange} value={sortKey} />
-        <button
-          className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-bone text-xs"
-          type="button"
-        >
-          <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2} />
-          <span className="font-semibold">Plan viewing day</span>
-        </button>
-      </div>
+      <SortDropdown onChange={onSortChange} value={sortKey} />
     </header>
   );
 }
@@ -357,98 +338,6 @@ function PickCard({
   );
 }
 
-/* ---------------- Right rail ---------------- */
-
-type PlanEntry = { time: string; title: string };
-type Note = {
-  by: string;
-  initial: string;
-  context: string;
-  body: string;
-  isYou: boolean;
-};
-
-function SaturdayPlanCard({ plan }: { plan: PlanEntry[] }) {
-  return (
-    <article className="flex flex-col gap-4 rounded-2xl bg-foreground px-5 py-4">
-      <Eyebrow tone="onDark">Saturday plan</Eyebrow>
-      <div className="flex flex-col gap-1">
-        <p className="font-serif text-[22px] text-bone leading-[26px]">
-          {plan.length} viewings, one Saturday
-        </p>
-        <p className="text-[12px] text-white/55 leading-[16px]">
-          Routed by tube. Tea breaks in NW3.
-        </p>
-      </div>
-      <ul className="flex flex-col gap-2.5 border-white/10 border-t pt-3.5">
-        {plan.map((p) => (
-          <li className="flex items-center gap-2.5" key={p.time}>
-            <span className="min-w-[38px] font-semibold font-serif text-[#C7A87C] text-[13px]">
-              {p.time}
-            </span>
-            <span className="font-medium text-[12px] text-bone">{p.title}</span>
-          </li>
-        ))}
-      </ul>
-      <button
-        className="flex items-center justify-center gap-1.5 rounded-full bg-primary px-3.5 py-2.5 font-semibold text-[12px] text-white"
-        type="button"
-      >
-        Share plan with household
-      </button>
-    </article>
-  );
-}
-
-function NotesCard({ notes }: { notes: Note[] }) {
-  return (
-    <article className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-4.5 py-4">
-      <div className="flex items-center justify-between">
-        <Eyebrow>Shared notes</Eyebrow>
-        <span className="text-[11px] text-muted-foreground">
-          {notes.length} unread
-        </span>
-      </div>
-      <ul className="flex flex-col gap-3.5">
-        {notes.map((n) => (
-          <li className="flex items-start gap-2.5" key={`${n.by}-${n.context}`}>
-            <span
-              className={cn(
-                "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full font-bold text-[11px] text-foreground",
-                n.isYou ? "bg-[#D8B98B]" : "bg-[#C7A87C]"
-              )}
-            >
-              {n.initial}
-            </span>
-            <div className="flex flex-col gap-1">
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-semibold text-[12px] text-foreground">
-                  {n.by}
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {n.context}
-                </span>
-              </div>
-              <p className="text-[12px] text-foreground leading-[17px]">
-                {n.body}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div className="inline-flex items-center gap-2 rounded-full border border-border bg-bone px-3 py-2">
-        <HugeiconsIcon
-          className="text-primary"
-          icon={Add01Icon}
-          size={12}
-          strokeWidth={2}
-        />
-        <span className="text-[12px] text-muted-foreground">Add a note…</span>
-      </div>
-    </article>
-  );
-}
-
 /* ---------------- Atoms + helpers ---------------- */
 
 function Eyebrow({
@@ -555,31 +444,6 @@ function locationLine(
   }
   return parts.join(" · ");
 }
-
-/* ---------------- Placeholder content ---------------- */
-
-const DEFAULT_PLAN: PlanEntry[] = [
-  { time: "11:00", title: "Camden Lock Mews" },
-  { time: "13:30", title: "Belsize Park Mews" },
-  { time: "15:45", title: "Kentish Town Loft" },
-];
-
-const DEFAULT_NOTES: Note[] = [
-  {
-    by: "Partner",
-    initial: "P",
-    context: "on Camden · 14m ago",
-    body: '"Top one for me. Light is unreal in the bedroom photo. Can we book Saturday?"',
-    isYou: false,
-  },
-  {
-    by: "You",
-    initial: "Y",
-    context: "on Highgate · yest.",
-    body: '"Walk-up but the studio is huge. Worth the climb?"',
-    isYou: true,
-  },
-];
 
 // Re-export for type-narrowing in callers that want to construct lists.
 export type { Member };

@@ -73,6 +73,7 @@ export type ReviewCardHeadlineListing = {
   propertyType: string | null;
   photos: string[];
   outcode: string;
+  firstSeenAt: Date;
 };
 
 export type ReviewCardAlsoOn = {
@@ -196,70 +197,70 @@ async function requireHouseholdMembers(): Promise<{
   };
 }
 
-export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
-  async (): Promise<ReviewCard | null> => {
-    const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdMembers();
-    const db = getDb(env as unknown as Env);
+/**
+ * The "ranked queue" step of the review pipeline, shared by
+ * `getNextReviewCard` and `getReviewQueue`.
+ *
+ * Returns the cluster ids the caller still has to swipe, ordered by
+ * the v1 ranking rules (newest-first listing, cheapest-tiebreak), with
+ * already-swiped clusters and household-skip clusters removed. The
+ * caller hydrates whichever positions it needs.
+ */
+async function loadRankedQueueClusterIds(
+  db: Db,
+  householdId: string,
+  memberUserIds: string[],
+  currentUserId: string
+): Promise<{
+  clusterIds: string[];
+  activeSearches: (typeof searches.$inferSelect)[];
+}> {
+  const activeSearches = await db
+    .select()
+    .from(searches)
+    .where(
+      and(eq(searches.householdId, householdId), eq(searches.active, true))
+    );
+  if (activeSearches.length === 0) {
+    return { clusterIds: [], activeSearches: [] };
+  }
+  const activeSearchIds = activeSearches.map((s) => s.id);
 
-    // Step 1: collect the household's active searches. If there are
-    // none, the queue is trivially empty.
-    const activeSearches = await db
-      .select()
-      .from(searches)
-      .where(
-        and(eq(searches.householdId, householdId), eq(searches.active, true))
-      );
-    if (activeSearches.length === 0) {
-      return null;
-    }
-    const activeSearchIds = activeSearches.map((s) => s.id);
+  // Raw SQL for the GROUP BY — Drizzle's relational builder doesn't
+  // expose `MIN(first_seen_at)` cleanly in this shape, and pulling the
+  // full listings table to group in JS would be wrong.
+  type RankedClusterRow = {
+    clusterId: string;
+    newestFirstSeenAt: Date;
+    cheapestPrice: number | null;
+  };
+  const rankedRows = await db.execute(sql<RankedClusterRow>`
+    SELECT
+      ${listings.clusterId} AS "clusterId",
+      MAX(${listings.firstSeenAt}) AS "newestFirstSeenAt",
+      MIN(${listings.priceMonthly}) AS "cheapestPrice"
+    FROM ${listings}
+    WHERE ${listings.clusterId} IS NOT NULL
+      AND ${inArray(listings.searchId, activeSearchIds)}
+    GROUP BY ${listings.clusterId}
+    ORDER BY MAX(${listings.firstSeenAt}) DESC,
+             MIN(${listings.priceMonthly}) ASC NULLS LAST
+  `);
+  // drizzle-orm's `db.execute()` on neon-http returns the bare row
+  // array under `.rows`, mirroring pg's result shape.
+  const candidates = (
+    rankedRows as unknown as { rows: RankedClusterRow[] }
+  ).rows
+    .filter((r): r is RankedClusterRow & { clusterId: string } =>
+      Boolean(r.clusterId)
+    )
+    .map((r) => r.clusterId);
+  if (candidates.length === 0) {
+    return { clusterIds: [], activeSearches };
+  }
 
-    // Step 2: pull every cluster that has at least one listing in an
-    // active search, ordered by newest-first / cheapest-first. Dedup
-    // by cluster_id by aggregating min(first_seen_at) → DESC.
-    //
-    // We use raw SQL for the GROUP BY because Drizzle's relational
-    // query builder doesn't expose `MIN(first_seen_at)` cleanly in this
-    // shape — pulling the listing rows + grouping client-side would
-    // require fetching the whole table, which is wrong.
-    type RankedClusterRow = {
-      clusterId: string;
-      newestFirstSeenAt: Date;
-      cheapestPrice: number | null;
-    };
-
-    const rankedRows = await db.execute(sql<RankedClusterRow>`
-      SELECT
-        ${listings.clusterId} AS "clusterId",
-        MAX(${listings.firstSeenAt}) AS "newestFirstSeenAt",
-        MIN(${listings.priceMonthly}) AS "cheapestPrice"
-      FROM ${listings}
-      WHERE ${listings.clusterId} IS NOT NULL
-        AND ${inArray(listings.searchId, activeSearchIds)}
-      GROUP BY ${listings.clusterId}
-      ORDER BY MAX(${listings.firstSeenAt}) DESC,
-               MIN(${listings.priceMonthly}) ASC NULLS LAST
-    `);
-
-    // drizzle-orm's `db.execute()` on neon-http returns the bare row
-    // array under `.rows`, mirroring pg's result shape. Cast through
-    // unknown because the static type is the generic `QueryResult`.
-    const candidates = (
-      rankedRows as unknown as { rows: RankedClusterRow[] }
-    ).rows
-      .filter((r): r is RankedClusterRow & { clusterId: string } =>
-        Boolean(r.clusterId)
-      )
-      .map((r) => r.clusterId);
-
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    // Step 3: subtract clusters the CURRENT user has already swiped
-    // and clusters where ANY household member has swiped 'skip'.
-    const mySwipes = await db
+  const [mySwipes, householdSkips] = await Promise.all([
+    db
       .select({ clusterId: swipes.clusterId })
       .from(swipes)
       .where(
@@ -267,10 +268,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
           eq(swipes.userId, currentUserId),
           inArray(swipes.clusterId, candidates)
         )
-      );
-    const mySwipedSet = new Set(mySwipes.map((s) => s.clusterId));
-
-    const householdSkips = await db
+      ),
+    db
       .select({ clusterId: swipes.clusterId })
       .from(swipes)
       .where(
@@ -279,17 +278,37 @@ export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
           eq(swipes.outcome, "skip"),
           inArray(swipes.clusterId, candidates)
         )
-      );
-    const skipSet = new Set(householdSkips.map((s) => s.clusterId));
+      ),
+  ]);
+  const mySwipedSet = new Set(mySwipes.map((s) => s.clusterId));
+  const skipSet = new Set(householdSkips.map((s) => s.clusterId));
+  const clusterIds = candidates.filter(
+    (cid) => !(mySwipedSet.has(cid) || skipSet.has(cid))
+  );
 
-    const queue = candidates.filter(
-      (cid) => !(mySwipedSet.has(cid) || skipSet.has(cid))
+  return { clusterIds, activeSearches };
+}
+
+type Db = ReturnType<typeof getDb>;
+
+export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ReviewCard | null> => {
+    const { householdId, memberUserIds, currentUserId } =
+      await requireHouseholdMembers();
+    const db = getDb(env as unknown as Env);
+
+    const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
+      db,
+      householdId,
+      memberUserIds,
+      currentUserId
     );
-    if (queue.length === 0) {
+    if (clusterIds.length === 0) {
       return null;
     }
+    const activeSearchIds = activeSearches.map((s) => s.id);
 
-    const nextClusterId = queue[0];
+    const nextClusterId = clusterIds[0];
     if (!nextClusterId) {
       return null;
     }
@@ -401,16 +420,381 @@ export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
         propertyType: headline.propertyType,
         photos: photoUrls,
         outcode: outcodeOf(headline.postcode ?? cluster.postcode),
+        firstSeenAt: headline.firstSeenAt,
       },
       portalsAlsoOn,
       features: asFeatures(enrichment?.features),
       epcRating: asEpcRating(enrichment?.epc),
-      leftToday: queue.length,
+      leftToday: clusterIds.length,
       searchId: headline.searchId,
       searchPill,
     };
   }
 );
+
+/**
+ * Lightweight queue row for the desktop Review screen's "Up next" rail.
+ * Mirrors `getNextReviewCard`'s ranking but hydrates a thin shape — just
+ * what the rail's thumbnail row needs (title / outcode / beds / price /
+ * one photo / portal count). Per the blind-review rule, this never
+ * surfaces a peer-member outcome.
+ */
+export type ReviewQueueItem = {
+  clusterId: string;
+  searchId: string;
+  headlineListingId: string;
+  title: string;
+  outcode: string;
+  bedrooms: number | null;
+  priceMonthly: number | null;
+  photo: string | null;
+  portalCount: number;
+};
+
+export type ReviewQueue = {
+  upcoming: ReviewQueueItem[];
+  /**
+   * Total ranked clusters still awaiting the caller's swipe, including
+   * the one `getNextReviewCard` is currently showing. The header copy
+   * "N in queue" reads this directly.
+   */
+  remaining: number;
+};
+
+const REVIEW_QUEUE_UPCOMING_LIMIT = 5;
+
+export const getReviewQueue = createServerFn({ method: "GET" }).handler(
+  async (): Promise<ReviewQueue> => {
+    const { householdId, memberUserIds, currentUserId } =
+      await requireHouseholdMembers();
+    const db = getDb(env as unknown as Env);
+
+    const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
+      db,
+      householdId,
+      memberUserIds,
+      currentUserId
+    );
+    const remaining = clusterIds.length;
+    if (remaining === 0) {
+      return { upcoming: [], remaining: 0 };
+    }
+
+    // Position 0 is the card `getNextReviewCard` is showing — skip it.
+    const upcomingClusterIds = clusterIds.slice(
+      1,
+      1 + REVIEW_QUEUE_UPCOMING_LIMIT
+    );
+    if (upcomingClusterIds.length === 0) {
+      return { upcoming: [], remaining };
+    }
+
+    const upcoming = await hydrateQueueItems(
+      db,
+      upcomingClusterIds,
+      activeSearches.map((s) => s.id)
+    );
+    return { upcoming, remaining };
+  }
+);
+
+/**
+ * Lightweight per-cluster hydration for the queue rail. Pulls listings
+ * + first photos for the given upcoming clusters in two round-trips,
+ * groups in JS to pick the cheapest listing per cluster as the row
+ * headline, and counts distinct portals so the rail can render the
+ * "·N" suffix.
+ *
+ * Returned order matches `upcomingClusterIds` — Map iteration order
+ * isn't guaranteed to track the SQL ranking once we group by id.
+ */
+async function hydrateQueueItems(
+  db: Db,
+  upcomingClusterIds: string[],
+  activeSearchIds: string[]
+): Promise<ReviewQueueItem[]> {
+  const rows = await db
+    .select({
+      id: listings.id,
+      clusterId: listings.clusterId,
+      searchId: listings.searchId,
+      portal: listings.portal,
+      title: listings.title,
+      postcode: listings.postcode,
+      bedrooms: listings.bedrooms,
+      priceMonthly: listings.priceMonthly,
+    })
+    .from(listings)
+    .where(
+      and(
+        inArray(listings.clusterId, upcomingClusterIds),
+        inArray(listings.searchId, activeSearchIds)
+      )
+    );
+
+  type GroupedCluster = {
+    headline: (typeof rows)[number];
+    portals: Set<string>;
+  };
+  const grouped = new Map<string, GroupedCluster>();
+  for (const row of rows) {
+    if (!row.clusterId) {
+      continue;
+    }
+    const existing = grouped.get(row.clusterId);
+    if (!existing) {
+      grouped.set(row.clusterId, {
+        headline: row,
+        portals: new Set([row.portal]),
+      });
+      continue;
+    }
+    existing.portals.add(row.portal);
+    if (isCheaper(row.priceMonthly, existing.headline.priceMonthly)) {
+      existing.headline = row;
+    }
+  }
+
+  const headlineListingIds = Array.from(grouped.values()).map(
+    (g) => g.headline.id
+  );
+  const photoByListingId = await loadFirstPhotoByListing(
+    db,
+    headlineListingIds
+  );
+
+  return upcomingClusterIds
+    .map((clusterId): ReviewQueueItem | null => {
+      const g = grouped.get(clusterId);
+      if (!g) {
+        return null;
+      }
+      return {
+        clusterId,
+        searchId: g.headline.searchId,
+        headlineListingId: g.headline.id,
+        title: g.headline.title,
+        outcode: outcodeOf(g.headline.postcode),
+        bedrooms: g.headline.bedrooms,
+        priceMonthly: g.headline.priceMonthly,
+        photo: photoByListingId.get(g.headline.id) ?? null,
+        portalCount: g.portals.size,
+      };
+    })
+    .filter((item): item is ReviewQueueItem => item !== null);
+}
+
+/**
+ * `a` beats `b` for the headline slot when it has a real price and `b`
+ * doesn't, or when both are real and `a` is strictly smaller. A null
+ * price never beats a real one.
+ */
+function isCheaper(a: number | null, b: number | null): boolean {
+  if (a == null) {
+    return false;
+  }
+  if (b == null) {
+    return true;
+  }
+  return a < b;
+}
+
+async function loadFirstPhotoByListing(
+  db: Db,
+  listingIds: string[]
+): Promise<Map<string, string>> {
+  if (listingIds.length === 0) {
+    return new Map();
+  }
+  const photos = await db
+    .select({
+      listingId: listingPhotos.listingId,
+      url: listingPhotos.url,
+      r2Key: listingPhotos.r2Key,
+    })
+    .from(listingPhotos)
+    .where(inArray(listingPhotos.listingId, listingIds))
+    .orderBy(listingPhotos.position);
+  const byListingId = new Map<string, string>();
+  for (const p of photos) {
+    if (!byListingId.has(p.listingId)) {
+      byListingId.set(p.listingId, p.r2Key ?? p.url);
+    }
+  }
+  return byListingId;
+}
+
+/**
+ * The current user's swipe activity since UTC midnight, bucketed by
+ * outcome. Drives the desktop Review header strip ("5 reviewed · 1
+ * kept · 4 skipped"). This counts the *user's* decisions, not the
+ * household's — every member's strip reflects their own work.
+ *
+ * UTC midnight is used so the bucket boundary doesn't shift around as
+ * the user moves between devices or timezones. The visible difference
+ * vs Europe/London-midnight is at most one hour in either direction.
+ */
+export type TodayReviewStats = {
+  kept: number;
+  skipped: number;
+  shortlisted: number;
+  reviewed: number;
+};
+
+export const getTodayReviewStats = createServerFn({ method: "GET" }).handler(
+  async (): Promise<TodayReviewStats> => {
+    const session = await getCurrentUser();
+    if (!session) {
+      throw new Error("unauthorized");
+    }
+    const db = getDb(env as unknown as Env);
+
+    const now = new Date();
+    const startOfTodayUtc = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
+
+    const rows = await db
+      .select({
+        outcome: swipes.outcome,
+        count: sql<string>`COUNT(*)`,
+      })
+      .from(swipes)
+      .where(
+        and(
+          eq(swipes.userId, session.userId),
+          sql`${swipes.createdAt} >= ${startOfTodayUtc}`
+        )
+      )
+      .groupBy(swipes.outcome);
+
+    const stats: TodayReviewStats = {
+      kept: 0,
+      skipped: 0,
+      shortlisted: 0,
+      reviewed: 0,
+    };
+    for (const row of rows) {
+      const n = Number(row.count);
+      stats.reviewed += n;
+      if (row.outcome === "keep") {
+        stats.kept = n;
+      } else if (row.outcome === "skip") {
+        stats.skipped = n;
+      } else if (row.outcome === "shortlist") {
+        stats.shortlisted = n;
+      }
+    }
+    return stats;
+  }
+);
+
+/**
+ * The current user's most recent swipes today, newest-first, with each
+ * cluster's headline listing title resolved. Drives the desktop
+ * Review right-rail "Your activity" feed.
+ *
+ * Self-only by design — per the blind-review rule, household members
+ * must not see each other's keeps/skips until there's a mutual match.
+ * Mutuals are surfaced separately on `/matches`.
+ */
+export type RecentSwipeEntry = {
+  id: string;
+  outcome: "keep" | "skip" | "shortlist";
+  clusterId: string;
+  clusterTitle: string;
+  createdAt: Date;
+};
+
+const RECENT_SWIPES_LIMIT = 8;
+
+export const listMyRecentSwipes = createServerFn({ method: "GET" }).handler(
+  async (): Promise<RecentSwipeEntry[]> => {
+    const session = await getCurrentUser();
+    if (!session) {
+      throw new Error("unauthorized");
+    }
+    const db = getDb(env as unknown as Env);
+
+    const now = new Date();
+    const startOfTodayUtc = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
+
+    const swipeRows = await db
+      .select({
+        id: swipes.id,
+        outcome: swipes.outcome,
+        clusterId: swipes.clusterId,
+        createdAt: swipes.createdAt,
+      })
+      .from(swipes)
+      .where(
+        and(
+          eq(swipes.userId, session.userId),
+          sql`${swipes.createdAt} >= ${startOfTodayUtc}`
+        )
+      )
+      .orderBy(desc(swipes.createdAt))
+      .limit(RECENT_SWIPES_LIMIT);
+
+    if (swipeRows.length === 0) {
+      return [];
+    }
+
+    const clusterIds = swipeRows.map((s) => s.clusterId);
+    const titleByCluster = await loadClusterHeadlineTitles(db, clusterIds);
+
+    return swipeRows.map((s) => ({
+      id: s.id,
+      outcome: s.outcome,
+      clusterId: s.clusterId,
+      clusterTitle: titleByCluster.get(s.clusterId) ?? "Listing",
+      createdAt: s.createdAt,
+    }));
+  }
+);
+
+/**
+ * Headline (cheapest) listing title per cluster, batched. Falls back
+ * to "Listing" upstream when a cluster has no listings — shouldn't
+ * happen since the swipe row exists, but keeps the UI labelled.
+ */
+async function loadClusterHeadlineTitles(
+  db: Db,
+  clusterIds: string[]
+): Promise<Map<string, string>> {
+  const rows = await db
+    .select({
+      clusterId: listings.clusterId,
+      title: listings.title,
+      priceMonthly: listings.priceMonthly,
+    })
+    .from(listings)
+    .where(inArray(listings.clusterId, clusterIds));
+
+  const headlineByCluster = new Map<
+    string,
+    { title: string; priceMonthly: number | null }
+  >();
+  for (const row of rows) {
+    if (!row.clusterId) {
+      continue;
+    }
+    const existing = headlineByCluster.get(row.clusterId);
+    if (!existing || isCheaper(row.priceMonthly, existing.priceMonthly)) {
+      headlineByCluster.set(row.clusterId, {
+        title: row.title,
+        priceMonthly: row.priceMonthly,
+      });
+    }
+  }
+  const out = new Map<string, string>();
+  for (const [cid, entry] of headlineByCluster) {
+    out.set(cid, entry.title);
+  }
+  return out;
+}
 
 export const recordSwipe = createServerFn({ method: "POST" })
   .inputValidator(recordSwipeSchema)
