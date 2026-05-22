@@ -7,10 +7,19 @@
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import { acceptInvite } from "../../server/functions/household";
 
 export const Route = createFileRoute("/invite/$token")({
+  beforeLoad: ({ context, params }) => {
+    // Send unauth users to /login with the invite URL preserved so they
+    // land back here once signed in.
+    requireSession(
+      context as { currentUserId: string | null },
+      `/invite/${params.token}`
+    );
+  },
   component: InvitePage,
 });
 

@@ -27,6 +27,7 @@ import {
   bathOptionFor,
   bedOptionFor,
 } from "../../components/search-form/search-form";
+import { requireSession } from "../../lib/auth-guard";
 import { findCadenceByCron, findCadenceById } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
 import { listSchedules } from "../../server/functions/schedules";
@@ -40,6 +41,12 @@ import {
 } from "../../server/functions/searches";
 
 export const Route = createFileRoute("/searches/$id")({
+  beforeLoad: ({ context, params }) => {
+    requireSession(
+      context as { currentUserId: string | null },
+      `/searches/${params.id}`
+    );
+  },
   loader: async ({ params, context }) => {
     const [search, schedules] = await Promise.all([
       context.queryClient.ensureQueryData({

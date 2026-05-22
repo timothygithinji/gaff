@@ -24,6 +24,7 @@ import {
   type SortKey,
 } from "../components/shortlist/sort-dropdown";
 import { type ShortlistTab, ShortlistTabs } from "../components/shortlist/tabs";
+import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
 import { queryKeys } from "../lib/query-keys";
 import {
@@ -46,6 +47,9 @@ const myQueryOptions = {
 };
 
 export const Route = createFileRoute("/shortlist")({
+  beforeLoad: ({ context }) => {
+    requireSession(context as { currentUserId: string | null }, "/shortlist");
+  },
   loader: ({ context }) =>
     Promise.all([
       context.queryClient.ensureQueryData(mutualQueryOptions),

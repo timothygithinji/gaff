@@ -33,6 +33,7 @@ import { PortalCrossList } from "../../components/listing-detail/portal-cross-li
 import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
 import { WhereItSits } from "../../components/listing-detail/where-it-sits";
+import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
 import { queryKeys } from "../../lib/query-keys";
 import {
@@ -51,6 +52,12 @@ const listingDetailQueryOptions = (clusterId: string) =>
   }) as const;
 
 export const Route = createFileRoute("/listings/$clusterId")({
+  beforeLoad: ({ context, params }) => {
+    requireSession(
+      context as { currentUserId: string | null },
+      `/listings/${params.clusterId}`
+    );
+  },
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(
       listingDetailQueryOptions(params.clusterId)
