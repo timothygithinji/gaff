@@ -74,16 +74,13 @@ async function resolveDatabaseUrl(): Promise<string | undefined> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0) {
-    if (process.stdout.isTTY) {
-      // Standalone invocation: just print the resolved URL.
-      const url = await resolveDatabaseUrl();
-      if (url) {
-        process.stdout.write(`${url}\n`);
-      }
-      return;
+    // Standalone invocation: print the resolved URL and exit. Useful for
+    // shell substitution (DATABASE_URL=$(bun run db:env)).
+    const url = await resolveDatabaseUrl();
+    if (url) {
+      process.stdout.write(`${url}\n`);
     }
-    console.error("Usage: bun scripts/neon-env.ts <command> [args...]");
-    process.exit(1);
+    return;
   }
 
   let databaseUrl: string | undefined;
