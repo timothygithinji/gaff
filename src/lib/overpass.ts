@@ -11,7 +11,11 @@
  * tag filters, then group counts client-side.
  */
 
-const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
+// The main `overpass-api.de` instance is intermittently 406-ing
+// unauthenticated POST requests (load-shedding). The French mirror is
+// the most reliable secondary; it serves the same dataset with the
+// same query language and accepts plain-text bodies.
+const OVERPASS_ENDPOINT = "https://overpass.openstreetmap.fr/api/interpreter";
 
 /**
  * The amenity buckets we collect counts for. Each entry maps a UI

@@ -97,37 +97,20 @@ describe("getAmenityCounts", () => {
   });
 });
 
-describe("getFloodRisk", () => {
-  it("maps numeric riskband to a level", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ features: [{ attributes: { riskband: 3 } }] })
-    );
-    const result = await getFloodRisk({ lat: 51.6, lng: -0.13 });
-    expect(result.riskLevel).toBe("low");
-  });
-
-  it("maps text band labels too", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ features: [{ attributes: { prob_4band: "Very Low" } }] })
-    );
-    const result = await getFloodRisk({ lat: 51.6, lng: -0.13 });
-    expect(result.riskLevel).toBe("very-low");
-  });
-
-  it("returns 'unknown' when there's no feature at the point", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ features: [] }));
+describe("getFloodRisk (stubbed)", () => {
+  it("always returns 'unknown' (EA endpoint is down; stubbed)", async () => {
     const result = await getFloodRisk({ lat: 51.6, lng: -0.13 });
     expect(result.riskLevel).toBe("unknown");
   });
+
+  it("never makes a network call while stubbed", async () => {
+    await getFloodRisk({ lat: 51.6, lng: -0.13 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
-describe("getBroadband", () => {
-  it("returns null tech when Zyte response is non-JSON (BT bounce page)", async () => {
-    // Mock Zyte API: returns a 200 with non-JSON body wrapped in browserHtml
-    // shape — our parser should fall through to null tech rather than throw.
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ browserHtml: "<html>session expired</html>" })
-    );
+describe("getBroadband (stubbed)", () => {
+  it("returns a null-filled result (no upstream source wired)", async () => {
     const result = await getBroadband({
       zyteApiKey: "k",
       postcode: "N11 1AA",
@@ -140,25 +123,8 @@ describe("getBroadband", () => {
     });
   });
 
-  it("picks FTTP as the headline tech when products list it", async () => {
-    const btJson = JSON.stringify({
-      products: [
-        { name: "BT FTTC", downstreamMax: 80, upstreamMax: 20 },
-        { name: "BT FTTP", downstreamMax: 900, upstreamMax: 110 },
-      ],
-    });
-    // Zyte's `httpResponseBody: true` returns base64 in the API but the
-    // helper decodes to UTF-8 and exposes it as `html`. We mock by
-    // wrapping our JSON string in a `browserHtml` field; zyteFetch
-    // will surface it as `res.html` either way.
-    fetchMock.mockResolvedValueOnce(jsonResponse({ browserHtml: btJson }));
-    const result = await getBroadband({
-      zyteApiKey: "k",
-      postcode: "N11 1AA",
-    });
-    expect(result.technology).toBe("FTTP");
-    expect(result.downloadMbps).toBe(900);
-    expect(result.uploadMbps).toBe(110);
-    expect(result.fttpAvailable).toBe(true);
+  it("never makes a network call while stubbed", async () => {
+    await getBroadband({ zyteApiKey: "k", postcode: "N11 1AA" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
