@@ -9,36 +9,38 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gaff",
   "main": "src/server.ts",
-  "compatibility_date": "2024-11-01",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  // Compat date >= 2025-04-01 makes `nodejs_compat_populate_process_env`
+  // default — Worker bindings (vars + secrets) automatically populate
+  // `process.env` inside the runtime. Combined with the dev-side
+  // CLOUDFLARE_INCLUDE_PROCESS_ENV=true in `bun run dev`, host env from
+  // `doppler run` reaches Worker code as native `process.env.FOO`.
+  "compatibility_date": "2026-05-16",
+  "compatibility_flags": ["nodejs_compat"],
 
   // Custom domain route. Managed by Pulumi DNS in infra/cloudflare.
   "routes": [
     {
       "pattern": "gaff.example.com",
-      "custom_domain": true
-    }
+      "custom_domain": true,
+    },
   ],
 
   // Bindings below are managed by Pulumi via `t-stack provision`. Do not edit manually.
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "REDACTED_KV_ID"
-    }
+      "id": "REDACTED_KV_ID",
+    },
   ],
 
   // Bindings below are managed by Pulumi via `t-stack provision`. Do not edit manually.
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      "bucket_name": "gaff"
-    }
+      "bucket_name": "gaff",
+    },
   ],
-
   "observability": {
-    "enabled": true
-  }
+    "enabled": true,
+  },
 }
