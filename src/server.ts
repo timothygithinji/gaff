@@ -6,23 +6,20 @@ import {
 import { createServerEntry } from "@tanstack/react-start/server-entry";
 import { Hono } from "hono";
 import { createAuth } from "./lib/auth";
+import { parseEnv } from "./lib/env";
+
+import type { TextEnv } from "./lib/env";
 
 /**
- * Worker environment bindings. Mirrors `wrangler.jsonc` and the secrets
- * fed in via Doppler. Better Auth + the Cloudflare Access bridge both read
- * `KV`, `CLOUDFLARE_ACCESS_AUD`, and `CLOUDFLARE_ACCESS_TEAM_DOMAIN` at
- * request time — never at module load — because the Cloudflare Vite plugin
- * does not populate `process.env` until inside `fetch`.
+ * Worker environment bindings. Composes the Zod-validated text env
+ * (DATABASE_URL, BETTER_AUTH_*, etc. — see `src/lib/env.ts`) with the
+ * non-string Worker bindings (KV, R2). With our `nodejs_compat` +
+ * `nodejs_compat_populate_process_env` compat flags, the text values
+ * land on BOTH `c.env` and `process.env` — `parseEnv()` validates the
+ * latter at request entry so we never read an `undefined` past this
+ * boundary.
  */
-export type Env = {
-  // Secrets
-  DATABASE_URL: string;
-  BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL?: string;
-  TRIGGER_SECRET_KEY: string;
-  CLOUDFLARE_ACCESS_AUD: string;
-  CLOUDFLARE_ACCESS_TEAM_DOMAIN: string;
-
+export type Env = TextEnv & {
   // Bindings (populated by Pulumi via `t-stack provision`).
   KV: KVNamespace;
   BUCKET: R2Bucket;
@@ -65,7 +62,12 @@ export default createServerEntry({
     const url = new URL(request.url);
 
     if (url.pathname === "/health" || url.pathname.startsWith("/api/")) {
-      return api.fetch(request, env as Env);
+      // Validate the text env on every API request entry — `parseEnv`
+      // is cached after first success, so this is cheap on subsequent
+      // calls within the same isolate. The narrowed return type is
+      // what Hono routes (c.env) lean on.
+      const textEnv = parseEnv(process.env);
+      return api.fetch(request, { ...textEnv, ...env } as Env);
     }
 
     return startFetch(request);

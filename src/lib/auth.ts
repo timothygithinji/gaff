@@ -23,14 +23,16 @@ import { cloudflareAccess } from "./auth/cloudflare-access";
  * household so freshly-signed-in users always have somewhere to land —
  * the `<HouseholdContext>` provider then has data on first paint.
  */
-export function createAuth(env: {
+type AuthEnv = {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
-  BETTER_AUTH_URL?: string;
+  BETTER_AUTH_URL: string;
   CLOUDFLARE_ACCESS_AUD: string;
   CLOUDFLARE_ACCESS_TEAM_DOMAIN: string;
   KV?: KVNamespace;
-}) {
+};
+
+export function createAuth(env: AuthEnv) {
   const db = getDb(env);
 
   return betterAuth({

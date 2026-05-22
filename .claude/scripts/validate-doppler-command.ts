@@ -38,6 +38,13 @@ if (input.tool_name !== "Bash") {
 
 const command = (input.tool_input?.command ?? "") as string;
 
+// Skip git/gh commands — commit messages, PR bodies, and changelog
+// entries legitimately mention doppler subcommand names without actually
+// invoking the CLI.
+if (/^\s*(git|gh)\s/i.test(command)) {
+  process.exit(0);
+}
+
 // Skip commands that don't touch doppler at all.
 if (!/\bdoppler\b/i.test(command)) {
   process.exit(0);
