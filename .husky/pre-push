@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+# Reject pushes from branches that don't match Gaff's naming convention.
+# Bot branches (dependabot/, renovate/) and `main`/`master` are allowed.
+bun scripts/validation/branch-name.ts || exit 1

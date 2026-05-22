@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+
+# post-checkout receives three args:
+#   $1 = previous HEAD
+#   $2 = new HEAD
+#   $3 = 1 if a branch checkout, 0 if a file checkout
+
+# Only run on branch checkouts, not file checkouts.
+[ "$3" = "0" ] && exit 0
+
+# Advisory check — warn but never block. Lets you create a non-conventional
+# branch for local exploration; pre-push enforces the convention before the
+# branch is shared.
+bun scripts/validation/branch-name.ts >/dev/null 2>&1 || {
+  echo
+  echo "⚠  Branch name does not match the convention."
+  echo "   Run \`bun run lint:branch\` to see the rules, or"
+  echo "   \`git branch -m <new-name>\` to rename before pushing."
+  echo
+}
+
+exit 0
