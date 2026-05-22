@@ -31,8 +31,15 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
 
-      - name: Cleanup PR Neon branch
+      - name: Cleanup PR Neon branch and Trigger.dev schedules
         env:
+          # NEON_API_KEY authorises the Neon control-plane calls; TRIGGER_SECRET_KEY
+          # authorises the Trigger.dev management-API calls. Both come from the
+          # Doppler injection step above; the cleanup script also lists every
+          # `searches` row in the PR's Neon DB so it can find each search's
+          # schedule by externalId and delete it before the DB goes away.
           NEON_API_KEY: ${{ env.NEON_API_KEY }}
+          TRIGGER_SECRET_KEY: ${{ env.TRIGGER_SECRET_KEY }}
+          TRIGGER_API_URL: ${{ env.TRIGGER_API_URL }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: bun scripts/database/cleanup-pr.ts "$HEAD_REF"
