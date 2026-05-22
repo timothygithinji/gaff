@@ -40,6 +40,16 @@
           }
         }
       }
+    },
+    {
+      "include": ["src/routes/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
     }
   ]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { zyteFetch } from "./lib/zyte";
-import { findInFlight, findByKey, parseFlight } from "./lib/rsc-flight";
 import { pluck, summarise } from "./lib/extract";
+import { findByKey, findInFlight, parseFlight } from "./lib/rsc-flight";
+import { zyteFetch } from "./lib/zyte";
 
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
@@ -11,7 +11,12 @@ if (!apiKey) {
 
 const url = "https://www.zoopla.co.uk/to-rent/details/73260251/";
 console.log(`Detail: ${url}\n`);
-const res = await zyteFetch(apiKey, { url, httpResponseBody: true, httpResponseHeaders: true, geolocation: "GB" });
+const res = await zyteFetch(apiKey, {
+  url,
+  httpResponseBody: true,
+  httpResponseHeaders: true,
+  geolocation: "GB",
+});
 console.log(`HTML length: ${res.html.length}`);
 
 const flight = parseFlight(res.html);
@@ -26,7 +31,7 @@ let candidate = findInFlight(
     !Array.isArray(v) &&
     "numBedrooms" in (v as object) &&
     "address" in (v as object) &&
-    "branch" in (v as object),
+    "branch" in (v as object)
 );
 
 if (!candidate) {
@@ -37,13 +42,15 @@ if (!candidate) {
       typeof v === "object" &&
       !Array.isArray(v) &&
       ("counts" in (v as object) || "numBedrooms" in (v as object)) &&
-      "address" in (v as object),
+      "address" in (v as object)
   );
 }
 
 if (!candidate) {
   candidate = findByKey(flight, "listingDetails");
-  if (candidate) candidate = (candidate as { listingDetails: unknown }).listingDetails;
+  if (candidate) {
+    candidate = (candidate as { listingDetails: unknown }).listingDetails;
+  }
 }
 
 if (!candidate) {
@@ -105,16 +112,36 @@ for (const path of fields) {
 }
 
 // Look for floorplans separately if not nested
-const fp = findInFlight(flight, (v) => v !== null && typeof v === "object" && !Array.isArray(v) && ("floorPlan" in (v as object) || "floorplans" in (v as object)));
+const fp = findInFlight(
+  flight,
+  (v) =>
+    v !== null &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    ("floorPlan" in (v as object) || "floorplans" in (v as object))
+);
 if (fp) {
   const o = fp as Record<string, unknown>;
   console.log("\nFloorplan-bearing object found:");
-  if (o.floorPlan) console.log(`  floorPlan: ${JSON.stringify(o.floorPlan).slice(0, 250)}`);
-  if (o.floorplans) console.log(`  floorplans: ${JSON.stringify(o.floorplans).slice(0, 250)}`);
+  if (o.floorPlan) {
+    console.log(`  floorPlan: ${JSON.stringify(o.floorPlan).slice(0, 250)}`);
+  }
+  if (o.floorplans) {
+    console.log(`  floorplans: ${JSON.stringify(o.floorplans).slice(0, 250)}`);
+  }
 }
 
 // Description
-const desc = findInFlight(flight, (v) => v !== null && typeof v === "object" && !Array.isArray(v) && "description" in (v as object) && typeof (v as { description: unknown }).description === "string" && ((v as { description: string }).description.length > 50));
+const desc = findInFlight(
+  flight,
+  (v) =>
+    v !== null &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    "description" in (v as object) &&
+    typeof (v as { description: unknown }).description === "string" &&
+    (v as { description: string }).description.length > 50
+);
 if (desc) {
   const d = (desc as { description: string }).description;
   console.log(`\nDescription (first 200 chars):\n  ${d.slice(0, 200)}…`);

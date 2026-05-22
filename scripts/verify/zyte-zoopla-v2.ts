@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
+import { pluck, summarise } from "./lib/extract";
+import { findByKey, parseFlight } from "./lib/rsc-flight";
 /**
  * Zoopla v2 — parse RSC flight chunks instead of __NEXT_DATA__.
  */
 import { zyteFetch } from "./lib/zyte";
-import { findByKey, parseFlight } from "./lib/rsc-flight";
-import { pluck, summarise } from "./lib/extract";
 
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
@@ -30,11 +30,14 @@ console.log(`HTML length: ${res.html.length}`);
 const flight = parseFlight(res.html);
 console.log(`✓ Parsed ${flight.size} flight rows`);
 
-const listings = findByKey(flight, "regularListingsFormatted") as
-  | { regularListingsFormatted?: unknown[] }
-  | null;
+const listings = findByKey(flight, "regularListingsFormatted") as {
+  regularListingsFormatted?: unknown[];
+} | null;
 
-if (!listings?.regularListingsFormatted || !Array.isArray(listings.regularListingsFormatted)) {
+if (
+  !listings?.regularListingsFormatted ||
+  !Array.isArray(listings.regularListingsFormatted)
+) {
   console.error("✗ regularListingsFormatted not found in flight payload");
   process.exit(1);
 }
@@ -92,8 +95,12 @@ for (const path of fields) {
   }
 }
 
-console.log(`\nSample detail URL: ${(pluckSafe(first, ["listingUris", "detail"]) ?? "(not found)") as string}`);
-console.log(`Listing ID: ${(first.listingId as string | number) ?? "(not found)"}`);
+console.log(
+  `\nSample detail URL: ${(pluckSafe(first, ["listingUris", "detail"]) ?? "(not found)") as string}`
+);
+console.log(
+  `Listing ID: ${(first.listingId as string | number) ?? "(not found)"}`
+);
 
 function pluckSafe(o: unknown, p: (string | number)[]): unknown {
   try {

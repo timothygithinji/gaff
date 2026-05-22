@@ -24,13 +24,17 @@ function parseDotenv(contents: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const rawLine of contents.split("\n")) {
     const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
     const eq = line.indexOf("=");
-    if (eq === -1) continue;
+    if (eq === -1) {
+      continue;
+    }
     const key = line.slice(0, eq).trim();
     let value = line.slice(eq + 1).trim();
     if (
-      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
     ) {
       value = value.slice(1, -1);
@@ -47,7 +51,9 @@ function main(): number {
 
   if (!existsSync(path)) {
     consola.error(`Missing ${colors.yellow(".dev.vars")} at project root.`);
-    consola.info("Create one (e.g. copy from .dev.vars.example) and try again.");
+    consola.info(
+      "Create one (e.g. copy from .dev.vars.example) and try again."
+    );
     return 1;
   }
 
@@ -69,13 +75,19 @@ function main(): number {
   }
 
   for (const req of ok) {
-    consola.success(`${colors.green(req.key)}  ${colors.dim("(" + req.reason + ")")}`);
+    consola.success(
+      `${colors.green(req.key)}  ${colors.dim(`(${req.reason})`)}`
+    );
   }
   for (const req of empty) {
-    consola.warn(`${colors.yellow(req.key)} is set but empty  ${colors.dim("(" + req.reason + ")")}`);
+    consola.warn(
+      `${colors.yellow(req.key)} is set but empty  ${colors.dim(`(${req.reason})`)}`
+    );
   }
   for (const req of missing) {
-    consola.error(`${colors.red(req.key)} is missing  ${colors.dim("(" + req.reason + ")")}`);
+    consola.error(
+      `${colors.red(req.key)} is missing  ${colors.dim(`(${req.reason})`)}`
+    );
   }
 
   if (missing.length === 0 && empty.length === 0) {
@@ -84,7 +96,7 @@ function main(): number {
   }
 
   consola.fail(
-    `${missing.length} missing, ${empty.length} empty out of ${REQUIRED.length} required keys.`,
+    `${missing.length} missing, ${empty.length} empty out of ${REQUIRED.length} required keys.`
   );
   return 1;
 }

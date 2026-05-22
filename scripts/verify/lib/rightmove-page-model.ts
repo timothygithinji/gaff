@@ -14,11 +14,17 @@
 
 export function extractRightmoveModel(html: string): unknown {
   const start = html.indexOf("window.__PAGE_MODEL");
-  if (start === -1) throw new Error("window.__PAGE_MODEL not found");
+  if (start === -1) {
+    throw new Error("window.__PAGE_MODEL not found");
+  }
   const eq = html.indexOf("=", start);
   let i = eq + 1;
-  while (i < html.length && /\s/.test(html[i])) i++;
-  if (html[i] !== "{") throw new Error("expected '{' after =");
+  while (i < html.length && /\s/.test(html[i])) {
+    i++;
+  }
+  if (html[i] !== "{") {
+    throw new Error("expected '{' after =");
+  }
   let depth = 0;
   const startObj = i;
   while (i < html.length) {
@@ -38,8 +44,9 @@ export function extractRightmoveModel(html: string): unknown {
       }
       continue;
     }
-    if (c === "{") depth++;
-    else if (c === "}") {
+    if (c === "{") {
+      depth++;
+    } else if (c === "}") {
       depth--;
       if (depth === 0) {
         const src = html.slice(startObj, i + 1);
@@ -53,8 +60,14 @@ export function extractRightmoveModel(html: string): unknown {
   throw new Error("unbalanced __PAGE_MODEL braces");
 }
 
-function resolveFromPool(pool: unknown[], idx: number, memo = new Map<number, unknown>()): unknown {
-  if (memo.has(idx)) return memo.get(idx);
+function resolveFromPool(
+  pool: unknown[],
+  idx: number,
+  memo = new Map<number, unknown>()
+): unknown {
+  if (memo.has(idx)) {
+    return memo.get(idx);
+  }
   const raw = pool[idx];
   if (raw === null || raw === undefined) {
     memo.set(idx, raw);
@@ -73,8 +86,11 @@ function resolveFromPool(pool: unknown[], idx: number, memo = new Map<number, un
     const out: unknown[] = [];
     memo.set(idx, out);
     for (const item of raw) {
-      if (typeof item === "number") out.push(resolveFromPool(pool, item, memo));
-      else out.push(item);
+      if (typeof item === "number") {
+        out.push(resolveFromPool(pool, item, memo));
+      } else {
+        out.push(item);
+      }
     }
     return out;
   }
@@ -82,8 +98,11 @@ function resolveFromPool(pool: unknown[], idx: number, memo = new Map<number, un
     const out: Record<string, unknown> = {};
     memo.set(idx, out);
     for (const [k, v] of Object.entries(raw as object)) {
-      if (typeof v === "number") out[k] = resolveFromPool(pool, v, memo);
-      else out[k] = v;
+      if (typeof v === "number") {
+        out[k] = resolveFromPool(pool, v, memo);
+      } else {
+        out[k] = v;
+      }
     }
     return out;
   }

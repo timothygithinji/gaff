@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { zyteFetch } from "./lib/zyte";
 import { pluck, summarise } from "./lib/extract";
+import { zyteFetch } from "./lib/zyte";
 
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
@@ -11,12 +11,20 @@ if (!apiKey) {
 function extractWindowPageModel(html: string): unknown {
   // Find: window.__PAGE_MODEL = {...};
   const start = html.indexOf("window.__PAGE_MODEL");
-  if (start === -1) throw new Error("window.__PAGE_MODEL not found");
+  if (start === -1) {
+    throw new Error("window.__PAGE_MODEL not found");
+  }
   const eq = html.indexOf("=", start);
-  if (eq === -1) throw new Error("= not found after __PAGE_MODEL");
+  if (eq === -1) {
+    throw new Error("= not found after __PAGE_MODEL");
+  }
   let i = eq + 1;
-  while (i < html.length && /\s/.test(html[i])) i++;
-  if (html[i] !== "{") throw new Error(`Expected '{' at ${i}, got '${html[i]}'`);
+  while (i < html.length && /\s/.test(html[i])) {
+    i++;
+  }
+  if (html[i] !== "{") {
+    throw new Error(`Expected '{' at ${i}, got '${html[i]}'`);
+  }
   // Walk forward tracking brace + string state to find matching close
   let depth = 0;
   const startObj = i;
@@ -38,8 +46,9 @@ function extractWindowPageModel(html: string): unknown {
       }
       continue;
     }
-    if (c === "{") depth++;
-    else if (c === "}") {
+    if (c === "{") {
+      depth++;
+    } else if (c === "}") {
       depth--;
       if (depth === 0) {
         const src = html.slice(startObj, i + 1);
@@ -52,7 +61,12 @@ function extractWindowPageModel(html: string): unknown {
 }
 
 const url = "https://www.rightmove.co.uk/properties/88608822";
-const res = await zyteFetch(apiKey, { url, httpResponseBody: true, httpResponseHeaders: true, geolocation: "GB" });
+const res = await zyteFetch(apiKey, {
+  url,
+  httpResponseBody: true,
+  httpResponseHeaders: true,
+  geolocation: "GB",
+});
 console.log(`HTML length: ${res.html.length}`);
 
 let model: unknown;
@@ -126,9 +140,13 @@ if (pd) {
   if (Array.isArray(images) && images.length > 0) {
     console.log(`First image: ${JSON.stringify(images[0])}`);
   }
-  const stations = pd.nearestStations as Array<{ name?: string; distance?: number }> | undefined;
+  const stations = pd.nearestStations as
+    | Array<{ name?: string; distance?: number }>
+    | undefined;
   if (Array.isArray(stations) && stations.length > 0) {
-    console.log(`\nStations:`);
-    for (const s of stations.slice(0, 4)) console.log(`  ${s.name} (${s.distance}mi)`);
+    console.log("\nStations:");
+    for (const s of stations.slice(0, 4)) {
+      console.log(`  ${s.name} (${s.distance}mi)`);
+    }
   }
 }

@@ -7,7 +7,8 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const detailUrl = "https://www.openrent.co.uk/property-to-rent/london/3-bed-flat-rosslyn-hill-nw3/2829191";
+const detailUrl =
+  "https://www.openrent.co.uk/property-to-rent/london/3-bed-flat-rosslyn-hill-nw3/2829191";
 console.log(`Probing: ${detailUrl}\n`);
 
 const res = await zyteFetch(apiKey, {
@@ -25,7 +26,14 @@ console.log("\n--- Title + heading inspection ---");
 const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
 console.log(`<title>: ${titleMatch?.[1]?.trim().slice(0, 100) ?? "(none)"}`);
 const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-console.log(`First <h1>: ${h1Match?.[1]?.replace(/<[^>]+>/g, "").trim().slice(0, 100) ?? "(none)"}`);
+console.log(
+  `First <h1>: ${
+    h1Match?.[1]
+      ?.replace(/<[^>]+>/g, "")
+      .trim()
+      .slice(0, 100) ?? "(none)"
+  }`
+);
 
 // Look for price in any form
 console.log("\n--- Price probe ---");
@@ -41,7 +49,9 @@ const priceVariants = [
 ];
 for (const re of priceVariants) {
   const m = [...html.matchAll(re)].slice(0, 3).map((x) => x[0].slice(0, 60));
-  console.log(`  ${m.length > 0 ? "✓" : "·"} ${re.source} → ${m.length}${m[0] ? `  eg: ${JSON.stringify(m)}` : ""}`);
+  console.log(
+    `  ${m.length > 0 ? "✓" : "·"} ${re.source} → ${m.length}${m[0] ? `  eg: ${JSON.stringify(m)}` : ""}`
+  );
 }
 
 // Look for property feature markers
@@ -69,16 +79,22 @@ console.log("\n--- Top class names ---");
 const classCounts = new Map<string, number>();
 for (const m of html.matchAll(/\bclass=["']([^"']+)["']/g)) {
   for (const cls of m[1].split(/\s+/)) {
-    if (cls) classCounts.set(cls, (classCounts.get(cls) ?? 0) + 1);
+    if (cls) {
+      classCounts.set(cls, (classCounts.get(cls) ?? 0) + 1);
+    }
   }
 }
-for (const [cls, n] of [...classCounts].sort((a, b) => b[1] - a[1]).slice(0, 25)) {
+for (const [cls, n] of [...classCounts]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 25)) {
   console.log(`  ${cls}: ${n}`);
 }
 
 // Inline script content — is there a __INITIAL_DATA__ or similar JS payload?
 console.log("\n--- Inline JS data probe ---");
-const inlineScripts = [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+const inlineScripts = [
+  ...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi),
+]
   .map((m) => m[1])
   .filter((s) => s.length > 200);
 console.log(`Total inline <script>s > 200 chars: ${inlineScripts.length}`);
@@ -97,12 +113,18 @@ const interestingTokens = [
 ];
 for (const tok of interestingTokens) {
   let hits = 0;
-  for (const s of inlineScripts) if (s.includes(tok)) hits++;
+  for (const s of inlineScripts) {
+    if (s.includes(tok)) {
+      hits++;
+    }
+  }
   console.log(`  ${hits > 0 ? "✓" : "·"} ${tok}: ${hits}`);
 }
 
 // Find first script containing 'PROPERTY' or similar — sample it
-const candidate = inlineScripts.find((s) => /PROPERTY|listing|pricePerMonth|rentPcm/i.test(s));
+const candidate = inlineScripts.find((s) =>
+  /PROPERTY|listing|pricePerMonth|rentPcm/i.test(s)
+);
 if (candidate) {
   console.log("\nFirst interesting inline script (700 chars):");
   console.log(candidate.slice(0, 700));

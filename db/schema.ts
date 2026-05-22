@@ -300,39 +300,36 @@ export const scrapeRuns = pgTable("scrape_runs", {
 // Views
 // -----------------------------------------------------------------------------
 
-// v_mutual_matches: a mutual match exists when both members of a household have
-// swiped `keep` OR `shortlist` on the same (clusterId, searchId). Asymmetric
-// outcomes (one keep / one skip) are excluded so the disappointed partner does
-// not see the cluster. Self-join on `swipes` constrained to user_a.id < user_b.id
-// to avoid duplicate (A,B) and (B,A) rows.
+// v_mutual_matches — N-member count-based aggregate. A cluster appears in
+// the mutual feed when EVERY active household member has kept-or-
+// shortlisted it. Works for households of size 1 (solo auto-mutual), 2
+// (couples), or any N. Replaces the old self-join shape which assumed
+// exactly two users. See PLAN.md "Schema migration 0001_n_member_mutual_matches".
 export const vMutualMatches = pgView("v_mutual_matches", {
   clusterId: text("cluster_id").notNull(),
   searchId: text("search_id").notNull(),
   householdId: text("household_id").notNull(),
-  userAOutcome: swipeOutcomeEnum("user_a_outcome").notNull(),
-  userBOutcome: swipeOutcomeEnum("user_b_outcome").notNull(),
   matchedAt: timestamp("matched_at").notNull(),
 }).as(sql`
-  SELECT
-    sa.cluster_id AS cluster_id,
-    sa.search_id AS search_id,
-    s.household_id AS household_id,
-    sa.outcome AS user_a_outcome,
-    sb.outcome AS user_b_outcome,
-    GREATEST(sa.created_at, sb.created_at) AS matched_at
-  FROM swipes sa
-  JOIN swipes sb
-    ON sa.cluster_id = sb.cluster_id
-   AND sa.search_id = sb.search_id
-   AND sa.user_id < sb.user_id
-  JOIN searches s
-    ON s.id = sa.search_id
-  JOIN household_members hma
-    ON hma.household_id = s.household_id AND hma.user_id = sa.user_id
-  JOIN household_members hmb
-    ON hmb.household_id = s.household_id AND hmb.user_id = sb.user_id
-  WHERE sa.outcome IN ('keep', 'shortlist')
-    AND sb.outcome IN ('keep', 'shortlist')
+  SELECT a.cluster_id, a.search_id, a.household_id, a.matched_at
+  FROM (
+    SELECT
+      sw.cluster_id,
+      sw.search_id,
+      s.household_id,
+      COUNT(DISTINCT sw.user_id) AS agree_count,
+      MAX(sw.created_at) AS matched_at
+    FROM swipes sw
+    JOIN searches s ON s.id = sw.search_id
+    WHERE sw.outcome IN ('keep','shortlist')
+    GROUP BY sw.cluster_id, sw.search_id, s.household_id
+  ) a
+  JOIN (
+    SELECT household_id, COUNT(*) AS member_count
+    FROM household_members
+    GROUP BY household_id
+  ) m ON m.household_id = a.household_id
+  WHERE a.agree_count = m.member_count
 `);
 
 // -----------------------------------------------------------------------------

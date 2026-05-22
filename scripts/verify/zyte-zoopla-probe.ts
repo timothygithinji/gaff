@@ -40,7 +40,7 @@ const markers = [
   'data-testid="listing"',
   'data-testid="search-result-list"',
   "regularListingsFormatted",
-  "props\\\\\\\\\":",
+  'props\\\\\\\\":',
 ];
 console.log("\n--- Marker probe ---");
 for (const m of markers) {
@@ -58,8 +58,12 @@ for (const match of html.matchAll(scriptRe)) {
   const attrs = match[1];
   const idMatch = attrs.match(/\bid\s*=\s*["']([^"']+)["']/i);
   const srcMatch = attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
-  if (idMatch) ids.set(idMatch[1], (ids.get(idMatch[1]) ?? 0) + 1);
-  if (srcMatch) srcs.push(srcMatch[1]);
+  if (idMatch) {
+    ids.set(idMatch[1], (ids.get(idMatch[1]) ?? 0) + 1);
+  }
+  if (srcMatch) {
+    srcs.push(srcMatch[1]);
+  }
 }
 console.log(`Inline script ids (${ids.size} unique):`);
 for (const [id, n] of [...ids].sort((a, b) => b[1] - a[1]).slice(0, 12)) {
@@ -69,7 +73,9 @@ console.log(`Total external scripts: ${srcs.length}`);
 const flightChunks = srcs.filter((s) => s.includes("/_next/")).slice(0, 5);
 if (flightChunks.length > 0) {
   console.log("Sample /_next/ chunks:");
-  for (const s of flightChunks) console.log(`  ${s}`);
+  for (const s of flightChunks) {
+    console.log(`  ${s}`);
+  }
 }
 
 // Try to extract one RSC flight chunk and see if listings JSON is in there
@@ -78,7 +84,11 @@ const flightRe = /self\.__next_f\.push\(\[1,\s*"([\s\S]*?)"\]\)/g;
 const chunks: string[] = [];
 for (const m of html.matchAll(flightRe)) {
   // Unescape JSON-style escapes inside the string literal
-  const raw = m[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\").replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+  const raw = m[1]
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t");
   chunks.push(raw);
 }
 console.log(`Found ${chunks.length} RSC flight chunks`);

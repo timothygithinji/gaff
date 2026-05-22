@@ -81,7 +81,8 @@ console.log("\nKey fields:");
 for (const k of interestingFields) {
   if (k in first) {
     const v = first[k];
-    const display = typeof v === "string" && v.length > 60 ? `${v.slice(0, 60)}…` : String(v);
+    const display =
+      typeof v === "string" && v.length > 60 ? `${v.slice(0, 60)}…` : String(v);
     console.log(`  ✓ ${k}: ${display}`);
   } else {
     console.log(`  · ${k}: (absent)`);
@@ -91,7 +92,7 @@ for (const k of interestingFields) {
 // Now fetch full certificate
 const lmkKey = first["lmk-key"] as string | undefined;
 if (lmkKey) {
-  console.log(`\n=== Fetch full certificate by lmk-key ===`);
+  console.log("\n=== Fetch full certificate by lmk-key ===");
   const certUrl = `https://epc.opendatacommunities.org/api/v1/domestic/certificate/${encodeURIComponent(lmkKey)}`;
   const cert = await fetch(certUrl, { headers });
   console.log(`Status: ${cert.status}`);
