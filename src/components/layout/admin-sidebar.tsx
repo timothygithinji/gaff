@@ -26,6 +26,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
+import { ModeToggle } from "../mode-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -175,6 +176,9 @@ function UserFooter() {
             {displayName}
           </p>
           <p className="text-muted-foreground text-xs">via Cloudflare Access</p>
+        </div>
+        <div className="group-data-[collapsible=icon]:hidden">
+          <ModeToggle />
         </div>
       </div>
     </SidebarFooter>
