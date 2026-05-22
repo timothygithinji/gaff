@@ -1,12 +1,12 @@
 {
-  "id": "6e25e6c8-7605-4f9d-8f2a-a41e72d3d84e",
+  "id": "d370da9e-0922-4de5-88e6-9e6aa92bc2fc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.account": {
+    "better_auth.account": {
       "name": "account",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -78,8 +78,7 @@
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
@@ -89,8 +88,8 @@
         }
       },
       "indexes": {
-        "account_user_id_idx": {
-          "name": "account_user_id_idx",
+        "account_userId_idx": {
+          "name": "account_userId_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -110,6 +109,7 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -425,6 +425,7 @@
           "name": "household_members_user_id_user_id_fk",
           "tableFrom": "household_members",
           "tableTo": "user",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1108,9 +1109,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.session": {
+    "better_auth.session": {
       "name": "session",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1134,8 +1135,7 @@
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
@@ -1163,8 +1163,8 @@
         }
       },
       "indexes": {
-        "session_user_id_idx": {
-          "name": "session_user_id_idx",
+        "session_userId_idx": {
+          "name": "session_userId_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -1184,6 +1184,7 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1321,6 +1322,7 @@
           "name": "swipes_user_id_user_id_fk",
           "tableFrom": "swipes",
           "tableTo": "user",
+          "schemaTo": "better_auth",
           "columnsFrom": [
             "user_id"
           ],
@@ -1363,9 +1365,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.user": {
+    "better_auth.user": {
       "name": "user",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1402,8 +1404,7 @@
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
@@ -1428,9 +1429,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.verification": {
+    "better_auth.verification": {
       "name": "verification",
-      "schema": "",
+      "schema": "better_auth",
       "columns": {
         "id": {
           "name": "id",
@@ -1460,15 +1461,13 @@
           "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
       "indexes": {
@@ -1533,7 +1532,9 @@
       ]
     }
   },
-  "schemas": {},
+  "schemas": {
+    "better_auth": "better_auth"
+  },
   "sequences": {},
   "roles": {},
   "policies": {},
