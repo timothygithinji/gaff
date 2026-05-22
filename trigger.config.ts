@@ -2,7 +2,30 @@ import { execFileSync } from "node:child_process";
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";
 import { defineConfig } from "@trigger.dev/sdk";
 
-const REQUIRED_SECRETS = ["DATABASE_URL", "ZYTE_API_KEY"] as const;
+// Mirrors the required keys in `src/lib/env.ts` (the Zod-validated env
+// loader). Any task that touches `env()` — clustering, EPC enrichment,
+// AI enrichment, photo caching — needs the full set, not just the two
+// the scrape tasks read directly.
+const REQUIRED_SECRETS = [
+  "DATABASE_URL",
+  "BETTER_AUTH_SECRET",
+  "BETTER_AUTH_URL",
+  "CLOUDFLARE_ACCESS_AUD",
+  "CLOUDFLARE_ACCESS_TEAM_DOMAIN",
+  "ZYTE_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "EPC_OPENDATA_TOKEN",
+  "GOOGLE_MAPS_API_KEY",
+] as const;
+
+// Optional keys from `src/lib/env.ts` — synced when Doppler has them,
+// silently skipped when it doesn't (matches the schema's `.optional()`).
+const OPTIONAL_SECRETS = [
+  "R2_ACCOUNT_ID",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "R2_BUCKET",
+] as const;
 
 // Map Trigger.dev environment slugs to Doppler config names.
 const DOPPLER_CONFIG_BY_ENV: Record<string, string> = {
@@ -49,15 +72,20 @@ export default defineConfig({
           { encoding: "utf8" }
         );
         const secrets = JSON.parse(raw) as Record<string, string>;
-        return REQUIRED_SECRETS.flatMap((name) => {
+        const required = REQUIRED_SECRETS.map((name) => {
           const value = secrets[name];
           if (!value) {
             throw new Error(
               `Doppler config gaff/${config} is missing required secret ${name}`
             );
           }
-          return [{ name, value }];
+          return { name, value };
         });
+        const optional = OPTIONAL_SECRETS.flatMap((name) => {
+          const value = secrets[name];
+          return value ? [{ name, value }] : [];
+        });
+        return [...required, ...optional];
       }),
     ],
   },
