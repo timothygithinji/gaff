@@ -1,23 +1,18 @@
 /**
  * BT Wholesale broadband-availability client (via Zyte).
  *
- * BT Wholesale's public checker at
- *   https://www.broadbandchecker.btwholesale.com
- * is a SPA whose only useful surface is a JSON-RPC-style POST that the
- * page fires once a postcode/address is selected. The shape is undocumented
- * — we model only the fields we need (best fibre tier + speed estimates)
- * and fall through to `null` on any field that's missing.
+ * **Status: stubbed.** The `broadbandchecker.btwholesale.com` SPA
+ * doesn't expose a stable JSON endpoint we can hit directly — every
+ * documented path 404s and the real frontend orchestrates a multi-
+ * step session against an internal RPC. Proper coverage will require
+ * a real headless-browser scrape (`zyteFetch({ browserHtml: true })`)
+ * plus address-step automation, which is its own piece of work.
  *
- * The actual call is routed through Zyte HTTP tier because the BT
- * endpoint blocks raw fetches from cloud IP ranges; Zyte adds a UK
- * residential exit which the API accepts.
- *
- * **Status**: best-effort. BT changes the upstream payload format from
- * time to time; if the parser stops finding fields, every cluster gets
- * a `null`-filled result and the AI's verbatim broadband string is the
- * fallback. The Trigger task surfaces that as a warning, not a hard
- * failure, so the scrape pipeline isn't blocked when BT moves the
- * goalposts.
+ * For now `getBroadband` always returns a null-filled result so the
+ * `enrichments.broadband` slot exists and downstream callers don't
+ * have to special-case "no broadband data yet". The AI's verbatim
+ * extraction from the listing description (`features.broadband`)
+ * remains the only real broadband signal in the system.
  */
 
 import { zyteFetch } from "./zyte";
@@ -86,17 +81,34 @@ function bestTechnology(products: BtResponse["products"]): {
 }
 
 /**
- * Hit BT Wholesale's availability API via Zyte's HTTP tier. Returns a
- * partially-populated result on parsing failure rather than throwing —
- * the caller logs the warning and persists what we did get.
+ * Stub. Always resolves to a null-filled `BroadbandResult` until the
+ * real BT Wholesale (or alternative) scrape is implemented. See the
+ * file header for why.
+ *
+ * Keep the signature stable so the Trigger task and any UI consumers
+ * don't churn when we wire a real source back in.
  */
+// biome-ignore lint/suspicious/useAwait: signature must stay async to match the eventual real implementation.
 export async function getBroadband(
+  _input: GetBroadbandInput
+): Promise<BroadbandResult> {
+  return {
+    technology: null,
+    downloadMbps: null,
+    uploadMbps: null,
+    fttpAvailable: false,
+  };
+}
+
+/**
+ * Legacy attempt at hitting BT Wholesale via Zyte. The URL turned out
+ * to be invalid (the real frontend goes through a session-orchestrated
+ * SPA flow), so this function is unused at runtime. Retained as a
+ * starting point for the real implementation.
+ */
+export async function _legacyBtBroadband(
   input: GetBroadbandInput
 ): Promise<BroadbandResult> {
-  // BT's endpoint accepts a JSON POST body. We can't fetch directly
-  // from workerd because BT 403s cloud IPs; Zyte's HTTP tier proxies
-  // it for us. `httpResponseBody: true` returns the raw bytes so we
-  // can parse the JSON ourselves.
   const res = await zyteFetch({
     apiKey: input.zyteApiKey,
     url: `${BT_AVAILABILITY_URL}?postcode=${encodeURIComponent(input.postcode)}`,
@@ -104,10 +116,6 @@ export async function getBroadband(
     httpResponseBody: true,
   });
 
-  // The Zyte body comes back as raw HTML/JSON text in `html` regardless
-  // of upstream content-type. Try to parse; if BT returned HTML (their
-  // session-expired bounce page) the parse fails and we surface a
-  // null-filled result.
   let parsed: BtResponse;
   try {
     parsed = JSON.parse(res.html) as BtResponse;

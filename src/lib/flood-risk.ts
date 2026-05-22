@@ -1,13 +1,18 @@
 /**
  * UK flood-risk client.
  *
- * Hits the Environment Agency's "Risk of Flooding from Rivers and
- * Sea" (RoFRS) layer via its public ArcGIS REST endpoint. The layer
- * tiles England in 50 m cells, each tagged with a risk band
- * (1=High, 2=Medium, 3=Low, 4=Very Low). Free, no auth required.
+ * **Status: stubbed.** The Environment Agency's old ArcGIS REST layer
+ * (`/EA/RiskOfFloodingFromRiversAndSea/MapServer/0`) now returns 500
+ * Internal Server Error for every request — the service has moved.
+ * The gov.uk "Check long-term flood risk" tool at
+ *   https://check-long-term-flood-risk.service.gov.uk/postcode
+ * is the supported successor but exposes no public JSON API. Until we
+ * pick a replacement (HM Land Registry flood layer? thinkbroadband-
+ * style scrape? Defra mapping?) every call returns `unknown` so the
+ * enrichments column slot is populated but uninformative.
  *
- * Outside England (Scotland / Wales / Northern Ireland) the layer
- * has no coverage — we return `unknown` rather than throwing.
+ * Keep the function signature stable so the rest of the pipeline
+ * doesn't churn when we wire a real source back in.
  */
 
 const ROFRS_ENDPOINT =
@@ -54,13 +59,26 @@ function readRiskBand(attrs: Record<string, unknown>): FloodRiskLevel {
 }
 
 /**
- * Look up the flood-risk band at (lat, lng). Returns "unknown" if the
- * EA layer has no data for the point — typically because the point is
- * outside England or because the API returned an unexpected shape.
+ * Look up the flood-risk band at (lat, lng).
  *
- * Throws on a hard HTTP failure so the Trigger task can retry.
+ * Currently always returns `{ riskLevel: "unknown" }` — see the file
+ * header for why. The original ArcGIS-driven implementation is preserved
+ * below the early return so it can be re-enabled when a working data
+ * source is wired in.
  */
-export async function getFloodRisk(input: {
+// biome-ignore lint/suspicious/useAwait: signature must stay async so callers don't have to change when the real implementation is re-enabled.
+export async function getFloodRisk(_input: {
+  lat: number;
+  lng: number;
+}): Promise<FloodRisk> {
+  return { riskLevel: "unknown" };
+}
+
+/**
+ * Legacy ArcGIS-driven lookup; retained for when the EA brings the
+ * service back or we wire an equivalent endpoint. Unused at runtime.
+ */
+export async function _legacyArcGisFloodRisk(input: {
   lat: number;
   lng: number;
 }): Promise<FloodRisk> {
