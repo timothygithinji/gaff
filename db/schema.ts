@@ -296,6 +296,21 @@ export const scrapeRuns = pgTable("scrape_runs", {
   costUsd: numeric("cost_usd"),
 });
 
+// Per-user UI state. Today's only field is `lastSeenMatches` — the
+// timestamp the Matches tab badge clears against. Keyed on userId
+// (1:1 with `user`) so we never have to think about which row to
+// update. Cascades on user delete; Better Auth owns the `user` table
+// (`better_auth` schema) but the FK works across schemas fine.
+export const userState = pgTable("user_state", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  lastSeenMatches: timestamp("last_seen_matches").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
 // -----------------------------------------------------------------------------
 // Views
 // -----------------------------------------------------------------------------
@@ -501,3 +516,6 @@ export type NewScrapeRun = typeof scrapeRuns.$inferInsert;
 
 export type AiRun = typeof aiRuns.$inferSelect;
 export type NewAiRun = typeof aiRuns.$inferInsert;
+
+export type UserState = typeof userState.$inferSelect;
+export type NewUserState = typeof userState.$inferInsert;
