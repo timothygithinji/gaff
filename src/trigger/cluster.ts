@@ -34,6 +34,7 @@ import {
   linkListingToCluster,
 } from "../lib/cluster/match";
 import { env } from "../lib/env";
+import { enrichCommuteTask } from "./enrich-commute";
 import { enrichEpcTask } from "./enrich-epc";
 import { scrapeQueue } from "./queues";
 import { scrapeDetailTask } from "./scrape-detail";
@@ -89,9 +90,13 @@ export const clusterTask = task({
     if (output.newClusterIds.length === 0) {
       return;
     }
-    await enrichEpcTask.batchTrigger(
-      output.newClusterIds.map((clusterId) => ({ payload: { clusterId } }))
-    );
+    const payloads = output.newClusterIds.map((clusterId) => ({
+      payload: { clusterId },
+    }));
+    await Promise.all([
+      enrichEpcTask.batchTrigger(payloads),
+      enrichCommuteTask.batchTrigger(payloads),
+    ]);
   },
 
   run: async (payload: ClusterPayload): Promise<ClusterOutput> => {
