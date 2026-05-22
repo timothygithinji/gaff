@@ -18,10 +18,10 @@
  * NEW listings (whether or not their cluster is new — we still want the
  * detail row even if the building was already known from another portal).
  *
- * PR 6 will hook EPC + AI enrichment onto either `clusterTask.onSuccess`
- * (gated on `newClusterIds.length > 0`) or directly onto the per-listing
- * detail task. We deliberately don't wire those triggers here — keeps the
- * commit boundary clean.
+ * PR 6 wiring: this task's `onSuccess` fans out `enrichEpcTask` for
+ * every cluster in `newClusterIds` (one EPC lookup per unique
+ * building). AI enrichment fires from `scrapeDetailTask.onSuccess`
+ * because its inputs are listing-scoped — see `enrich-ai.ts`.
  */
 
 import { neon } from "@neondatabase/serverless";
@@ -34,6 +34,7 @@ import {
   linkListingToCluster,
 } from "../lib/cluster/match";
 import { env } from "../lib/env";
+import { enrichEpcTask } from "./enrich-epc";
 import { scrapeQueue } from "./queues";
 import { scrapeDetailTask } from "./scrape-detail";
 
@@ -69,6 +70,29 @@ export const clusterTask = task({
   id: "cluster",
   queue: scrapeQueue,
   maxDuration: 300,
+
+  /**
+   * PR 6 wiring: fan out EPC enrichment for every cluster that was
+   * newly created during this batch. EPC is per-cluster (one external
+   * lookup per unique building's postcode), so we deliberately don't
+   * re-trigger for clusters the listing landed in but that already
+   * existed — those would already have had their EPC pulled when they
+   * were first created. AI enrichment is fired separately from
+   * `scrapeDetailTask.onSuccess` because its inputs (description +
+   * key features) are listing-scoped, not building-scoped.
+   *
+   * fire-and-forget batchTrigger (NOT batchTriggerAndWait): clustering
+   * already returned by the time onSuccess runs, and enrichment can
+   * take its own sweet time without holding up the next sweep.
+   */
+  onSuccess: async ({ output }: { output: ClusterOutput }) => {
+    if (output.newClusterIds.length === 0) {
+      return;
+    }
+    await enrichEpcTask.batchTrigger(
+      output.newClusterIds.map((clusterId) => ({ payload: { clusterId } }))
+    );
+  },
 
   run: async (payload: ClusterPayload): Promise<ClusterOutput> => {
     const db = getDb();
@@ -150,10 +174,10 @@ export const clusterTask = task({
       );
     }
 
-    // PR 6 (enrichment) will hook into this task's onSuccess and read
-    // `newClusterIds` off the output to fan out `enrichEpcTask` and
-    // `enrichAiTask` per cluster. Leaving the data on the output now so
-    // that wiring is just an `onSuccess` addition, no schema changes.
+    // `newClusterIds` is read by this task's onSuccess to fan out
+    // `enrichEpcTask` per new cluster (PR 6). AI enrichment is fired
+    // from `scrapeDetailTask.onSuccess` instead — listing-scoped, not
+    // cluster-scoped.
     return {
       clustered,
       newClusters: newClusterIds.length,
