@@ -38,9 +38,9 @@ export function PriceSlider({ min, max, step = 50, value, onChange }: Props) {
         className="mt-5"
         max={max}
         min={min}
-        minStepsBetweenThumbs={1}
+        minStepsBetweenValues={1}
         onValueChange={(next) => {
-          if (next.length === 2) {
+          if (Array.isArray(next) && next.length === 2) {
             onChange([next[0] as number, next[1] as number]);
           }
         }}
