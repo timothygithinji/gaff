@@ -4,14 +4,17 @@
  * the remaining args with it in the environment.
  *
  * Used by Drizzle / the dev server so every git branch (and every worktree)
- * automatically points at its own Neon branch. On main/master or detached
- * HEAD, falls through to whatever DATABASE_URL is already in the environment
- * (e.g. from Doppler).
+ * automatically points at its own Neon branch. This is the *dev* path —
+ * the Neon `main` branch belongs to production and is reached only via
+ * `bun run dev:prod` (which bypasses this script entirely and uses the
+ * `gaff/prd` Doppler config).
  *
  * Behaviour:
- *   - If DATABASE_URL is already set and we're on main/master, just use it.
- *   - Otherwise look up the Neon branch named after the current git branch;
- *     create it if missing, then resolve its connection string.
+ *   - On a feature branch: look up the Neon branch named after the current
+ *     git branch; create it if missing, then resolve its connection string.
+ *   - On git main / master / detached HEAD: refuse to run. There is no
+ *     "dev DATABASE_URL" — switch to a feature branch (gets you an isolated
+ *     Neon branch) or use `bun run dev:prod` (which points at prod data).
  *
  * Usage: bun scripts/neon-env.ts <command> [args...]
  */
@@ -31,15 +34,31 @@ const NEON_DATABASE = "neondb";
 const NEON_ROLE = "neondb_owner";
 const NEON_CONFLICT_PATTERN = /409|already exists|conflict/i;
 
-async function resolveDatabaseUrl(): Promise<string | undefined> {
+function refuseMain(reason: string): never {
+  console.error(
+    `[neon-env] Refusing to resolve a dev DATABASE_URL: ${reason}
+  The Neon main branch is production-only and must not be hit
+  during \`bun run dev\`. Switch to a feature branch (a fresh Neon
+  branch will be provisioned for you), or use \`bun run dev:prod\`
+  to deliberately target prod data via the gaff/prd Doppler config.`
+  );
+  process.exit(1);
+}
+
+async function resolveDatabaseUrl(): Promise<string> {
   let branch: string;
   try {
     branch = getCurrentBranch();
-  } catch {
-    return process.env.DATABASE_URL;
+  } catch (err) {
+    refuseMain(
+      `cannot determine current git branch (${err instanceof Error ? err.message : String(err)})`
+    );
   }
-  if (isDetachedHead() || isMainBranch(branch)) {
-    return process.env.DATABASE_URL;
+  if (isDetachedHead()) {
+    refuseMain("HEAD is detached");
+  }
+  if (isMainBranch(branch)) {
+    refuseMain(`on git ${branch}`);
   }
 
   const projectId = readNeonProjectId();
@@ -77,25 +96,17 @@ async function main(): Promise<void> {
     // Standalone invocation: print the resolved URL and exit. Useful for
     // shell substitution (DATABASE_URL=$(bun run db:env)).
     const url = await resolveDatabaseUrl();
-    if (url) {
-      process.stdout.write(`${url}\n`);
-    }
+    process.stdout.write(`${url}\n`);
     return;
   }
 
-  let databaseUrl: string | undefined;
-  try {
-    databaseUrl = await resolveDatabaseUrl();
-  } catch {
-    // No neonctl / API access — fall through to existing DATABASE_URL.
-    databaseUrl = process.env.DATABASE_URL;
-  }
+  const databaseUrl = await resolveDatabaseUrl();
 
   const [command, ...commandArgs] = args as [string, ...string[]];
   const child = spawn(command, commandArgs, {
     env: {
       ...process.env,
-      ...(databaseUrl ? { DATABASE_URL: databaseUrl } : {}),
+      DATABASE_URL: databaseUrl,
     },
     stdio: "inherit",
   });
