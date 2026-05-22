@@ -352,13 +352,19 @@ export const scrapePortalTask = task({
 
     // Use ctx.run.id as the scrape_runs primary key so onFailure / onSuccess
     // can find this row purely from the lifecycle hook's `ctx` arg.
+    // `onConflictDoNothing` keeps the INSERT retry-safe: if attempt 1
+    // inserted the row and then threw, attempts 2/3 are no-ops here, and
+    // the original error written by onFailure survives.
     const runId = ctx.run.id;
-    await db.insert(schema.scrapeRuns).values({
-      id: runId,
-      searchId,
-      portal,
-      status: "running",
-    });
+    await db
+      .insert(schema.scrapeRuns)
+      .values({
+        id: runId,
+        searchId,
+        portal,
+        status: "running",
+      })
+      .onConflictDoNothing({ target: schema.scrapeRuns.id });
 
     let totalCost = 0;
     let totalListingsFound = 0;
