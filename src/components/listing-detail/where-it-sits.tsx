@@ -61,15 +61,15 @@ export function WhereItSits({
   return (
     <section className="flex flex-col gap-3.5 px-6 pt-7">
       <header className="flex flex-col gap-1">
-        <span className="font-semibold text-[10px] text-brass uppercase tracking-[0.12em]">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
           {eyebrow}
         </span>
-        <h2 className="font-medium font-serif text-[22px] text-ink leading-[130%] tracking-[-0.02em]">
+        <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
           {title}
         </h2>
       </header>
 
-      <div className="relative h-40 w-full overflow-hidden rounded-[14px] bg-[#E8E1D1]">
+      <div className="relative h-40 w-full overflow-hidden rounded-[14px] bg-muted">
         {mapSrc ? (
           <iframe
             allowFullScreen={false}
@@ -81,23 +81,23 @@ export function WhereItSits({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <p className="text-brass text-sm">Location pending</p>
+            <p className="text-muted-foreground text-sm">Location pending</p>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-[#E5DDD0] bg-[#FDFAF4] px-4 py-3.5">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3.5">
         {headline ? (
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
-              <span className="font-semibold text-[11px] text-brass uppercase leading-[115%] tracking-[0.08em]">
+              <span className="font-semibold text-[11px] text-muted-foreground uppercase leading-[115%] tracking-[0.08em]">
                 To {headline[0]}
               </span>
               <div className="mt-1 flex items-baseline gap-1">
-                <span className="font-medium font-serif text-[24px] text-ink leading-[115%] tracking-[-0.02em]">
+                <span className="font-medium font-serif text-[24px] text-foreground leading-[115%] tracking-[-0.02em]">
                   {headline[1]}
                 </span>
-                <span className="font-medium text-[12px] text-brass leading-[115%]">
+                <span className="font-medium text-[12px] text-muted-foreground leading-[115%]">
                   min
                 </span>
               </div>
@@ -106,14 +106,14 @@ export function WhereItSits({
         ) : (
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
-              <span className="font-semibold text-[11px] text-brass uppercase leading-[115%] tracking-[0.08em]">
+              <span className="font-semibold text-[11px] text-muted-foreground uppercase leading-[115%] tracking-[0.08em]">
                 Commute
               </span>
               <div className="mt-1 flex items-baseline gap-1">
-                <span className="font-medium font-serif text-[24px] text-ink leading-[115%] tracking-[-0.02em]">
+                <span className="font-medium font-serif text-[24px] text-foreground leading-[115%] tracking-[-0.02em]">
                   —
                 </span>
-                <span className="font-medium text-[12px] text-brass leading-[115%]">
+                <span className="font-medium text-[12px] text-muted-foreground leading-[115%]">
                   not run yet
                 </span>
               </div>
@@ -125,10 +125,10 @@ export function WhereItSits({
           <div className="flex flex-wrap gap-1">
             {commuteEntries.slice(1).map(([label, mins]) => (
               <div
-                className="flex items-center gap-1.5 rounded-md bg-[#F4EFE6] px-2 py-1"
+                className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1"
                 key={label}
               >
-                <span className="font-medium text-[11px] text-ink">
+                <span className="font-medium text-[11px] text-foreground">
                   {label} · {mins}m
                 </span>
               </div>

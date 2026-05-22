@@ -198,7 +198,9 @@ async function main() {
       },
     ]);
   } else {
-    console.log("No listings yet — ai_runs need a listing FK; skipping AI rows.");
+    console.log(
+      "No listings yet — ai_runs need a listing FK; skipping AI rows."
+    );
   }
 
   const scrapeCount = await db.execute(

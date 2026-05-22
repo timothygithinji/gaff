@@ -97,7 +97,7 @@ function NewSearchPage() {
       {error && (
         <div
           aria-live="polite"
-          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-ink px-4 py-3 text-bone text-sm shadow-lg"
+          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
         >
           {error}
         </div>

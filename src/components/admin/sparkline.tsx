@@ -15,7 +15,7 @@ export function Sparkline({
   data,
   width = 160,
   height = 36,
-  stroke = "var(--copper)",
+  stroke = "var(--primary)",
 }: SparklineProps) {
   if (data.length === 0) {
     return (

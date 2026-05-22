@@ -91,8 +91,8 @@ export function HouseholdProvider({
 
 function HouseholdSkeleton() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ground text-ink">
-      <div className="h-6 w-24 animate-pulse rounded bg-bone" />
+    <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+      <div className="h-6 w-24 animate-pulse rounded bg-muted" />
     </div>
   );
 }

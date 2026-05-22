@@ -8,11 +8,18 @@
  *   Star  (ghost circle)         — outcome="shortlist"
  *
  * All five take `disabled` while a mutation is pending so the user
- * can't double-tap-fire two swipes in flight at once. The "info" button
- * is a plain anchor because the `/listings/$clusterId` route lands in
- * PR 9 — going through the typed router would tie this PR to PR 9.
+ * can't double-tap-fire two swipes in flight at once.
  */
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import {
+  ArrowReloadHorizontalIcon,
+  Cancel01Icon,
+  FavouriteIcon,
+  InformationCircleIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "@tanstack/react-router";
+import { Button } from "../../components/ui/button";
 
 type Props = {
   clusterId: string;
@@ -33,76 +40,73 @@ export function ActionButtons({
 }: Props) {
   return (
     <div className="flex items-center justify-center gap-3 py-4">
-      <CircleButton
+      <Button
         aria-label="Undo last swipe"
+        className="size-11 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
         onClick={onUndo}
-        size="sm"
+        size="icon"
+        type="button"
+        variant="outline"
       >
-        <span aria-hidden>↶</span>
-      </CircleButton>
-      <CircleButton
+        <HugeiconsIcon
+          icon={ArrowReloadHorizontalIcon}
+          size={18}
+          strokeWidth={1.8}
+        />
+      </Button>
+
+      <Button
         aria-label="Skip"
+        className="size-13 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
         onClick={onSkip}
-        size="md"
+        size="icon"
+        type="button"
+        variant="outline"
       >
-        <span aria-hidden>✕</span>
-      </CircleButton>
-      <a
-        className={`flex h-12 w-12 items-center justify-center rounded-full border border-brass/30 bg-paper text-brass ${
-          disabled ? "pointer-events-none opacity-50" : ""
-        }`}
-        href={`/listings/${clusterId}`}
+        <HugeiconsIcon icon={Cancel01Icon} size={22} strokeWidth={1.8} />
+      </Button>
+
+      <Button
+        aria-label="More info"
+        asChild
+        className="size-11 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
+        disabled={disabled}
+        size="icon"
+        variant="outline"
       >
-        <span className="sr-only">More info</span>
-        <span aria-hidden>i</span>
-      </a>
-      <button
+        <Link params={{ clusterId }} to="/listings/$clusterId">
+          <HugeiconsIcon
+            icon={InformationCircleIcon}
+            size={18}
+            strokeWidth={1.8}
+          />
+        </Link>
+      </Button>
+
+      <Button
         aria-label="Keep"
-        className="flex h-16 w-16 items-center justify-center rounded-full bg-copper text-bone shadow-lg disabled:opacity-50"
+        className="size-16 rounded-full shadow-lg"
         disabled={disabled}
         onClick={onKeep}
+        size="icon"
         type="button"
       >
-        <span aria-hidden className="text-2xl">
-          ♥
-        </span>
-      </button>
-      <CircleButton
+        <HugeiconsIcon icon={FavouriteIcon} size={28} strokeWidth={2} />
+      </Button>
+
+      <Button
         aria-label="Shortlist"
+        className="size-13 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
         onClick={onShortlist}
-        size="md"
+        size="icon"
+        type="button"
+        variant="outline"
       >
-        <span aria-hidden>★</span>
-      </CircleButton>
+        <HugeiconsIcon icon={StarIcon} size={20} strokeWidth={1.8} />
+      </Button>
     </div>
-  );
-}
-
-function CircleButton({
-  children,
-  size,
-  disabled,
-  onClick,
-  ...rest
-}: {
-  children: ReactNode;
-  size: "sm" | "md";
-  disabled?: boolean;
-  onClick: () => void;
-} & ButtonHTMLAttributes<HTMLButtonElement>) {
-  const dimensions = size === "sm" ? "h-10 w-10" : "h-12 w-12";
-  return (
-    <button
-      className={`flex ${dimensions} items-center justify-center rounded-full border border-brass/30 bg-paper text-brass disabled:opacity-50`}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-      {...rest}
-    >
-      {children}
-    </button>
   );
 }

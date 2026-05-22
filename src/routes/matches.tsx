@@ -146,18 +146,18 @@ function MatchesPage() {
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-ground pb-24">
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
       <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-        <span className="font-semibold text-[11px] text-brass uppercase tracking-[0.12em]">
+        <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
           Your household
         </span>
-        <h1 className="font-medium font-serif text-[32px] text-ink leading-[110%] tracking-[-0.03em]">
+        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
           Matches
         </h1>
       </header>
 
       <div className="flex items-center justify-between px-6 pb-3">
-        <span className="font-semibold text-[10px] text-brass uppercase tracking-[0.12em]">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
           Mutual picks
         </span>
         <SortDropdown onChange={setSort} value={sort} />
@@ -165,7 +165,7 @@ function MatchesPage() {
 
       <div className="flex flex-col gap-2.5 px-4">
         {visible.length === 0 ? (
-          <p className="rounded-2xl bg-bone p-8 text-center text-brass text-sm">
+          <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
             No mutual matches yet. Once every household member keeps the same
             cluster, it lands here.
           </p>

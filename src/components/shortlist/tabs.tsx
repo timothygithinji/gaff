@@ -5,8 +5,9 @@
  *   2 members → `Mutual N · Yours N · <other>'s N`
  *   N members → `Mutual N · Yours N · <each member>'s N` per non-current member.
  *
- * Counts are passed in from the parent (it already runs three queries
- * for mutual / mine / each-other-member, so it owns the numbers).
+ * Distinct pill row (not shadcn `<Tabs>`) because the artboard shows
+ * independent pills with the active state inverted (ink-on-bone), not a
+ * single container with a sliding indicator.
  */
 
 export type ShortlistTab = {
@@ -33,8 +34,8 @@ export function ShortlistTabs({ tabs, activeId, onChange }: Props) {
           <button
             className={
               active
-                ? "shrink-0 rounded-full bg-ink px-3.5 py-2 font-semibold text-bone text-xs"
-                : "shrink-0 rounded-full border border-[#E5DDD0] bg-paper px-3.5 py-2 font-medium text-ink text-xs"
+                ? "shrink-0 rounded-full bg-foreground px-3.5 py-2 font-semibold text-background text-xs"
+                : "shrink-0 rounded-full border border-border bg-card px-3.5 py-2 font-medium text-foreground text-xs"
             }
             key={tab.id}
             onClick={() => onChange(tab.id)}

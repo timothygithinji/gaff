@@ -31,13 +31,13 @@ function SearchesIndexPage() {
   const { data } = useSuspenseQuery(searchesQueryOptions);
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-ground pb-24">
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
       <TopBar title="Searches" />
       <main className="space-y-4 px-5 pt-6">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-serif text-3xl text-ink">Your searches</h1>
+          <h1 className="font-serif text-3xl text-foreground">Your searches</h1>
           <Link
-            className="rounded-full bg-copper px-4 py-2 font-medium text-bone text-xs"
+            className="rounded-full bg-primary px-4 py-2 font-medium text-primary-foreground text-xs"
             to="/searches/new"
           >
             + New
@@ -52,14 +52,14 @@ function SearchesIndexPage() {
 
 function EmptyState() {
   return (
-    <div className="mt-12 rounded-2xl bg-bone p-8 text-center">
-      <p className="font-serif text-2xl text-ink">No searches yet</p>
-      <p className="mt-2 text-brass text-sm">
+    <div className="mt-12 rounded-2xl bg-muted p-8 text-center">
+      <p className="font-serif text-2xl text-foreground">No searches yet</p>
+      <p className="mt-2 text-muted-foreground text-sm">
         Start watching a corner of the rental market. Pick your outcodes, beds,
         and budget — we'll tell you what's worth a viewing.
       </p>
       <Link
-        className="mt-6 inline-block rounded-full bg-copper px-6 py-3 font-medium text-bone text-sm"
+        className="mt-6 inline-block rounded-full bg-primary px-6 py-3 font-medium text-primary-foreground text-sm"
         to="/searches/new"
       >
         Create your first search
@@ -74,27 +74,29 @@ function SearchList({ searches }: { searches: SearchRow[] }) {
       {searches.map((s) => (
         <li key={s.id}>
           <Link
-            className="block rounded-2xl bg-bone p-5"
+            className="block rounded-2xl bg-muted p-5"
             params={{ id: s.id }}
             to="/searches/$id"
           >
             <div className="flex items-baseline justify-between">
-              <h2 className="font-serif text-ink text-xl">{s.name}</h2>
+              <h2 className="font-serif text-foreground text-xl">{s.name}</h2>
               {s.active ? (
-                <span className="rounded-full bg-copper/15 px-2 py-0.5 text-[10px] text-copper uppercase tracking-wide">
+                <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary uppercase tracking-wide">
                   Active
                 </span>
               ) : (
-                <span className="rounded-full bg-brass/15 px-2 py-0.5 text-[10px] text-brass uppercase tracking-wide">
+                <span className="rounded-full bg-muted-foreground/15 px-2 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide">
                   Paused
                 </span>
               )}
             </div>
-            <p className="mt-1 text-brass text-sm">
+            <p className="mt-1 text-muted-foreground text-sm">
               {s.outcodes.join(" · ")} · £{(s.minPrice ?? 0).toLocaleString()}–£
               {(s.maxPrice ?? 0).toLocaleString()}
             </p>
-            <p className="mt-2 text-brass text-xs">{s.portals.join(", ")}</p>
+            <p className="mt-2 text-muted-foreground text-xs">
+              {s.portals.join(", ")}
+            </p>
           </Link>
         </li>
       ))}

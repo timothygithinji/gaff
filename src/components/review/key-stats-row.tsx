@@ -2,14 +2,20 @@
  * Three-column stat strip beneath the price + address. Beds · Bath · Sqft.
  *
  * Each cell:
- *   - Thin icon glyph on the left (text fallback — we don't ship an
- *     icon set yet, so a Unicode glyph stands in for the design's
- *     stroke-icon).
+ *   - Hugeicons stroke icon on the left.
  *   - Big number in Fraunces.
  *   - Tiny all-caps label below.
  *
  * `null` numbers render as "—" so the row still aligns.
  */
+import {
+  BedIcon,
+  Bathtub02Icon,
+  Maximize02Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+
+type IconRef = typeof BedIcon;
 
 type Props = {
   bedrooms: number | null;
@@ -20,34 +26,37 @@ type Props = {
 
 export function KeyStatsRow({ bedrooms, bathrooms, sqft }: Props) {
   return (
-    <dl className="grid grid-cols-3 gap-3 border-brass/15 border-y py-3">
-      <Stat glyph="⌂" value={bedrooms} label="Beds" />
-      <Stat glyph="◧" value={bathrooms} label="Bath" />
-      <Stat glyph="⤢" value={sqft} label="Sq ft" />
+    <dl className="grid grid-cols-3 gap-3 border-border border-y py-3">
+      <Stat icon={BedIcon} value={bedrooms} label="Beds" />
+      <Stat icon={Bathtub02Icon} value={bathrooms} label="Bath" />
+      <Stat icon={Maximize02Icon} value={sqft} label="Sq ft" />
     </dl>
   );
 }
 
 function Stat({
-  glyph,
+  icon,
   value,
   label,
 }: {
-  glyph: string;
+  icon: IconRef;
   value: number | null;
   label: string;
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span aria-hidden className="text-brass text-lg">
-        {glyph}
-      </span>
+      <HugeiconsIcon
+        className="text-muted-foreground"
+        icon={icon}
+        size={20}
+        strokeWidth={1.6}
+      />
       <div className="leading-tight">
         <dt className="sr-only">{label}</dt>
-        <dd className="font-serif text-ink text-xl">
+        <dd className="font-serif text-foreground text-xl">
           {value === null ? "—" : value}
         </dd>
-        <p className="font-medium text-[10px] text-brass uppercase tracking-wider">
+        <p className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
           {label}
         </p>
       </div>

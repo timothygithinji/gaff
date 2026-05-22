@@ -77,14 +77,14 @@ function AdminDashboard() {
   const { data: runs } = useSuspenseQuery(recentRunsQueryOptions(filter));
 
   return (
-    <div className="flex min-h-screen bg-ground">
+    <div className="flex min-h-screen bg-background">
       <AdminSidebar />
       <main className="flex-1 px-10 py-8">
         <DashboardHeader />
         <MetricCardsRow metrics={metrics} />
         <section className="mt-10">
           <div className="mb-4 flex items-baseline justify-between">
-            <h2 className="font-serif text-ink text-xl">Recent runs</h2>
+            <h2 className="font-serif text-foreground text-xl">Recent runs</h2>
             <RunsFilterPills
               counts={counts}
               onChange={setFilter}
@@ -102,10 +102,10 @@ function DashboardHeader() {
   return (
     <header className="mb-8 flex items-start justify-between">
       <div>
-        <p className="font-semibold text-[11px] text-copper uppercase tracking-[0.14em]">
+        <p className="font-semibold text-[11px] text-primary uppercase tracking-[0.14em]">
           System · Last 24h
         </p>
-        <h1 className="mt-2 font-serif text-4xl text-ink leading-tight">
+        <h1 className="mt-2 font-serif text-4xl text-foreground leading-tight">
           {pickHeadline()}
         </h1>
       </div>

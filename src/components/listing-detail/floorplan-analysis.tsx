@@ -11,6 +11,8 @@
  * The "Open plan ▾" dropdown is visual-only for v1 — the layout label
  * comes from `features.floorplan.layout`, but tapping it is a no-op.
  */
+import { ArrowDown01Icon, SparklesIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { Features } from "../../lib/ai/prompt";
 
 type Props = {
@@ -128,36 +130,44 @@ export function FloorplanAnalysis({ features, floorplan }: Props) {
       <header className="flex items-start justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <span aria-hidden className="text-[11px] text-copper">
-              ✦
-            </span>
-            <span className="font-semibold text-[10px] text-copper uppercase tracking-[0.12em]">
+            <HugeiconsIcon
+              className="text-primary"
+              icon={SparklesIcon}
+              size={12}
+              strokeWidth={2}
+            />
+            <span className="font-semibold text-[10px] text-primary uppercase tracking-[0.12em]">
               Floor plan read · Claude
             </span>
           </div>
-          <h2 className="font-medium font-serif text-[22px] text-ink leading-[130%] tracking-[-0.02em]">
+          <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
             What we see
           </h2>
         </div>
         <button
-          className="flex items-center gap-1 rounded-[999px] border border-[#E5DDD0] bg-[#FDFAF4] px-2.5 py-1"
+          className="flex items-center gap-1 rounded-[999px] border border-border bg-card px-2.5 py-1"
           type="button"
         >
-          <span className="font-medium text-[11px] text-brass">
+          <span className="font-medium text-[11px] text-muted-foreground">
             {formatLayout(fp?.layout ?? null)}
           </span>
-          <span aria-hidden className="text-[10px] text-brass">
-            ▾
-          </span>
+          <HugeiconsIcon
+            className="text-muted-foreground"
+            icon={ArrowDown01Icon}
+            size={12}
+            strokeWidth={2}
+          />
         </button>
       </header>
 
       {rooms.length === 0 && !floorplan ? (
-        <div className="flex h-70 w-full items-center justify-center rounded-[14px] border border-[#E5DDD0] bg-[#FDFAF4]">
-          <p className="text-brass text-sm">Floor plan not available</p>
+        <div className="flex h-70 w-full items-center justify-center rounded-[14px] border border-border bg-card">
+          <p className="text-muted-foreground text-sm">
+            Floor plan not available
+          </p>
         </div>
       ) : (
-        <div className="relative h-70 w-full overflow-hidden rounded-[14px] border border-[#E5DDD0] bg-[#FDFAF4]">
+        <div className="relative h-70 w-full overflow-hidden rounded-[14px] border border-border bg-card">
           {floorplan?.url ? (
             // biome-ignore lint/nursery/noImgElement: TanStack Start; <Image> isn't available.
             <img
@@ -177,17 +187,17 @@ export function FloorplanAnalysis({ features, floorplan }: Props) {
             const sqm = formatSqm(room.sqm);
             return (
               <div
-                className={`absolute rounded-lg border border-[#E8D6C9] bg-[#FDFAF4F2] px-2 py-1.5 ${POSITION_CLASS[slot.position]}`}
+                className={`absolute rounded-lg border border-border bg-card/95 px-2 py-1.5 ${POSITION_CLASS[slot.position]}`}
                 key={slot.position}
               >
-                <p className="font-semibold text-[9px] text-copper uppercase tracking-[0.08em]">
+                <p className="font-semibold text-[9px] text-primary uppercase tracking-[0.08em]">
                   {room.label}
                 </p>
-                <p className="mt-0.5 font-medium font-serif text-[13px] text-ink leading-[120%]">
+                <p className="mt-0.5 font-medium font-serif text-[13px] text-foreground leading-[120%]">
                   {sqm ?? room.label}
                 </p>
                 {room.notes ? (
-                  <p className="mt-0.5 font-medium text-[10px] text-brass leading-[120%]">
+                  <p className="mt-0.5 font-medium text-[10px] text-muted-foreground leading-[120%]">
                     {room.notes}
                   </p>
                 ) : null}
@@ -196,11 +206,11 @@ export function FloorplanAnalysis({ features, floorplan }: Props) {
           })}
 
           {giaLabel ? (
-            <div className="absolute right-3 bottom-3 rounded-lg bg-ink px-2 py-1.5">
+            <div className="absolute right-3 bottom-3 rounded-lg bg-foreground px-2 py-1.5">
               <p className="font-semibold text-[#E8D6C9] text-[9px] uppercase tracking-[0.08em]">
                 GIA
               </p>
-              <p className="mt-0.5 font-medium font-serif text-[14px] text-bone leading-[120%] tracking-[-0.01em]">
+              <p className="mt-0.5 font-medium font-serif text-[14px] text-background leading-[120%] tracking-[-0.01em]">
                 {giaLabel}
               </p>
             </div>

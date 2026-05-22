@@ -8,7 +8,10 @@
  * navigates to `/listings/$clusterId` (handled by the parent route,
  * which wires `onOpen`).
  */
+import { Message01Icon, Share05Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
+import { Button } from "../../components/ui/button";
 import type { MutualMatch } from "../../server/functions/shortlist";
 import { MutualBadge } from "./mutual-badge";
 
@@ -77,7 +80,7 @@ export function MatchCard({
     .join(" · ");
 
   return (
-    <div className="mx-4 mb-5 overflow-hidden rounded-[18px] bg-ink">
+    <div className="mx-4 mb-5 overflow-hidden rounded-[18px] bg-foreground">
       <button
         className="relative block h-50 w-full overflow-hidden text-left"
         onClick={onOpen}
@@ -91,8 +94,8 @@ export function MatchCard({
             src={headline.photoUrl}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-bone">
-            <p className="text-brass text-sm">No photo yet</p>
+          <div className="flex h-full w-full items-center justify-center bg-muted">
+            <p className="text-muted-foreground text-sm">No photo yet</p>
           </div>
         )}
         <div
@@ -111,13 +114,13 @@ export function MatchCard({
         </div>
         <div className="absolute right-3.5 bottom-3.5 left-4 flex items-end justify-between">
           <div className="flex flex-col gap-0.5">
-            <span className="font-serif text-[22px] text-bone leading-[110%] tracking-[-0.02em]">
+            <span className="font-serif text-[22px] text-primary-foreground leading-[110%] tracking-[-0.02em]">
               {headline.addressRaw}
             </span>
             <span className="text-[#E8D6C9] text-xs">{subtitle || "—"}</span>
           </div>
           <div className="flex flex-col items-end">
-            <span className="font-serif text-[24px] text-bone leading-none tracking-[-0.02em]">
+            <span className="font-serif text-[24px] text-primary-foreground leading-none tracking-[-0.02em]">
               {formatPrice(headline.priceMonthly)}
             </span>
             <span className="mt-0.5 text-[#E8D6C9] text-[10px]">
@@ -127,21 +130,17 @@ export function MatchCard({
         </div>
       </button>
       <div className="flex items-center gap-2.5 px-4 py-3.5">
-        <button
-          className="flex grow basis-0 items-center justify-center gap-2 rounded-full bg-copper px-3.5 py-[9px]"
+        <Button
+          className="flex-1 rounded-full font-semibold text-[13px]"
           onClick={onPlanViewing}
           type="button"
         >
-          <span aria-hidden className="text-bone">
-            ✉
-          </span>
-          <span className="font-semibold text-[13px] text-bone">
-            Plan a viewing
-          </span>
-        </button>
-        <button
+          <HugeiconsIcon icon={Message01Icon} size={16} strokeWidth={2} />
+          Plan a viewing
+        </Button>
+        <Button
           aria-label="Share"
-          className="flex h-9.5 w-9.5 shrink-0 items-center justify-center rounded-full border border-[#3A332A]"
+          className="size-9.5 shrink-0 rounded-full border-bone/20 bg-transparent text-primary-foreground hover:bg-muted/10"
           onClick={() => {
             if (typeof navigator !== "undefined" && navigator.share) {
               navigator
@@ -154,12 +153,12 @@ export function MatchCard({
                 });
             }
           }}
+          size="icon"
           type="button"
+          variant="outline"
         >
-          <span aria-hidden className="text-bone">
-            ↗
-          </span>
-        </button>
+          <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={2} />
+        </Button>
       </div>
     </div>
   );

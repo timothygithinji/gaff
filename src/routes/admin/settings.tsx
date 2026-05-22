@@ -21,22 +21,24 @@ export const Route = createFileRoute("/admin/settings")({
 function AdminSettingsPage() {
   return (
     <OwnerGate>
-      <div className="flex min-h-screen bg-ground">
+      <div className="flex min-h-screen bg-background">
         <AdminSidebar />
         <main className="flex-1 px-10 py-8">
           <header className="mb-8">
-            <p className="font-semibold text-[11px] text-copper uppercase tracking-[0.14em]">
+            <p className="font-semibold text-[11px] text-primary uppercase tracking-[0.14em]">
               System · Settings
             </p>
-            <h1 className="mt-2 font-serif text-3xl text-ink">Settings</h1>
+            <h1 className="mt-2 font-serif text-3xl text-foreground">
+              Settings
+            </h1>
           </header>
-          <div className="rounded-2xl bg-bone p-8 text-center">
-            <p className="font-serif text-2xl text-ink">
+          <div className="rounded-2xl bg-muted p-8 text-center">
+            <p className="font-serif text-2xl text-foreground">
               Settings coming in v1.1
             </p>
-            <p className="mt-2 text-brass text-sm">
+            <p className="mt-2 text-muted-foreground text-sm">
               Household membership lives in{" "}
-              <a className="text-copper underline" href="/settings/household">
+              <a className="text-primary underline" href="/settings/household">
                 /settings/household
               </a>{" "}
               for now.

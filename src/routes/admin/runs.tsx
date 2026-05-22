@@ -55,14 +55,14 @@ function AllRunsTable() {
   const { data: runs } = useSuspenseQuery(allRunsQueryOptions(filter));
 
   return (
-    <div className="flex min-h-screen bg-ground">
+    <div className="flex min-h-screen bg-background">
       <AdminSidebar />
       <main className="flex-1 px-10 py-8">
         <header className="mb-6">
-          <p className="font-semibold text-[11px] text-copper uppercase tracking-[0.14em]">
+          <p className="font-semibold text-[11px] text-primary uppercase tracking-[0.14em]">
             System · Runs
           </p>
-          <h1 className="mt-2 font-serif text-3xl text-ink">All runs</h1>
+          <h1 className="mt-2 font-serif text-3xl text-foreground">All runs</h1>
         </header>
         <div className="mb-4">
           <RunsFilterPills

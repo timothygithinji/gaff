@@ -68,11 +68,13 @@ function InvitePage() {
   }, [mutate]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ground p-6">
-      <div className="w-full max-w-sm rounded-lg bg-paper p-6 text-center shadow">
-        <h1 className="font-serif text-ink text-xl">Joining household…</h1>
+    <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-sm rounded-lg bg-card p-6 text-center shadow">
+        <h1 className="font-serif text-foreground text-xl">
+          Joining household…
+        </h1>
         {accept.isError && (
-          <p className="mt-3 text-copper text-sm">
+          <p className="mt-3 text-primary text-sm">
             {(accept.error as Error).message === "expired_token"
               ? "This invite link has expired."
               : "Could not accept this invite."}

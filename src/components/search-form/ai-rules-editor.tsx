@@ -7,8 +7,12 @@
  * in PR 6). Custom rules carry their own id (`custom:<nanoid>`) so the
  * server function can persist them in the same `aiRules` jsonb shape.
  */
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { nanoid } from "nanoid";
 import { useState } from "react";
+import { Button } from "../../components/ui/button";
+import { Switch } from "../../components/ui/switch";
 
 export type AiRule = {
   id: string;
@@ -73,22 +77,24 @@ export function AiRulesEditor({ rules, onChange }: Props) {
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-bone">
-      <ul className="divide-y divide-brass/10">
+    <div className="overflow-hidden rounded-2xl bg-muted">
+      <ul className="divide-y divide-border">
         {rules.map((rule) => (
           <li
             className="flex items-center justify-between px-5 py-4"
             key={rule.id}
           >
             <div className="min-w-0 pr-4">
-              <p className="text-ink text-sm">{rule.label}</p>
+              <p className="text-foreground text-sm">{rule.label}</p>
               {rule.body && (
-                <p className="mt-0.5 text-brass text-xs">{rule.body}</p>
+                <p className="mt-0.5 text-muted-foreground text-xs">
+                  {rule.body}
+                </p>
               )}
             </div>
-            <ToggleSwitch
+            <Switch
               checked={rule.enabled}
-              onChange={(checked) =>
+              onCheckedChange={(checked) =>
                 onChange(
                   rules.map((r) =>
                     r.id === rule.id ? { ...r, enabled: checked } : r
@@ -100,85 +106,47 @@ export function AiRulesEditor({ rules, onChange }: Props) {
         ))}
       </ul>
       {addingCustom ? (
-        <div className="border-brass/10 border-t px-5 py-4">
+        <div className="border-border border-t px-5 py-4">
           <textarea
             autoFocus
-            className="w-full resize-none rounded-md border border-brass/20 bg-paper p-3 text-ink text-sm outline-none focus:border-copper/60"
+            className="w-full resize-none rounded-md border border-border bg-card p-3 text-foreground text-sm outline-none focus:border-primary/60"
             onChange={(e) => setDraft(e.target.value)}
             placeholder="e.g. Bathroom has a window"
             rows={3}
             value={draft}
           />
           <div className="mt-2 flex justify-end gap-2">
-            <button
-              className="rounded-md px-3 py-1.5 text-brass text-xs"
+            <Button
               onClick={() => {
                 setAddingCustom(false);
                 setDraft("");
               }}
+              size="sm"
               type="button"
+              variant="ghost"
             >
               Cancel
-            </button>
-            <button
-              className="rounded-md bg-copper px-3 py-1.5 text-bone text-xs disabled:opacity-50"
+            </Button>
+            <Button
               disabled={!draft.trim()}
               onClick={submitCustom}
+              size="sm"
               type="button"
             >
               Add rule
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <button
-          className="flex w-full items-center justify-center border-brass/10 border-t px-5 py-4 text-copper text-sm"
+          className="flex w-full items-center justify-center gap-1.5 border-border border-t px-5 py-4 text-primary text-sm"
           onClick={() => setAddingCustom(true)}
           type="button"
         >
-          + Add custom rule
+          <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
+          Add custom rule
         </button>
       )}
     </div>
-  );
-}
-
-function ToggleSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  // A real <input type="checkbox"> with role="switch" so the implicit
-  // ARIA semantics (checked state, keyboard activation, screen-reader
-  // announcement) come for free — Biome's
-  // `useAriaPropsSupportedByRole` rejects `aria-checked` on a plain
-  // <button>, but an <input role="switch"> is the canonical pattern.
-  return (
-    <label className="relative inline-block h-6 w-11 flex-shrink-0">
-      <input
-        checked={checked}
-        className="peer sr-only"
-        onChange={(e) => onChange(e.target.checked)}
-        type="checkbox"
-      />
-      <span
-        aria-hidden
-        className={
-          checked
-            ? "block h-full w-full rounded-full bg-copper transition-colors"
-            : "block h-full w-full rounded-full bg-brass/30 transition-colors"
-        }
-      />
-      <span
-        aria-hidden
-        className={
-          checked
-            ? "absolute top-0.5 left-[22px] h-5 w-5 rounded-full bg-paper shadow transition-all"
-            : "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-paper shadow transition-all"
-        }
-      />
-    </label>
   );
 }

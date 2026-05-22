@@ -14,7 +14,14 @@
  *     need their own external clients (EA Flood, OS amenities) which
  *     are punted to v1.1.
  */
-import type { ReactNode } from "react";
+import {
+  CloudIcon,
+  FlashIcon,
+  MapPinIcon,
+  Shield01Icon,
+  Wifi01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type {
   ListingDetailEpc,
   ListingDetailPublicRecords,
@@ -25,8 +32,10 @@ type Props = {
   publicRecords?: ListingDetailPublicRecords;
 };
 
+type IconRef = typeof FlashIcon;
+
 type Row = {
-  icon: ReactNode;
+  icon: IconRef;
   label: string;
   headline: string;
   sub: string | null;
@@ -35,7 +44,7 @@ type Row = {
 function epcRow(epc: ListingDetailEpc | undefined): Row {
   if (!epc) {
     return {
-      icon: <LightningIcon />,
+      icon: FlashIcon,
       label: "EPC rating",
       headline: "EPC pending",
       sub: null,
@@ -44,7 +53,7 @@ function epcRow(epc: ListingDetailEpc | undefined): Row {
   const headline = epc.rating;
   const sub = epc.potential ? `Potential ${epc.potential}` : null;
   return {
-    icon: <LightningIcon />,
+    icon: FlashIcon,
     label: "EPC rating",
     headline,
     sub,
@@ -53,7 +62,7 @@ function epcRow(epc: ListingDetailEpc | undefined): Row {
 
 function broadbandRow(broadband?: string): Row {
   return {
-    icon: <WifiIcon />,
+    icon: Wifi01Icon,
     label: "Broadband",
     headline: broadband ?? "Pending",
     sub: broadband ? null : "AI extraction not yet run",
@@ -63,14 +72,14 @@ function broadbandRow(broadband?: string): Row {
 function crimeRow(crime?: ListingDetailPublicRecords["crime"]): Row {
   if (!crime) {
     return {
-      icon: <ShieldIcon />,
+      icon: Shield01Icon,
       label: "Crime · last 12mo",
       headline: "Pending",
       sub: null,
     };
   }
   return {
-    icon: <ShieldIcon />,
+    icon: Shield01Icon,
     label: "Crime · last 12mo",
     headline: crime.rateLabel,
     sub: crime.area,
@@ -79,7 +88,7 @@ function crimeRow(crime?: ListingDetailPublicRecords["crime"]): Row {
 
 function floodRow(floodRisk?: string): Row {
   return {
-    icon: <CloudIcon />,
+    icon: CloudIcon,
     label: "Flood risk",
     headline: floodRisk ?? "Pending",
     sub: floodRisk ? null : "EA Flood API not yet wired",
@@ -89,7 +98,7 @@ function floodRow(floodRisk?: string): Row {
 function withinRow(within?: ListingDetailPublicRecords["within500m"]): Row {
   if (!within) {
     return {
-      icon: <PinIcon />,
+      icon: MapPinIcon,
       label: "Within 500m",
       headline: "Pending",
       sub: null,
@@ -107,7 +116,7 @@ function withinRow(within?: ListingDetailPublicRecords["within500m"]): Row {
   }
   const sub = within.gp ? `Plus ${within.gp} GP nearby` : null;
   return {
-    icon: <PinIcon />,
+    icon: MapPinIcon,
     label: "Within 500m",
     headline: parts.join(" · ") || "—",
     sub,
@@ -126,10 +135,10 @@ export function PublicRecords({ epc, publicRecords }: Props) {
   return (
     <section className="flex flex-col gap-3.5 px-6 pt-7">
       <header className="flex flex-col gap-1">
-        <span className="font-semibold text-[10px] text-brass uppercase tracking-[0.12em]">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
           The boring numbers
         </span>
-        <h2 className="font-medium font-serif text-[22px] text-ink leading-[130%] tracking-[-0.02em]">
+        <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
           Public records
         </h2>
       </header>
@@ -137,21 +146,26 @@ export function PublicRecords({ epc, publicRecords }: Props) {
       <ul className="flex flex-col">
         {rows.map((row, idx) => (
           <li
-            className={`flex items-center py-3.5 ${idx < rows.length - 1 ? "border-[#E5DDD0] border-b" : ""}`}
+            className={`flex items-center py-3.5 ${idx < rows.length - 1 ? "border-border border-b" : ""}`}
             key={row.label}
           >
             <div className="flex grow basis-0 items-center gap-3">
-              {row.icon}
-              <span className="font-medium text-[14px] text-ink leading-[120%]">
+              <HugeiconsIcon
+                className="text-muted-foreground"
+                icon={row.icon}
+                size={16}
+                strokeWidth={1.8}
+              />
+              <span className="font-medium text-[14px] text-foreground leading-[120%]">
                 {row.label}
               </span>
             </div>
             <div className="flex flex-col items-end">
-              <span className="font-medium font-serif text-[17px] text-ink leading-[110%]">
+              <span className="font-medium font-serif text-[17px] text-foreground leading-[110%]">
                 {row.headline}
               </span>
               {row.sub ? (
-                <span className="mt-0.5 text-[11px] text-brass leading-[110%]">
+                <span className="mt-0.5 text-[11px] text-muted-foreground leading-[110%]">
                   {row.sub}
                 </span>
               ) : null}
@@ -160,109 +174,5 @@ export function PublicRecords({ epc, publicRecords }: Props) {
         ))}
       </ul>
     </section>
-  );
-}
-
-function LightningIcon() {
-  return (
-    <svg
-      className="text-brass"
-      fill="none"
-      height="16"
-      role="img"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-      viewBox="0 0 24 24"
-      width="16"
-    >
-      <title>EPC rating icon</title>
-      <path d="M13 2 3 14h7l-1 8 10-12h-7z" />
-    </svg>
-  );
-}
-
-function WifiIcon() {
-  return (
-    <svg
-      className="text-brass"
-      fill="none"
-      height="16"
-      role="img"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-      viewBox="0 0 24 24"
-      width="16"
-    >
-      <title>Broadband icon</title>
-      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
-      <path d="M1.42 9a16 16 0 0 1 21.16 0" />
-      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-      <line x1="12" x2="12.01" y1="20" y2="20" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg
-      className="text-brass"
-      fill="none"
-      height="16"
-      role="img"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-      viewBox="0 0 24 24"
-      width="16"
-    >
-      <title>Crime icon</title>
-      <path d="M12 22s8-4 8-12V5l-8-3-8 3v5c0 8 8 12 8 12" />
-    </svg>
-  );
-}
-
-function CloudIcon() {
-  return (
-    <svg
-      className="text-brass"
-      fill="none"
-      height="16"
-      role="img"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-      viewBox="0 0 24 24"
-      width="16"
-    >
-      <title>Flood risk icon</title>
-      <path d="M21 14a1 1 0 0 1-1 1H6.83a2 2 0 0 0-1.41.59l-2.13 2.12A1 1 0 0 1 2 17V5a1 1 0 0 1 1-1h17a1 1 0 0 1 1 1z" />
-    </svg>
-  );
-}
-
-function PinIcon() {
-  return (
-    <svg
-      className="text-brass"
-      fill="none"
-      height="16"
-      role="img"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-      viewBox="0 0 24 24"
-      width="16"
-    >
-      <title>Amenities nearby icon</title>
-      <circle cx="12" cy="10" r="3" />
-      <path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8" />
-    </svg>
   );
 }
