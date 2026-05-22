@@ -54,4 +54,30 @@ describe("parseEnv", () => {
     const noNodeEnv = { ...VALID };
     expect(parseEnv(noNodeEnv).NODE_ENV).toBe("development");
   });
+
+  // R2_* vars are deliberately optional — the Worker uses the BUCKET
+  // binding and never reads them, and Trigger workers without credentials
+  // staged should still pass env() so unrelated tasks don't crash. The
+  // cache-photos task short-circuits at the read site if they're missing.
+  it("leaves R2_* vars optional (parse succeeds with all four absent)", () => {
+    const e = parseEnv(VALID);
+    expect(e.R2_ACCOUNT_ID).toBeUndefined();
+    expect(e.R2_ACCESS_KEY_ID).toBeUndefined();
+    expect(e.R2_SECRET_ACCESS_KEY).toBeUndefined();
+    expect(e.R2_BUCKET).toBeUndefined();
+  });
+
+  it("accepts R2_* vars when populated", () => {
+    const e = parseEnv({
+      ...VALID,
+      R2_ACCOUNT_ID: "acct_123",
+      R2_ACCESS_KEY_ID: "AKIA_FAKE",
+      R2_SECRET_ACCESS_KEY: "secret_fake",
+      R2_BUCKET: "gaff-photos-test",
+    });
+    expect(e.R2_ACCOUNT_ID).toBe("acct_123");
+    expect(e.R2_ACCESS_KEY_ID).toBe("AKIA_FAKE");
+    expect(e.R2_SECRET_ACCESS_KEY).toBe("secret_fake");
+    expect(e.R2_BUCKET).toBe("gaff-photos-test");
+  });
 });
