@@ -148,9 +148,6 @@ function MatchesPage() {
   return (
     <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
       <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-        <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
-          Your household
-        </span>
         <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
           Matches
         </h1>

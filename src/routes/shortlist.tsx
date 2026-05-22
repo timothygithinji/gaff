@@ -170,13 +170,6 @@ function ShortlistPage() {
   const [sort, setSort] = useState<SortKey>("cheapest");
 
   const me = members.find((m) => m.userId === currentUserId);
-  const headlineOther = otherMembers[0];
-  let eyebrow: string | null = null;
-  if (memberCount === 2 && headlineOther) {
-    eyebrow = `You & ${firstNameOf(headlineOther)}`;
-  } else if (memberCount > 2) {
-    eyebrow = "Your household";
-  }
 
   // Resolve which list is currently visible.
   const visible = useMemo<MutualMatch[]>(() => {
@@ -223,11 +216,6 @@ function ShortlistPage() {
       ) : null}
 
       <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-        {eyebrow ? (
-          <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
-            {eyebrow}
-          </span>
-        ) : null}
         <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
           Shortlist
         </h1>
