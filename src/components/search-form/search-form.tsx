@@ -332,7 +332,7 @@ export function SearchForm({
             What makes it a yes
           </h2>
           <p className="text-muted-foreground text-sm">
-            Claude reads every floor plan against these.
+            We read every floor plan against these.
           </p>
           <form.Field name="aiRules">
             {(field) => (

@@ -137,11 +137,9 @@ function MatchesPage() {
   const visible = sortMatches(data, sort);
 
   function openCluster(clusterId: string) {
-    // PR 9 lands `/listings/$clusterId` — until then we navigate via a
-    // cast so the route tree can stay untouched.
     navigate({
-      to: "/listings/$clusterId" as never,
-      params: { clusterId } as never,
+      to: "/listings/$clusterId",
+      params: { clusterId },
     });
   }
 

@@ -419,10 +419,26 @@ export const getListingDetail = createServerFn({ method: "GET" })
 
     const headlinePrice = headlineListing.priceMonthly;
 
-    // Step 3: portal spread — every listing including the headline,
-    // in cheapest-first order. The UI renders all rows; the first is
-    // styled as the cheapest, the rest get a "+£N" delta chip.
-    const portalSpread: ListingDetailPortalRow[] = sortedListings.map((l) => {
+    // Step 3: portal spread — every distinct portal listing in the
+    // cluster, in cheapest-first order. We dedupe by
+    // `(portal, portalListingId)` because the listings table is keyed
+    // by (search_id, portal, portal_listing_id), so the *same* physical
+    // listing can have multiple rows when more than one of the
+    // household's searches scraped it. Without this, a single Rightmove
+    // listing picked up by two overlapping searches would render twice.
+    // We keep the first occurrence — `sortedListings` is cheapest-first
+    // so duplicates would carry identical prices anyway.
+    const seenPortalListings = new Set<string>();
+    const dedupedListings = sortedListings.filter((l) => {
+      const key = `${l.portal}::${l.portalListingId}`;
+      if (seenPortalListings.has(key)) {
+        return false;
+      }
+      seenPortalListings.add(key);
+      return true;
+    });
+
+    const portalSpread: ListingDetailPortalRow[] = dedupedListings.map((l) => {
       const agent = readAgentInfo(l.rawJson);
       const delta =
         l.priceMonthly != null && headlinePrice != null

@@ -23,6 +23,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { BottomNav } from "../components/layout/bottom-nav";
 import { ActionButtons } from "../components/review/action-buttons";
@@ -36,7 +37,6 @@ import { ReviewHeader } from "../components/review/review-header";
 import { requireSession } from "../lib/auth-guard";
 import { queryKeys } from "../lib/query-keys";
 import {
-  type RecentSwipeEntry,
   type ReviewCard,
   type ReviewQueue,
   type ReviewQueueItem,
@@ -44,48 +44,70 @@ import {
   getNextReviewCard,
   getReviewQueue,
   getTodayReviewStats,
-  listMyRecentSwipes,
   recordSwipe,
   undoLastSwipe,
 } from "../server/functions/review";
-import { readAiRules } from "../server/functions/searches";
+import { listSearches, readAiRules } from "../server/functions/searches";
 
-const reviewCardQueryOptions = {
-  queryKey: queryKeys.reviewNext(),
-  queryFn: () => getNextReviewCard(),
-  // Always re-fetch on focus — a household member swiping on another
-  // device can change what's at the top of our queue.
-  staleTime: 0,
-};
+// `searchId` filter, kept in the URL so refresh + back-button preserve
+// the selection and the filter is shareable. The empty string and the
+// omitted form both collapse to `null` so the queue isn't accidentally
+// scoped to a stale id.
+const reviewSearchSchema = z.object({
+  searchId: z
+    .string()
+    .trim()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
+});
 
-const reviewQueueQueryOptions = {
-  queryKey: queryKeys.reviewQueue(),
-  queryFn: () => getReviewQueue(),
-  staleTime: 0,
-};
+const reviewCardQueryOptions = (searchId: string | null) =>
+  ({
+    queryKey: queryKeys.reviewNext(searchId),
+    queryFn: () =>
+      getNextReviewCard(searchId ? { data: { searchId } } : undefined),
+    // Always re-fetch on focus — a household member swiping on another
+    // device can change what's at the top of our queue.
+    staleTime: 0,
+  }) as const;
 
-const reviewTodayStatsQueryOptions = {
-  queryKey: queryKeys.reviewTodayStats(),
-  queryFn: () => getTodayReviewStats(),
-  staleTime: 0,
-};
+const reviewQueueQueryOptions = (searchId: string | null) =>
+  ({
+    queryKey: queryKeys.reviewQueue(searchId),
+    queryFn: () =>
+      getReviewQueue(searchId ? { data: { searchId } } : undefined),
+    staleTime: 0,
+  }) as const;
 
-const reviewRecentSwipesQueryOptions = {
-  queryKey: queryKeys.reviewRecentSwipes(),
-  queryFn: () => listMyRecentSwipes(),
-  staleTime: 0,
+const reviewTodayStatsQueryOptions = (searchId: string | null) =>
+  ({
+    queryKey: queryKeys.reviewTodayStats(searchId),
+    queryFn: () =>
+      getTodayReviewStats(searchId ? { data: { searchId } } : undefined),
+    staleTime: 0,
+  }) as const;
+
+const reviewSearchesQueryOptions = {
+  queryKey: queryKeys.searches(),
+  queryFn: () => listSearches(),
+  staleTime: 60_000,
 };
 
 export const Route = createFileRoute("/")({
+  validateSearch: reviewSearchSchema,
   beforeLoad: ({ context }) => {
     requireSession(context as { currentUserId: string | null }, "/");
   },
-  loader: ({ context }) =>
+  loaderDeps: ({ search }) => ({ searchId: search.searchId }),
+  loader: ({ context, deps }) =>
     Promise.all([
-      context.queryClient.ensureQueryData(reviewCardQueryOptions),
-      context.queryClient.ensureQueryData(reviewQueueQueryOptions),
-      context.queryClient.ensureQueryData(reviewTodayStatsQueryOptions),
-      context.queryClient.ensureQueryData(reviewRecentSwipesQueryOptions),
+      context.queryClient.ensureQueryData(reviewCardQueryOptions(deps.searchId)),
+      context.queryClient.ensureQueryData(reviewQueueQueryOptions(deps.searchId)),
+      context.queryClient.ensureQueryData(
+        reviewTodayStatsQueryOptions(deps.searchId)
+      ),
+      context.queryClient.ensureQueryData(reviewSearchesQueryOptions),
     ]),
   component: ReviewPage,
 });
@@ -93,14 +115,18 @@ export const Route = createFileRoute("/")({
 function ReviewPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const cardQuery = useQuery(reviewCardQueryOptions);
-  const queueQuery = useQuery(reviewQueueQueryOptions);
-  const todayStatsQuery = useQuery(reviewTodayStatsQueryOptions);
-  const recentSwipesQuery = useQuery(reviewRecentSwipesQueryOptions);
+  const { searchId } = Route.useSearch();
+  const cardOpts = reviewCardQueryOptions(searchId);
+  const queueOpts = reviewQueueQueryOptions(searchId);
+  const todayOpts = reviewTodayStatsQueryOptions(searchId);
+  const cardQuery = useQuery(cardOpts);
+  const queueQuery = useQuery(queueOpts);
+  const todayStatsQuery = useQuery(todayOpts);
+  const searchesQuery = useQuery(reviewSearchesQueryOptions);
   const card = cardQuery.data;
   const queue = queueQuery.data;
   const todayStats = todayStatsQuery.data;
-  const recentSwipes = recentSwipesQuery.data;
+  const searchesList = searchesQuery.data ?? [];
   const [error, setError] = useState<string | null>(null);
   // Surface the first query error we see so silent failures stop
   // masquerading as "empty queue" via the placeholder fallback.
@@ -108,7 +134,6 @@ function ReviewPage() {
     cardQuery.error?.message ??
     queueQuery.error?.message ??
     todayStatsQuery.error?.message ??
-    recentSwipesQuery.error?.message ??
     null;
 
   const swipe = useMutation({
@@ -120,64 +145,48 @@ function ReviewPage() {
     // Optimistic: snapshot the current card, blank the cache so the
     // skeleton paints, then invalidate to fetch the next one.
     onMutate: async () => {
-      await qc.cancelQueries({ queryKey: reviewCardQueryOptions.queryKey });
-      const previous = qc.getQueryData<ReviewCard | null>(
-        reviewCardQueryOptions.queryKey
-      );
-      qc.setQueryData<ReviewCard | null>(reviewCardQueryOptions.queryKey, null);
+      await qc.cancelQueries({ queryKey: cardOpts.queryKey });
+      const previous = qc.getQueryData<ReviewCard | null>(cardOpts.queryKey);
+      qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, null);
       return { previous };
     },
     onError: (e: Error, _vars, ctx) => {
       if (ctx?.previous !== undefined) {
-        qc.setQueryData<ReviewCard | null>(
-          reviewCardQueryOptions.queryKey,
-          ctx.previous
-        );
+        qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, ctx.previous);
       }
       setError(e.message ?? "Couldn't record swipe");
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: reviewCardQueryOptions.queryKey });
-      qc.invalidateQueries({ queryKey: reviewQueueQueryOptions.queryKey });
-      qc.invalidateQueries({
-        queryKey: reviewTodayStatsQueryOptions.queryKey,
-      });
-      qc.invalidateQueries({
-        queryKey: reviewRecentSwipesQueryOptions.queryKey,
-      });
+      // Invalidate every variant of the review queries (every searchId
+      // bucket) so the next-card pointer and queue refresh regardless
+      // of which filter is active — a swipe inside one search shifts
+      // the cross-search "All" queue too.
+      qc.invalidateQueries({ queryKey: ["review", "next"] });
+      qc.invalidateQueries({ queryKey: ["review", "queue"] });
+      qc.invalidateQueries({ queryKey: ["review", "today-stats"] });
     },
   });
 
   const undo = useMutation({
     mutationFn: () => undoLastSwipe(),
     onMutate: async () => {
-      await qc.cancelQueries({ queryKey: reviewCardQueryOptions.queryKey });
-      const previous = qc.getQueryData<ReviewCard | null>(
-        reviewCardQueryOptions.queryKey
-      );
+      await qc.cancelQueries({ queryKey: cardOpts.queryKey });
+      const previous = qc.getQueryData<ReviewCard | null>(cardOpts.queryKey);
       // Force a refetch on the next tick so the un-swiped card comes
       // back to the top of the queue.
-      qc.setQueryData<ReviewCard | null>(reviewCardQueryOptions.queryKey, null);
+      qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, null);
       return { previous };
     },
     onError: (e: Error, _vars, ctx) => {
       if (ctx?.previous !== undefined) {
-        qc.setQueryData<ReviewCard | null>(
-          reviewCardQueryOptions.queryKey,
-          ctx.previous
-        );
+        qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, ctx.previous);
       }
       setError(e.message ?? "Couldn't undo");
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: reviewCardQueryOptions.queryKey });
-      qc.invalidateQueries({ queryKey: reviewQueueQueryOptions.queryKey });
-      qc.invalidateQueries({
-        queryKey: reviewTodayStatsQueryOptions.queryKey,
-      });
-      qc.invalidateQueries({
-        queryKey: reviewRecentSwipesQueryOptions.queryKey,
-      });
+      qc.invalidateQueries({ queryKey: ["review", "next"] });
+      qc.invalidateQueries({ queryKey: ["review", "queue"] });
+      qc.invalidateQueries({ queryKey: ["review", "today-stats"] });
     },
   });
 
@@ -239,20 +248,6 @@ function ReviewPage() {
       params: { clusterId: card.cluster.id },
     });
   }, [card, navigate]);
-
-  const doSelectQueueItem = useCallback(
-    (clusterId: string) => {
-      navigate({
-        to: "/listings/$clusterId",
-        params: { clusterId },
-      });
-    },
-    [navigate]
-  );
-
-  const doChangeSearch = useCallback(() => {
-    navigate({ to: "/searches" });
-  }, [navigate]);
 
   // Keyboard shortcuts mirroring the on-screen hints:
   //   ← Skip   → Keep   S Shortlist   Z Undo   I Details
@@ -323,18 +318,30 @@ function ReviewPage() {
 
       {card ? (
         <DesktopReview
-          data={desktopData(card, queue, todayStats, recentSwipes)}
+          data={desktopData(card, queue, todayStats, {
+            searchesList,
+            selectedSearchId: searchId,
+          })}
           disabled={pending}
-          onChangeSearch={doChangeSearch}
           onKeep={doKeep}
           onOpenDetail={doOpenDetail}
-          onSelectQueueItem={doSelectQueueItem}
+          onSelectSearch={(nextSearchId) => {
+            navigate({
+              to: "/",
+              search: { searchId: nextSearchId ?? null },
+            });
+          }}
           onShortlist={doShortlist}
           onSkip={doSkip}
           onUndo={doUndo}
         />
       ) : (
-        <DesktopReviewEmpty hasQueryError={Boolean(queryError)} />
+        <DesktopReviewEmpty
+          activeSearchId={searchId}
+          hasQueryError={Boolean(queryError)}
+          onClearFilter={() => navigate({ to: "/", search: { searchId: null } })}
+          searchesList={searchesList}
+        />
       )}
 
       <div className="mx-auto min-h-screen max-w-md bg-background pb-24 md:hidden">
@@ -375,23 +382,23 @@ function desktopData(
   card: ReviewCard,
   queue: ReviewQueue | null | undefined,
   todayStats: TodayReviewStats | null | undefined,
-  recentSwipes: RecentSwipeEntry[] | null | undefined
+  opts: {
+    searchesList: Array<{ id: string; name: string }>;
+    selectedSearchId: string | null;
+  }
 ): DesktopReviewData {
   const reviewedToday = todayStats?.reviewed ?? 0;
   const keptToday = todayStats?.kept ?? 0;
   const skippedToday = todayStats?.skipped ?? 0;
   return {
-    searchPill: card.searchPill,
-    headline: card.headlineListing.title,
+    searchOptions: opts.searchesList.map((s) => ({ id: s.id, name: s.name })),
+    selectedSearchId: opts.selectedSearchId,
     leftToday: card.leftToday,
     reviewedToday,
     keptToday,
     skippedToday,
-    totalToday: card.leftToday + reviewedToday,
     queue: buildQueueData(card, queue),
     hero: buildHeroData(card),
-    activity: buildActivity(recentSwipes ?? []),
-    tip: undefined,
   };
 }
 
@@ -401,7 +408,20 @@ function desktopData(
  * yet) or one of the review queries errored. Keeps the sidebar shell
  * so the rest of the app's chrome stays consistent.
  */
-function DesktopReviewEmpty({ hasQueryError }: { hasQueryError: boolean }) {
+function DesktopReviewEmpty({
+  hasQueryError,
+  activeSearchId,
+  searchesList,
+  onClearFilter,
+}: {
+  hasQueryError: boolean;
+  activeSearchId: string | null;
+  searchesList: Array<{ id: string; name: string }>;
+  onClearFilter: () => void;
+}) {
+  const filteredSearchName = activeSearchId
+    ? searchesList.find((s) => s.id === activeSearchId)?.name ?? null
+    : null;
   return (
     <AdminSidebar mode="desktop-only">
       <div className="flex flex-1 items-center justify-center p-10">
@@ -415,52 +435,23 @@ function DesktopReviewEmpty({ hasQueryError }: { hasQueryError: boolean }) {
           <p className="mt-3 text-muted-foreground text-sm">
             {hasQueryError
               ? "Check the banner top-right for the underlying error. Refresh once it's resolved."
-              : "Nothing left to swipe right now. New listings will land here as your searches keep scraping."}
+              : filteredSearchName
+                ? `Nothing left to swipe in "${filteredSearchName}". Switch to all searches to see the rest of the queue.`
+                : "Nothing left to swipe right now. New listings will land here as your searches keep scraping."}
           </p>
+          {filteredSearchName ? (
+            <button
+              className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground text-sm"
+              onClick={onClearFilter}
+              type="button"
+            >
+              Show all searches
+            </button>
+          ) : null}
         </div>
       </div>
     </AdminSidebar>
   );
-}
-
-function buildActivity(
-  entries: RecentSwipeEntry[]
-): DesktopReviewData["activity"] {
-  return entries.map((e) => ({
-    verb: outcomeVerb(e.outcome),
-    target: e.clusterTitle,
-    meta: relativeTimeShort(e.createdAt),
-    tone: e.outcome === "skip" ? "muted" : "primary",
-  }));
-}
-
-function outcomeVerb(
-  outcome: RecentSwipeEntry["outcome"]
-): DesktopReviewData["activity"][number]["verb"] {
-  if (outcome === "skip") {
-    return "Skipped";
-  }
-  // Shortlist + Keep both surface as "Kept" in the rail. Shortlists
-  // get their own surface on /shortlist so the rail doesn't need a
-  // separate verb for them.
-  return "Kept";
-}
-
-function relativeTimeShort(date: Date): string {
-  const d = date instanceof Date ? date : new Date(date as unknown as string);
-  const diffMs = Date.now() - d.getTime();
-  const minutes = Math.max(0, Math.floor(diffMs / 60_000));
-  if (minutes < 1) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 function buildHeroData(card: ReviewCard): DesktopReviewData["hero"] {

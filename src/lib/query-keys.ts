@@ -18,9 +18,12 @@ export const queryKeys = {
   search: (id: string) => ["searches", id] as const,
   household: () => ["household"] as const,
   schedules: () => ["schedules"] as const,
-  reviewNext: () => ["review", "next"] as const,
-  reviewQueue: () => ["review", "queue"] as const,
-  reviewTodayStats: () => ["review", "today-stats"] as const,
+  reviewNext: (searchId?: string | null) =>
+    ["review", "next", searchId ?? null] as const,
+  reviewQueue: (searchId?: string | null) =>
+    ["review", "queue", searchId ?? null] as const,
+  reviewTodayStats: (searchId?: string | null) =>
+    ["review", "today-stats", searchId ?? null] as const,
   reviewRecentSwipes: () => ["review", "recent-swipes"] as const,
   matchesUnread: () => ["matches", "unread"] as const,
   shortlist: () => ["shortlist"] as const,

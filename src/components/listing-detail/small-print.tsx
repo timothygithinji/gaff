@@ -59,7 +59,7 @@ export function SmallPrint({ items }: Props) {
             strokeWidth={2}
           />
           <span className="font-semibold text-[10px] text-primary uppercase tracking-[0.12em]">
-            Description read · Haiku
+            Description read
           </span>
         </div>
         <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">

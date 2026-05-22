@@ -196,12 +196,9 @@ function ShortlistPage() {
   const rows = featured ? visible.slice(1) : visible;
 
   function openCluster(clusterId: string) {
-    // PR 9 lands `/listings/$clusterId`. Until that route exists in the
-    // typed route tree, we go through `href` so the call still works —
-    // the cast keeps tsc happy without registering a fake route.
     navigate({
-      to: "/listings/$clusterId" as never,
-      params: { clusterId } as never,
+      to: "/listings/$clusterId",
+      params: { clusterId },
     });
   }
 

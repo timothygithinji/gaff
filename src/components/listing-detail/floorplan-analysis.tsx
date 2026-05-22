@@ -137,7 +137,7 @@ export function FloorplanAnalysis({ features, floorplan }: Props) {
               strokeWidth={2}
             />
             <span className="font-semibold text-[10px] text-primary uppercase tracking-[0.12em]">
-              Floor plan read · Claude
+              Floor plan read
             </span>
           </div>
           <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">

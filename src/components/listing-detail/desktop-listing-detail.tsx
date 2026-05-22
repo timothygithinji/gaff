@@ -21,14 +21,22 @@ import {
   Cancel01Icon,
   Download01Icon,
   FavouriteIcon,
+  FitToScreenIcon,
   LinkSquare01Icon,
+  MinusSignIcon,
+  PlusSignIcon,
   Share05Icon,
   StarIcon,
   Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import useEmblaCarousel from "embla-carousel-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  TransformComponent,
+  TransformWrapper,
+} from "react-zoom-pan-pinch";
 import { cn } from "../../lib/utils";
 import type {
   ListingDetailPayload,
@@ -37,6 +45,12 @@ import type {
   ListingDetailSmallPrintItem,
 } from "../../server/functions/listing-detail";
 import { AdminSidebar } from "../layout/admin-sidebar";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "../ui/dialog";
 
 type Outcome = "keep" | "skip" | "shortlist";
 
@@ -84,7 +98,7 @@ function TopBar({
   const navigate = useNavigate();
   const title = shortAddressTitle(headline.addressRaw);
   return (
-    <header className="flex items-center justify-between border-bone border-b px-10 py-5">
+    <header className="sticky top-0 z-20 flex items-center justify-between border-bone border-b bg-ground/85 px-10 py-5 backdrop-blur">
       <div className="flex items-center gap-3.5">
         <button
           aria-label="Back"
@@ -104,13 +118,9 @@ function TopBar({
           aria-label="breadcrumb"
           className="flex items-center gap-2 text-xs"
         >
-          <Link className="text-muted-foreground" to="/">
+          <Link className="text-muted-foreground hover:text-foreground" to="/">
             Review
           </Link>
-          <span className="text-[#B5A893]">/</span>
-          <span className="text-muted-foreground">
-            {portalLabel(headline.portal)}
-          </span>
           <span className="text-[#B5A893]">/</span>
           <span className="font-semibold text-foreground">{title}</span>
         </nav>
@@ -176,24 +186,56 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
     floorplan,
     commuteMinutes,
   } = data;
-  const heroPhoto = photos[0]?.url;
-  const stripPhotos = photos.slice(1, 5);
   const alsoOn =
     portalSpread.length > 1
       ? `${portalSpread.length} portals · same property`
       : "Single listing";
   const photoCount = Math.max(photos.length, 1);
 
+  const canPaginate = photos.length > 1;
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
+    align: "start",
+    duration: 28,
+    watchDrag: canPaginate,
+  });
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    if (!emblaApi) {
+      return;
+    }
+    const sync = () => setActiveIndex(emblaApi.selectedScrollSnap());
+    sync();
+    emblaApi.on("select", sync);
+    emblaApi.on("reInit", sync);
+    return () => {
+      emblaApi.off("select", sync);
+      emblaApi.off("reInit", sync);
+    };
+  }, [emblaApi]);
+
+  const scrollTo = useCallback(
+    (i: number) => emblaApi?.scrollTo(i),
+    [emblaApi]
+  );
+
   return (
     <section className="flex w-[720px] shrink-0 flex-col gap-3.5">
       <HeroPhoto
+        activeIndex={activeIndex}
         alsoOn={alsoOn}
         alt={headline.addressRaw}
-        photo={heroPhoto}
+        emblaRef={emblaRef}
         photoCount={photoCount}
+        photos={photos}
       />
-      {stripPhotos.length > 0 ? (
-        <PhotoStrip photos={stripPhotos} remaining={photos.length - 5} />
+      {photos.length > 1 ? (
+        <PhotoStrip
+          activeIndex={activeIndex}
+          onSelect={scrollTo}
+          photos={photos}
+        />
       ) : null}
       <FloorplanCard features={features} floorplanUrl={floorplan?.url} />
       <LocationCard
@@ -205,44 +247,68 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
 }
 
 function HeroPhoto({
-  photo,
+  photos,
   photoCount,
   alsoOn,
   alt,
+  emblaRef,
+  activeIndex,
 }: {
-  photo: string | undefined;
+  photos: ListingDetailPayload["photos"];
   photoCount: number;
   alsoOn: string;
   alt: string;
+  emblaRef: ReturnType<typeof useEmblaCarousel>[0];
+  activeIndex: number;
 }) {
-  return (
-    <div className="relative h-[400px] w-full overflow-hidden rounded-2xl bg-muted">
-      {photo ? (
-        // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available.
-        <img
-          alt={alt}
-          className="absolute inset-0 h-full w-full object-cover"
-          src={photo}
-        />
-      ) : (
+  if (photos.length === 0) {
+    return (
+      <div className="relative h-[400px] w-full overflow-hidden rounded-2xl bg-muted">
         <div className="flex h-full w-full items-center justify-center text-muted-foreground text-sm">
           No photo yet
         </div>
-      )}
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-[400px] w-full select-none overflow-hidden rounded-2xl bg-muted">
+      <div className="h-full w-full overflow-hidden" ref={emblaRef}>
+        <div className="flex h-full touch-pan-y">
+          {photos.map((p, i) => (
+            <div
+              className="relative h-full min-w-0 flex-[0_0_100%]"
+              key={p.url || `hero-${i}`}
+            >
+              {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
+              <img
+                alt={alt}
+                className="h-full w-full object-cover"
+                draggable={false}
+                src={p.url}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent"
       />
-      <span className="absolute top-5 left-5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5">
+      <span className="pointer-events-none absolute top-5 left-5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5">
         <span className="h-1.5 w-1.5 rounded-full bg-[#E2B584]" />
         <span className="font-semibold text-[10px] text-white uppercase tracking-wider">
           {alsoOn}
         </span>
       </span>
-      <span className="absolute top-5 right-5 rounded-full bg-black/70 px-3 py-1.5 font-semibold text-[11px] text-white">
-        1 / {photoCount}
+      <span className="pointer-events-none absolute top-5 right-5 rounded-full bg-black/70 px-3 py-1.5 font-semibold text-[11px] text-white">
+        {activeIndex + 1} / {photoCount}
       </span>
-      <span className="absolute right-5 bottom-5 inline-flex items-center gap-1.5 rounded-full bg-foreground/85 px-3.5 py-2 font-semibold text-[12px] text-white">
+      <span className="pointer-events-none absolute right-5 bottom-5 inline-flex items-center gap-1.5 rounded-full bg-foreground/85 px-3.5 py-2 font-semibold text-[12px] text-white">
         View all {photoCount} photos
       </span>
     </div>
@@ -251,31 +317,64 @@ function HeroPhoto({
 
 function PhotoStrip({
   photos,
-  remaining,
+  activeIndex,
+  onSelect,
 }: {
   photos: ListingDetailPayload["photos"];
-  remaining: number;
+  activeIndex: number;
+  onSelect: (index: number) => void;
 }) {
+  // The strip is its own Embla carousel. Each thumbnail is a slide and
+  // the strip pans so the active photo sits at the left edge — matches
+  // the hero. `containScroll` stops the rail from over-scrolling past
+  // the last group.
+  const [stripRef, stripApi] = useEmblaCarousel({
+    align: "start",
+    containScroll: "trimSnaps",
+    duration: 22,
+  });
+
+  // Slide the strip whenever the hero changes (drag, click, thumb).
+  useEffect(() => {
+    if (!stripApi) {
+      return;
+    }
+    stripApi.scrollTo(activeIndex);
+  }, [stripApi, activeIndex]);
+
   return (
-    <div className="flex gap-2.5">
-      {photos.map((p, i) => (
-        <div
-          className="relative h-[90px] flex-1 overflow-hidden rounded-xl bg-muted"
-          key={p.url || `strip-${i}`}
-        >
-          {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
-          <img
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-            src={p.url}
-          />
-          {i === photos.length - 1 && remaining > 0 ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-foreground/55 font-serif text-[18px] text-white">
-              +{remaining}
-            </div>
-          ) : null}
-        </div>
-      ))}
+    // -mx/-my keep the strip visually flush with the hero above; the
+    // inner padding gives the active thumb's ring + ring-offset enough
+    // room not to be clipped by the embla viewport's overflow-hidden.
+    <div className="-mx-1.5 -my-1.5 overflow-hidden p-1.5" ref={stripRef}>
+      <div className="flex touch-pan-y gap-2.5">
+        {photos.map((p, i) => {
+          const active = i === activeIndex;
+          return (
+            <button
+              aria-current={active ? "true" : undefined}
+              aria-label={`Show photo ${i + 1}`}
+              className={cn(
+                "relative h-[90px] flex-[0_0_136px] overflow-hidden rounded-xl bg-muted ring-2 ring-transparent ring-offset-2 ring-offset-ground transition-[opacity,ring,filter]",
+                active
+                  ? "ring-primary"
+                  : "opacity-80 hover:opacity-100 hover:ring-border"
+              )}
+              key={p.url || `strip-${i}`}
+              onClick={() => onSelect(i)}
+              type="button"
+            >
+              {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
+              <img
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                draggable={false}
+                src={p.url}
+              />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -289,6 +388,7 @@ function FloorplanCard({
 }) {
   const giaSqm = features?.floorplan?.giaSqm;
   const listedSqft = giaSqm ? Math.round((giaSqm * 10.7639) / 10) * 10 : null;
+  const [open, setOpen] = useState(false);
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
       <header className="flex items-end justify-between px-6 pt-5 pb-3.5">
@@ -300,7 +400,7 @@ function FloorplanCard({
               size={12}
               strokeWidth={2}
             />
-            <Eyebrow tone="primary">Floor plan read · Claude</Eyebrow>
+            <Eyebrow tone="primary">Floor plan read</Eyebrow>
           </div>
           <h2 className="font-serif text-[22px] text-foreground">
             What we see
@@ -321,19 +421,129 @@ function FloorplanCard({
       </header>
       <div className="mx-6 mb-6 flex h-[280px] items-center justify-center overflow-hidden rounded-xl border border-bone bg-[#FBF6EA]">
         {floorplanUrl ? (
-          // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available.
-          <img
-            alt="Floor plan"
-            className="max-h-full max-w-full object-contain"
-            src={floorplanUrl}
-          />
+          <button
+            aria-label="Expand floor plan"
+            className="group flex h-full w-full cursor-zoom-in items-center justify-center"
+            onClick={() => setOpen(true)}
+            type="button"
+          >
+            {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
+            <img
+              alt="Floor plan"
+              className="max-h-full max-w-full object-contain transition-transform group-hover:scale-[1.01]"
+              draggable={false}
+              src={floorplanUrl}
+            />
+          </button>
         ) : (
           <p className="text-muted-foreground text-sm">
             No floor plan attached to this listing.
           </p>
         )}
       </div>
+      {floorplanUrl ? (
+        <FloorplanLightbox
+          onOpenChange={setOpen}
+          open={open}
+          url={floorplanUrl}
+        />
+      ) : null}
     </article>
+  );
+}
+
+function FloorplanLightbox({
+  open,
+  onOpenChange,
+  url,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  url: string;
+}) {
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent
+        className="grid h-[95vh] w-[95vw] max-w-none place-items-stretch gap-0 overflow-hidden border-0 bg-[#FBF6EA] p-0 ring-0 sm:max-w-none"
+        showCloseButton={false}
+      >
+        <DialogTitle className="sr-only">Floor plan</DialogTitle>
+        <div className="relative h-full w-full">
+          <TransformWrapper
+            centerOnInit
+            doubleClick={{ mode: "toggle", step: 1.2 }}
+            initialScale={1}
+            limitToBounds={false}
+            maxScale={6}
+            minScale={1}
+            pinch={{ step: 5 }}
+            wheel={{ step: 0.2 }}
+          >
+            {({ zoomIn, zoomOut, resetTransform }) => (
+              <>
+                <TransformComponent
+                  contentClass="!flex items-center justify-center"
+                  wrapperClass="!h-full !w-full"
+                  wrapperStyle={{ height: "100%", width: "100%" }}
+                >
+                  {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
+                  <img
+                    alt="Floor plan"
+                    className="max-h-[95vh] max-w-[95vw] object-contain"
+                    draggable={false}
+                    src={url}
+                  />
+                </TransformComponent>
+                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-foreground/85 p-1 text-white shadow-lg">
+                  <ZoomButton
+                    icon={MinusSignIcon}
+                    label="Zoom out"
+                    onClick={() => zoomOut()}
+                  />
+                  <ZoomButton
+                    icon={FitToScreenIcon}
+                    label="Fit to screen"
+                    onClick={() => resetTransform()}
+                  />
+                  <ZoomButton
+                    icon={PlusSignIcon}
+                    label="Zoom in"
+                    onClick={() => zoomIn()}
+                  />
+                </div>
+              </>
+            )}
+          </TransformWrapper>
+          <DialogClose
+            aria-label="Close"
+            className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-foreground/85 text-white transition-colors hover:bg-foreground"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={2} />
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ZoomButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: typeof PlusSignIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/15"
+      onClick={onClick}
+      type="button"
+    >
+      <HugeiconsIcon icon={icon} size={16} strokeWidth={2} />
+    </button>
   );
 }
 
@@ -430,12 +640,6 @@ function PriceCard({ data }: { data: ListingDetailPayload }) {
             portal{portalSpread.length === 1 ? "" : "s"} tracking
           </Eyebrow>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-bone px-2.5 py-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#5D7A4A]" />
-          <span className="font-semibold text-[#5D7A4A] text-[11px]">
-            {portalSpread.length > 1 ? "Same property" : "Tracking"}
-          </span>
-        </span>
       </div>
       <div className="flex flex-col gap-0.5">
         <h1 className="font-serif text-[22px] text-foreground">{title}</h1>
@@ -465,11 +669,14 @@ function PortalRow({
 }) {
   const delta = row.deltaFromHeadline ?? 0;
   return (
-    <div
+    <a
       className={cn(
-        "flex items-center gap-3 py-2.5",
+        "-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-ground",
         !isLast && "border-[#F2EBDE] border-b"
       )}
+      href={row.url}
+      rel="noopener noreferrer"
+      target="_blank"
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-bone font-semibold font-serif text-[13px] text-primary">
         {portalLabel(row.portal).charAt(0)}
@@ -492,7 +699,13 @@ function PortalRow({
           </span>
         ) : null}
       </div>
-    </div>
+      <HugeiconsIcon
+        className="text-muted-foreground"
+        icon={LinkSquare01Icon}
+        size={14}
+        strokeWidth={1.8}
+      />
+    </a>
   );
 }
 
@@ -510,7 +723,7 @@ function AiCard({ items }: { items: ListingDetailSmallPrintItem[] }) {
             size={12}
             strokeWidth={2}
           />
-          <Eyebrow tone="primary">Description read · Haiku</Eyebrow>
+          <Eyebrow tone="primary">Description read</Eyebrow>
         </div>
         <h2 className="font-serif text-[20px] text-foreground">
           What's in the small print

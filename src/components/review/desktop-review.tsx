@@ -29,8 +29,6 @@ import {
   ArrowLeft01Icon,
   ArrowReloadHorizontalIcon,
   ArrowRight01Icon,
-  ArrowUp01Icon,
-  BulbIcon,
   Cancel01Icon,
   FavouriteIcon,
   InformationCircleIcon,
@@ -38,6 +36,7 @@ import {
   Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -48,6 +47,13 @@ import {
   DialogContent,
   DialogTitle,
 } from "../ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 /* ---------------- Types ---------------- */
 
@@ -69,21 +75,18 @@ type VerdictChip = {
   tone: "positive" | "caution";
 };
 
-type ActivityEntry = {
-  verb: "Kept" | "Skipped" | "Note";
-  target: string;
-  meta: string;
-  tone: "primary" | "muted";
-};
-
 export type DesktopReviewData = {
-  searchPill: string;
-  headline: string;
+  /**
+   * Every active search the household has — feeds the search-pill
+   * dropdown. The "All searches" option is synthesised at render time;
+   * `selectedSearchId === null` represents it.
+   */
+  searchOptions: Array<{ id: string; name: string }>;
+  selectedSearchId: string | null;
   reviewedToday: number;
   keptToday: number;
   skippedToday: number;
   leftToday: number;
-  totalToday: number;
   queue: {
     current: QueueItem;
     upcoming: QueueItem[];
@@ -100,12 +103,6 @@ export type DesktopReviewData = {
     spec: Array<{ label: string; value: string; suffix?: string }>;
     verdicts: VerdictChip[];
   };
-  activity: ActivityEntry[];
-  /**
-   * Optional. When omitted the bottom-of-rail tip card is hidden. The
-   * placeholder still ships one so unauthenticated previews stay full.
-   */
-  tip?: { title: string; body: string };
 };
 
 /* ---------------- Component ---------------- */
@@ -117,8 +114,12 @@ type Props = {
   onShortlist?: () => void;
   onUndo?: () => void;
   onOpenDetail?: () => void;
-  onSelectQueueItem?: (clusterId: string) => void;
-  onChangeSearch?: () => void;
+  /**
+   * Fired when the user picks a search from the header dropdown.
+   * `null` means "All searches" — wire it into the route's `searchId`
+   * URL param so the selection survives refresh.
+   */
+  onSelectSearch?: (searchId: string | null) => void;
   disabled?: boolean;
 };
 
@@ -129,17 +130,15 @@ export function DesktopReview({
   onShortlist,
   onUndo,
   onOpenDetail,
-  onSelectQueueItem,
-  onChangeSearch,
+  onSelectSearch,
   disabled,
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
-      <DesktopReviewHeader data={data} onChangeSearch={onChangeSearch} />
+      <DesktopReviewHeader data={data} onSelectSearch={onSelectSearch} />
       <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
         <QueueRail
           current={data.queue.current}
-          onSelectQueueItem={onSelectQueueItem}
           remaining={data.queue.remaining}
           upcoming={data.queue.upcoming}
         />
@@ -152,14 +151,6 @@ export function DesktopReview({
           onSkip={onSkip}
           onUndo={onUndo}
         />
-        <ContextRail
-          activity={data.activity}
-          keptToday={data.keptToday}
-          leftToday={data.leftToday}
-          skippedToday={data.skippedToday}
-          tip={data.tip}
-          totalToday={data.totalToday}
-        />
       </div>
     </AdminSidebar>
   );
@@ -169,37 +160,86 @@ export function DesktopReview({
 
 function DesktopReviewHeader({
   data,
-  onChangeSearch,
+  onSelectSearch,
 }: {
   data: DesktopReviewData;
-  onChangeSearch?: () => void;
+  onSelectSearch?: (searchId: string | null) => void;
 }) {
+  const selectedSearch = data.selectedSearchId
+    ? data.searchOptions.find((s) => s.id === data.selectedSearchId)
+    : null;
+  const pillLabel = selectedSearch ? selectedSearch.name : "All searches";
   return (
     <header className="flex items-end justify-between px-10 pt-9 pb-6">
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2.5">
-          <Eyebrow>Reviewing</Eyebrow>
-          <button
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-foreground text-xs",
-              onChangeSearch && "hover:bg-ground active:scale-[0.98]"
-            )}
-            disabled={!onChangeSearch}
-            onClick={onChangeSearch}
-            type="button"
+      <div className="flex flex-col gap-2">
+        <h1 className="font-serif text-[36px] text-foreground leading-none tracking-tight">
+          Reviewing
+        </h1>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-foreground text-xs transition-colors hover:bg-ground active:scale-[0.98]"
+                type="button"
+              />
+            }
           >
-            <span className="font-medium">{data.searchPill}</span>
+            <span className="font-medium">{pillLabel}</span>
             <HugeiconsIcon
               className="text-muted-foreground"
               icon={ArrowDown01Icon}
               size={10}
               strokeWidth={2}
             />
-          </button>
-        </div>
-        <h1 className="font-serif text-[36px] text-foreground leading-[42px] tracking-tight">
-          {data.headline}
-        </h1>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" sideOffset={6}>
+            <DropdownMenuItem
+              onClick={() => onSelectSearch?.(null)}
+              render={
+                <button
+                  className={cn(
+                    "w-full",
+                    data.selectedSearchId === null && "font-semibold"
+                  )}
+                  type="button"
+                />
+              }
+            >
+              All searches
+            </DropdownMenuItem>
+            {data.searchOptions.length > 0 ? (
+              <DropdownMenuSeparator />
+            ) : null}
+            {data.searchOptions.map((s) => (
+              <DropdownMenuItem
+                key={s.id}
+                onClick={() => onSelectSearch?.(s.id)}
+                render={
+                  <button
+                    className={cn(
+                      "w-full",
+                      data.selectedSearchId === s.id && "font-semibold"
+                    )}
+                    type="button"
+                  />
+                }
+              >
+                {s.name}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              render={
+                <Link
+                  className="block text-muted-foreground"
+                  to="/searches"
+                />
+              }
+            >
+              Manage searches…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div className="flex items-center gap-3.5">
         <div className="flex flex-col items-end gap-0.5">
@@ -211,13 +251,9 @@ function DesktopReviewHeader({
           </div>
           <p className="text-muted-foreground text-xs">
             {data.reviewedToday} reviewed · {data.keptToday} kept ·{" "}
-            {data.skippedToday} skipped · Peareace too
+            {data.skippedToday} skipped
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-2 text-foreground text-xs">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#2E8B57]" />
-          <span className="font-medium">Peareace reviewing too</span>
-        </span>
       </div>
     </header>
   );
@@ -229,53 +265,36 @@ function QueueRail({
   current,
   upcoming,
   remaining,
-  onSelectQueueItem,
 }: {
   current: QueueItem;
   upcoming: QueueItem[];
   remaining: number;
-  onSelectQueueItem?: (clusterId: string) => void;
 }) {
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col gap-3">
-      <div className="flex items-baseline justify-between px-1">
+    <aside className="flex min-h-0 w-[260px] shrink-0 flex-col gap-3">
+      <div className="flex shrink-0 items-baseline justify-between px-1">
         <div className="flex items-center gap-2">
           <Eyebrow>Up next</Eyebrow>
           <span className="text-[11px] text-muted-foreground">
             {remaining} in queue
           </span>
         </div>
-        <span className="flex items-center gap-1 text-primary text-xs">
-          <HugeiconsIcon icon={ArrowUp01Icon} size={11} strokeWidth={2} />
-          <HugeiconsIcon icon={ArrowDown01Icon} size={11} strokeWidth={2} />
-        </span>
       </div>
-      <ul className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
-        <li>
-          <QueueRow
-            isCurrent
-            item={current}
-            onSelect={
-              onSelectQueueItem
-                ? () => onSelectQueueItem(current.id)
-                : undefined
-            }
-          />
-        </li>
-        {upcoming.map((item, i) => (
-          <li
-            className={cn(i < upcoming.length - 1 && "border-bone border-b")}
-            key={item.id}
-          >
-            <QueueRow
-              item={item}
-              onSelect={
-                onSelectQueueItem ? () => onSelectQueueItem(item.id) : undefined
-              }
-            />
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
+        <ul className="flex w-full flex-col overflow-y-auto">
+          <li>
+            <QueueRow isCurrent item={current} />
           </li>
-        ))}
-      </ul>
+          {upcoming.map((item, i) => (
+            <li
+              className={cn(i < upcoming.length - 1 && "border-bone border-b")}
+              key={item.id}
+            >
+              <QueueRow item={item} />
+            </li>
+          ))}
+        </ul>
+      </div>
     </aside>
   );
 }
@@ -283,15 +302,19 @@ function QueueRail({
 function QueueRow({
   item,
   isCurrent = false,
-  onSelect,
 }: {
   item: QueueItem;
   isCurrent?: boolean;
-  onSelect?: () => void;
 }) {
-  const interactive = Boolean(onSelect);
-  const body = (
-    <>
+  return (
+    <Link
+      className={cn(
+        "flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-ground",
+        isCurrent && "bg-ground"
+      )}
+      params={{ clusterId: item.id }}
+      to="/listings/$clusterId"
+    >
       <span
         aria-hidden="true"
         className={cn("h-9 w-1 shrink-0 rounded-sm", isCurrent && "bg-primary")}
@@ -324,21 +347,8 @@ function QueueRow({
         </div>
       </div>
       <QueueRowTrailing item={item} isCurrent={isCurrent} />
-    </>
+    </Link>
   );
-  const className = cn(
-    "flex w-full items-center gap-3 px-3.5 py-2.5 text-left",
-    isCurrent && "bg-ground",
-    interactive && "transition-colors hover:bg-ground"
-  );
-  if (interactive) {
-    return (
-      <button className={className} onClick={onSelect} type="button">
-        {body}
-      </button>
-    );
-  }
-  return <div className={className}>{body}</div>;
 }
 
 function QueueRowTrailing({
@@ -783,7 +793,7 @@ function HeroVerdicts({ verdicts }: { verdicts: VerdictChip[] }) {
           size={12}
           strokeWidth={2}
         />
-        <Eyebrow tone="primary">Floor plan read · Claude</Eyebrow>
+        <Eyebrow tone="primary">Floor plan read</Eyebrow>
       </div>
       <div className="flex flex-wrap gap-2">
         {verdicts.map((v) => (
@@ -955,176 +965,6 @@ function actionIconSize(
   return variant === "primary" ? 26 : 22;
 }
 
-/* ---------------- Context rail (right) ---------------- */
-
-function ContextRail({
-  activity,
-  keptToday,
-  skippedToday,
-  leftToday,
-  totalToday,
-  tip,
-}: {
-  activity: ActivityEntry[];
-  keptToday: number;
-  skippedToday: number;
-  leftToday: number;
-  totalToday: number;
-  tip?: DesktopReviewData["tip"];
-}) {
-  return (
-    <aside className="flex w-[280px] shrink-0 flex-col gap-3.5">
-      <ActivityCard activity={activity} />
-      <DecisionsCard
-        keptToday={keptToday}
-        leftToday={leftToday}
-        skippedToday={skippedToday}
-        totalToday={totalToday}
-      />
-      {tip ? <TipCard tip={tip} /> : null}
-    </aside>
-  );
-}
-
-function ActivityCard({ activity }: { activity: ActivityEntry[] }) {
-  return (
-    <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-4.5 py-4">
-      <div className="flex items-center justify-between">
-        <Eyebrow>Your activity · today</Eyebrow>
-        <span className="text-[11px] text-muted-foreground">
-          {activity.length} {activity.length === 1 ? "swipe" : "swipes"}
-        </span>
-      </div>
-      {activity.length === 0 ? (
-        <p className="text-[12px] text-muted-foreground">
-          No swipes yet today. Get going.
-        </p>
-      ) : null}
-      <ul className="flex flex-col gap-3">
-        {activity.map((entry) => (
-          <li
-            className="flex items-start gap-2.5"
-            key={`${entry.verb}-${entry.target}`}
-          >
-            <span
-              className={cn(
-                "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
-                entry.tone === "primary" ? "bg-primary" : "bg-[#C7A87C]"
-              )}
-            />
-            <div className="flex flex-col gap-0.5">
-              <p className="text-[13px] text-foreground">
-                <span className="font-semibold">{entry.verb}</span>{" "}
-                {entry.target}
-              </p>
-              <p className="text-[11px] text-muted-foreground">{entry.meta}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function DecisionsCard({
-  keptToday,
-  skippedToday,
-  leftToday,
-  totalToday,
-}: {
-  keptToday: number;
-  skippedToday: number;
-  leftToday: number;
-  totalToday: number;
-}) {
-  const reviewed = keptToday + skippedToday;
-  return (
-    <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-4.5 py-4">
-      <div className="flex items-center justify-between">
-        <Eyebrow>Your decisions · today</Eyebrow>
-        <span className="text-[11px] text-muted-foreground">
-          {reviewed} of {totalToday}
-        </span>
-      </div>
-      <div className="flex items-center gap-1">
-        <span
-          className="h-2 rounded-full bg-[#5D7A4A]"
-          style={{ flex: Math.max(keptToday, 0.001) }}
-          title="Kept"
-        />
-        <span
-          className="h-2 rounded-full bg-border"
-          style={{ flex: Math.max(skippedToday, 0.001) }}
-          title="Skipped"
-        />
-        <span
-          className="h-2 rounded-full bg-bone"
-          style={{ flex: Math.max(leftToday, 0.001) }}
-          title="Pending"
-        />
-      </div>
-      <div className="flex items-center justify-between">
-        <DecisionStat
-          color="bg-[#5D7A4A]"
-          label={`${keptToday} kept`}
-          meta="Belsize 2 days ago"
-        />
-        <DecisionStat
-          color="bg-[#C7A87C]"
-          label={`${skippedToday} skipped`}
-          meta="last 1h ago"
-        />
-        <DecisionStat
-          color="bg-border"
-          label={`${leftToday} left`}
-          meta="~14m to clear"
-        />
-      </div>
-    </div>
-  );
-}
-
-function DecisionStat({
-  color,
-  label,
-  meta,
-}: {
-  color: string;
-  label: string;
-  meta: string;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5">
-        <span className={cn("h-1.5 w-1.5 rounded-full", color)} />
-        <span className="font-semibold text-[11px] text-foreground">
-          {label}
-        </span>
-      </div>
-      <span className="text-[10px] text-muted-foreground">{meta}</span>
-    </div>
-  );
-}
-
-function TipCard({ tip }: { tip: NonNullable<DesktopReviewData["tip"]> }) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-xl bg-ground px-3.5 py-3">
-      <HugeiconsIcon
-        className="mt-0.5 shrink-0 text-primary"
-        icon={BulbIcon}
-        size={14}
-        strokeWidth={1.6}
-      />
-      <div className="flex flex-col gap-1">
-        <p className="font-semibold text-[12px] text-foreground">{tip.title}</p>
-        <p className="text-[11px] text-muted-foreground leading-4">
-          {tip.body}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 /* ---------------- Atoms ---------------- */
 
 function Eyebrow({
@@ -1160,13 +1000,12 @@ const PHOTO_BATH =
   "https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=200&q=80";
 
 export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
-  searchPill: "North London · 2-bed",
-  headline: "Belsize Park Mews, NW3",
+  searchOptions: [{ id: "north-london", name: "North London · 2-bed" }],
+  selectedSearchId: null,
   reviewedToday: 5,
   keptToday: 1,
   skippedToday: 4,
   leftToday: 18,
-  totalToday: 23,
   queue: {
     remaining: 22,
     current: {
@@ -1243,29 +1082,5 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
       { label: "Bed 2 fits double, not king", tone: "caution" },
       { label: "Real storage cupboard", tone: "positive" },
     ],
-  },
-  activity: [
-    {
-      verb: "Kept",
-      target: "Camden Lock Mews",
-      meta: "Sent you a Mutual · 2h ago",
-      tone: "primary",
-    },
-    {
-      verb: "Skipped",
-      target: "Maida Vale Conversion",
-      meta: '"No bath." · 3h ago',
-      tone: "muted",
-    },
-    {
-      verb: "Note",
-      target: "on Highgate Studios",
-      meta: '"Floor 3 walk-up is a no." · yest.',
-      tone: "muted",
-    },
-  ],
-  tip: {
-    title: "Tip · Peareace usually keeps cheaper-than-budget",
-    body: "This one's £150 under your £2,600 cap. She might call this a Mutual.",
   },
 };

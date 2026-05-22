@@ -52,6 +52,19 @@ const recordSwipeSchema = z.object({
   outcome: swipeOutcomeSchema,
 });
 
+/**
+ * Shared input shape for the queue read endpoints. `searchId` is
+ * optional — when omitted (or undefined) the endpoint returns the queue
+ * across every active search in the household. The empty-string shape
+ * is treated the same as omitted so callers can blindly pass the URL
+ * search param without having to branch.
+ */
+const queueFilterSchema = z
+  .object({
+    searchId: z.string().trim().min(1).optional(),
+  })
+  .optional();
+
 export type ReviewCardCluster = {
   id: string;
   normalisedAddress: string;
@@ -210,17 +223,28 @@ async function loadRankedQueueClusterIds(
   db: Db,
   householdId: string,
   memberUserIds: string[],
-  currentUserId: string
+  currentUserId: string,
+  /**
+   * When set, restricts the ranked queue to listings belonging to this
+   * one search (it must still be active and owned by the household).
+   * Unknown/foreign ids are treated as "no matches" — we don't fall
+   * back to "all searches" so the UI doesn't silently ignore a stale
+   * URL filter.
+   */
+  filterSearchId?: string
 ): Promise<{
   clusterIds: string[];
   activeSearches: (typeof searches.$inferSelect)[];
 }> {
-  const activeSearches = await db
+  const allActiveSearches = await db
     .select()
     .from(searches)
     .where(
       and(eq(searches.householdId, householdId), eq(searches.active, true))
     );
+  const activeSearches = filterSearchId
+    ? allActiveSearches.filter((s) => s.id === filterSearchId)
+    : allActiveSearches;
   if (activeSearches.length === 0) {
     return { clusterIds: [], activeSearches: [] };
   }
@@ -291,8 +315,9 @@ async function loadRankedQueueClusterIds(
 
 type Db = ReturnType<typeof getDb>;
 
-export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
-  async (): Promise<ReviewCard | null> => {
+export const getNextReviewCard = createServerFn({ method: "GET" })
+  .inputValidator(queueFilterSchema)
+  .handler(async ({ data }): Promise<ReviewCard | null> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdMembers();
     const db = getDb(env as unknown as Env);
@@ -301,7 +326,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" }).handler(
       db,
       householdId,
       memberUserIds,
-      currentUserId
+      currentUserId,
+      data?.searchId
     );
     if (clusterIds.length === 0) {
       return null;
@@ -461,10 +487,9 @@ export type ReviewQueue = {
   remaining: number;
 };
 
-const REVIEW_QUEUE_UPCOMING_LIMIT = 5;
-
-export const getReviewQueue = createServerFn({ method: "GET" }).handler(
-  async (): Promise<ReviewQueue> => {
+export const getReviewQueue = createServerFn({ method: "GET" })
+  .inputValidator(queueFilterSchema)
+  .handler(async ({ data }): Promise<ReviewQueue> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdMembers();
     const db = getDb(env as unknown as Env);
@@ -473,7 +498,8 @@ export const getReviewQueue = createServerFn({ method: "GET" }).handler(
       db,
       householdId,
       memberUserIds,
-      currentUserId
+      currentUserId,
+      data?.searchId
     );
     const remaining = clusterIds.length;
     if (remaining === 0) {
@@ -481,10 +507,9 @@ export const getReviewQueue = createServerFn({ method: "GET" }).handler(
     }
 
     // Position 0 is the card `getNextReviewCard` is showing — skip it.
-    const upcomingClusterIds = clusterIds.slice(
-      1,
-      1 + REVIEW_QUEUE_UPCOMING_LIMIT
-    );
+    // The rail is scrollable, so we hydrate the full tail rather than
+    // capping at a fixed window.
+    const upcomingClusterIds = clusterIds.slice(1);
     if (upcomingClusterIds.length === 0) {
       return { upcoming: [], remaining };
     }
@@ -641,8 +666,9 @@ export type TodayReviewStats = {
   reviewed: number;
 };
 
-export const getTodayReviewStats = createServerFn({ method: "GET" }).handler(
-  async (): Promise<TodayReviewStats> => {
+export const getTodayReviewStats = createServerFn({ method: "GET" })
+  .inputValidator(queueFilterSchema)
+  .handler(async ({ data }): Promise<TodayReviewStats> => {
     const session = await getCurrentUser();
     if (!session) {
       throw new Error("unauthorized");
@@ -654,6 +680,7 @@ export const getTodayReviewStats = createServerFn({ method: "GET" }).handler(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
     );
 
+    const filterSearchId = data?.searchId;
     const rows = await db
       .select({
         outcome: swipes.outcome,
@@ -663,7 +690,8 @@ export const getTodayReviewStats = createServerFn({ method: "GET" }).handler(
       .where(
         and(
           eq(swipes.userId, session.userId),
-          sql`${swipes.createdAt} >= ${startOfTodayUtc}`
+          sql`${swipes.createdAt} >= ${startOfTodayUtc}`,
+          filterSearchId ? eq(swipes.searchId, filterSearchId) : undefined
         )
       )
       .groupBy(swipes.outcome);
