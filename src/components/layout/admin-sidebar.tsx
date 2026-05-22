@@ -88,7 +88,10 @@ export function AdminSidebar({ children, mode = "responsive" }: Props) {
        * grows past the fold. Children that need to scroll handle it
        * with their own `overflow-y-auto` on an internal flex-1 child. */}
       <SidebarProvider className="h-svh min-h-0 overflow-hidden">
-        <Sidebar collapsible="icon">
+        <Sidebar
+          className="group-data-[side=left]:border-r-0 group-data-[side=right]:border-l-0"
+          collapsible="icon"
+        >
           <Brand />
           <SidebarContent>
             <NavSection label="House" links={HOUSE_LINKS} />
