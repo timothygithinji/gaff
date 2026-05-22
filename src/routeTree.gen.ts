@@ -13,11 +13,16 @@ import { Route as ShortlistRouteImport } from './routes/shortlist'
 import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
 import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as ListingsClusterIdRouteImport } from './routes/listings/$clusterId'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
+import { Route as AdminSpendRouteImport } from './routes/admin/spend'
+import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
+import { Route as AdminSchedulesRouteImport } from './routes/admin/schedules'
+import { Route as AdminRunsRouteImport } from './routes/admin/runs'
 
 const ShortlistRoute = ShortlistRouteImport.update({
   id: '/shortlist',
@@ -37,6 +42,11 @@ const IndexRoute = IndexRouteImport.update({
 const SearchesIndexRoute = SearchesIndexRouteImport.update({
   id: '/searches/',
   path: '/searches/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsHouseholdRoute = SettingsHouseholdRouteImport.update({
@@ -64,27 +74,57 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminSpendRoute = AdminSpendRouteImport.update({
+  id: '/admin/spend',
+  path: '/admin/spend',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/admin/settings',
+  path: '/admin/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSchedulesRoute = AdminSchedulesRouteImport.update({
+  id: '/admin/schedules',
+  path: '/admin/schedules',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRunsRoute = AdminRunsRouteImport.update({
+  id: '/admin/runs',
+  path: '/admin/runs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
+  '/admin/runs': typeof AdminRunsRoute
+  '/admin/schedules': typeof AdminSchedulesRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
+  '/admin/': typeof AdminIndexRoute
   '/searches/': typeof SearchesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
+  '/admin/runs': typeof AdminRunsRoute
+  '/admin/schedules': typeof AdminSchedulesRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
+  '/admin': typeof AdminIndexRoute
   '/searches': typeof SearchesIndexRoute
 }
 export interface FileRoutesById {
@@ -92,11 +132,16 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
+  '/admin/runs': typeof AdminRunsRoute
+  '/admin/schedules': typeof AdminSchedulesRoute
+  '/admin/settings': typeof AdminSettingsRoute
+  '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
+  '/admin/': typeof AdminIndexRoute
   '/searches/': typeof SearchesIndexRoute
 }
 export interface FileRouteTypes {
@@ -105,33 +150,48 @@ export interface FileRouteTypes {
     | '/'
     | '/matches'
     | '/shortlist'
+    | '/admin/runs'
+    | '/admin/schedules'
+    | '/admin/settings'
+    | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
+    | '/admin/'
     | '/searches/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/matches'
     | '/shortlist'
+    | '/admin/runs'
+    | '/admin/schedules'
+    | '/admin/settings'
+    | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
+    | '/admin'
     | '/searches'
   id:
     | '__root__'
     | '/'
     | '/matches'
     | '/shortlist'
+    | '/admin/runs'
+    | '/admin/schedules'
+    | '/admin/settings'
+    | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
+    | '/admin/'
     | '/searches/'
   fileRoutesById: FileRoutesById
 }
@@ -139,11 +199,16 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MatchesRoute: typeof MatchesRoute
   ShortlistRoute: typeof ShortlistRoute
+  AdminRunsRoute: typeof AdminRunsRoute
+  AdminSchedulesRoute: typeof AdminSchedulesRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminSpendRoute: typeof AdminSpendRoute
   InviteTokenRoute: typeof InviteTokenRoute
   ListingsClusterIdRoute: typeof ListingsClusterIdRoute
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   SearchesIndexRoute: typeof SearchesIndexRoute
 }
 
@@ -175,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/searches'
       fullPath: '/searches/'
       preLoaderRoute: typeof SearchesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/household': {
@@ -212,6 +284,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/spend': {
+      id: '/admin/spend'
+      path: '/admin/spend'
+      fullPath: '/admin/spend'
+      preLoaderRoute: typeof AdminSpendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/schedules': {
+      id: '/admin/schedules'
+      path: '/admin/schedules'
+      fullPath: '/admin/schedules'
+      preLoaderRoute: typeof AdminSchedulesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/runs': {
+      id: '/admin/runs'
+      path: '/admin/runs'
+      fullPath: '/admin/runs'
+      preLoaderRoute: typeof AdminRunsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -219,11 +319,16 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MatchesRoute: MatchesRoute,
   ShortlistRoute: ShortlistRoute,
+  AdminRunsRoute: AdminRunsRoute,
+  AdminSchedulesRoute: AdminSchedulesRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
+  AdminSpendRoute: AdminSpendRoute,
   InviteTokenRoute: InviteTokenRoute,
   ListingsClusterIdRoute: ListingsClusterIdRoute,
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
+  AdminIndexRoute: AdminIndexRoute,
   SearchesIndexRoute: SearchesIndexRoute,
 }
 export const routeTree = rootRouteImport
