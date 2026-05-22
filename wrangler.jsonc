@@ -1,5 +1,12 @@
 {
   // Worker entry for gaff.
+  //
+  // `main` points at TanStack Start's default server entry — when the
+  // `tanstackStart()` Vite plugin sees `src/server.ts`, it aliases the
+  // SSR bundle to use ours instead of the default. The Cloudflare Vite
+  // plugin (`viteEnvironment: { name: "ssr" }`) glues the resulting
+  // bundle to workerd locally and emits a Worker artifact for deploy.
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gaff",
   "main": "src/server.ts",
   "compatibility_date": "2024-11-01",
