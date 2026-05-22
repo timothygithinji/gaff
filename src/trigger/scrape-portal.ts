@@ -42,6 +42,7 @@ import {
   zooplaSearchUrl,
 } from "../lib/portal-urls";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
+import { clusterTask } from "./cluster";
 import { scrapeQueue } from "./queues";
 
 export type ScrapePortalPayload = {
@@ -184,15 +185,26 @@ async function upsertOneListing(
  * Upsert one outcode's worth of listings. Returns the count of rows that
  * were INSERTed (not updated) so the caller can populate
  * `scrape_runs.new_listings`.
+ *
+ * Also returns the set of (search, portal, portalListingId) tuples that
+ * existed before this upsert, so the caller can re-query the listings
+ * rows for the upsert-touched portal IDs and pick up `listings.id` +
+ * `cluster_id` in one pass. We need the IDs (not just counts) to fan out
+ * to the clustering task downstream.
  */
 async function upsertListings(
   db: ReturnType<typeof getDb>,
   searchId: string,
   portal: Portal,
   summaries: ListingSummary[]
-): Promise<{ totalSeen: number; newCount: number }> {
+): Promise<{
+  totalSeen: number;
+  newCount: number;
+  /** All portal listing IDs from this batch — used by the caller to fetch ids/clusterIds. */
+  touchedPortalListingIds: string[];
+}> {
   if (summaries.length === 0) {
-    return { totalSeen: 0, newCount: 0 };
+    return { totalSeen: 0, newCount: 0, touchedPortalListingIds: [] };
   }
 
   // Find which (search, portal, portalListingId) tuples already exist —
@@ -211,7 +223,50 @@ async function upsertListings(
     }
     await upsertOneListing(db, searchId, portal, summary);
   }
-  return { totalSeen: summaries.length, newCount };
+  return {
+    totalSeen: summaries.length,
+    newCount,
+    touchedPortalListingIds: summaries.map((s) => s.portalListingId),
+  };
+}
+
+/**
+ * Pull the `listings.id` values for every (search, portal, portalListingId)
+ * that this run upserted whose `cluster_id` is still NULL. These are the
+ * listings the clustering task needs to process — either freshly inserted
+ * by this run, or rows from a previous run that for whatever reason never
+ * got clustered (failed cluster task, normalisation rule changed, etc.).
+ *
+ * We deliberately scope the search-id filter as well: a single physical
+ * listing can appear under two searches and each gets its own
+ * `listings.id`. Both need clustering, and both should fan out
+ * independently — they don't share cluster_id rows automatically, only
+ * after `findOrCreateCluster` resolves them to the same `property_clusters`
+ * row by normalised address.
+ */
+async function loadListingIdsToCluster(
+  db: ReturnType<typeof getDb>,
+  searchId: string,
+  portal: Portal,
+  portalListingIds: string[]
+): Promise<string[]> {
+  if (portalListingIds.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({
+      id: schema.listings.id,
+      clusterId: schema.listings.clusterId,
+    })
+    .from(schema.listings)
+    .where(
+      and(
+        eq(schema.listings.searchId, searchId),
+        eq(schema.listings.portal, portal),
+        inArray(schema.listings.portalListingId, portalListingIds)
+      )
+    );
+  return rows.filter((r) => r.clusterId == null).map((r) => r.id);
 }
 
 export const scrapePortalTask = task({
@@ -296,6 +351,10 @@ export const scrapePortalTask = task({
     let totalCost = 0;
     let totalListingsFound = 0;
     let totalNew = 0;
+    // Accumulate every portal listing id this run touched, across all
+    // outcodes. After the per-outcode loop we resolve these to
+    // `listings.id` values for fanout into the cluster task.
+    const allTouchedPortalListingIds: string[] = [];
 
     // Per-portal cost fallback when Zyte's response header is missing.
     const portalCostFallback = PORTAL_COST_USD[portal];
@@ -325,20 +384,46 @@ export const scrapePortalTask = task({
       totalCost += res.cost ?? portalCostFallback;
 
       const summaries = parsePortalHtml(portal, res.html);
-      const { totalSeen, newCount } = await upsertListings(
-        db,
-        searchId,
-        portal,
-        summaries
-      );
+      const { totalSeen, newCount, touchedPortalListingIds } =
+        await upsertListings(db, searchId, portal, summaries);
       totalListingsFound += totalSeen;
       totalNew += newCount;
+      allTouchedPortalListingIds.push(...touchedPortalListingIds);
 
       logger.log("scrape-portal: outcode done", {
         portal,
         outcode,
         listingsFound: totalSeen,
         newCount,
+      });
+    }
+
+    // Resolve the touched portal ids to `listings.id` for rows whose
+    // cluster is still NULL, then fan out to the cluster task. This
+    // catches both:
+    //
+    //   • freshly INSERTed rows (always clusterId IS NULL),
+    //   • old rows the previous cluster task missed.
+    //
+    // `batchTrigger` (NOT `batchTriggerAndWait`): clustering is downstream
+    // work that doesn't need to gate this task's success. If we waited
+    // here, a single search with 50 new listings across 3 portals would
+    // pin scrape-portal alive for tens of seconds. Trigger's tracing
+    // links the runs anyway.
+    const listingIdsToCluster = await loadListingIdsToCluster(
+      db,
+      searchId,
+      portal,
+      allTouchedPortalListingIds
+    );
+    if (listingIdsToCluster.length > 0) {
+      await clusterTask.batchTrigger([
+        { payload: { listingIds: listingIdsToCluster } },
+      ]);
+      logger.log("scrape-portal: dispatched cluster task", {
+        portal,
+        searchId,
+        clusterListingCount: listingIdsToCluster.length,
       });
     }
 

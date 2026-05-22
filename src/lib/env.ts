@@ -69,6 +69,27 @@ const envSchema = z.object({
   // Trigger.dev
   TRIGGER_SECRET_KEY: z.string().min(1),
 
+  // R2 (Cloudflare object storage) — OPTIONAL.
+  //
+  // The Worker runtime never reads these — it talks to R2 through its
+  // `BUCKET` binding (see src/server.ts). They exist only for code paths
+  // running *outside* workerd that need to write to R2 over the
+  // S3-compatible HTTP API — currently `src/trigger/cache-photos.ts` on
+  // Trigger.dev's serverless workers, which don't get Worker bindings.
+  //
+  // Left optional on purpose: until they're populated in Doppler the
+  // cache-photos task short-circuits (photos stay un-cached and the UI
+  // falls back to the original portal URL). Marking them required would
+  // break unrelated Trigger tasks the moment env() runs on a worker
+  // that doesn't have credentials staged yet.
+  R2_ACCOUNT_ID: z.string().min(1).optional(),
+  R2_ACCESS_KEY_ID: z.string().min(1).optional(),
+  R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  // The R2 bucket name. Defaults to "gaff-photos" but stays overridable
+  // so per-branch testing can point at a different bucket without code
+  // changes.
+  R2_BUCKET: z.string().min(1).optional(),
+
   // Optional / inferred
   NODE_ENV: z
     .enum(["development", "production", "test"])
