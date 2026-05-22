@@ -2,13 +2,30 @@
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
   "extends": ["ultracite"],
   "files": {
-    "ignore": ["dist", "node_modules", "coverage", ".wrangler"]
+    "ignore": [
+      "dist",
+      "node_modules",
+      "coverage",
+      ".wrangler",
+      "src/routeTree.gen.ts"
+    ]
   },
   "javascript": {
     "formatter": {
       "quoteStyle": "double",
       "semicolons": "always"
-    }
+    },
+    "globals": [
+      "KVNamespace",
+      "R2Bucket",
+      "DurableObject",
+      "DurableObjectNamespace",
+      "ExportedHandler",
+      "ExecutionContext",
+      "Fetcher",
+      "Queue",
+      "AnalyticsEngineDataset"
+    ]
   },
   "overrides": [
     {

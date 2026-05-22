@@ -3,3 +3,12 @@
 #   doppler secrets download --no-file --format=env --project=gaff --config=dev > .dev.vars
 DATABASE_URL=
 TRIGGER_SECRET_KEY=
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=
+
+# Cloudflare Access bridge — required by the Better Auth cloudflareAccess
+# plugin. The Access app's AUD tag is a 64-char hex; the team domain is your
+# full Access dashboard URL (no trailing slash), e.g.
+#   https://timothygithinji.cloudflareaccess.com
+CLOUDFLARE_ACCESS_AUD=
+CLOUDFLARE_ACCESS_TEAM_DOMAIN=

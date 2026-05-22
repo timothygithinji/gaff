@@ -18,23 +18,33 @@
     "trigger:dev": "trigger dev"
   },
   "dependencies": {
-    "@tanstack/react-router": "^1.87.0",
-    "@tanstack/start": "^1.87.0",
-    "drizzle-orm": "^0.36.4",
-    "hono": "^4.6.12",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "@cloudflare/vite-plugin": "^1.37.3",
     "@neondatabase/serverless": "^0.10.4",
-    "@trigger.dev/sdk": "^3.3.10"
+    "@tanstack/react-router": "^1.87.0",
+    "@tanstack/react-start": "^1.168.10",
+    "@tanstack/start": "^1.87.0",
+    "@trigger.dev/sdk": "^4.4.6",
+    "@vitejs/plugin-react": "^5.1.4",
+    "better-auth": "^1.6.11",
+    "drizzle-orm": "^0.36.4",
+    "flatted": "^3.4.2",
+    "hono": "^4.6.12",
+    "jose": "^6.2.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
     "drizzle-kit": "^0.28.1",
+    "node-html-parser": "^7.1.0",
+    "trigger.dev": "^4.4.6",
     "typescript": "^5.7.2",
     "ultracite": "^4.1.15",
-    "vite": "^6.0.3",
+    "vite": "^7.0.0",
     "vitest": "^2.1.8",
-    "wrangler": "^3.91.0"
+    "wrangler": "^4.93.0"
   }
 }

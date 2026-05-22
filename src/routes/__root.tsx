@@ -1,21 +1,39 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import {
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRoute,
+} from "@tanstack/react-router";
+import type { ReactNode } from "react";
 
 export const Route = createRootRoute({
+  head: () => ({
+    meta: [
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "gaff" },
+    ],
+  }),
   component: RootComponent,
 });
 
 function RootComponent() {
   return (
+    <RootDocument>
+      <Outlet />
+    </RootDocument>
+  );
+}
+
+function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+  return (
     <html lang="en">
       <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>gaff</title>
+        <HeadContent />
       </head>
       <body>
-        <div id="root">
-          <Outlet />
-        </div>
+        {children}
+        <Scripts />
       </body>
     </html>
   );
