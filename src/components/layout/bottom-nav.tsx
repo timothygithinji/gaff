@@ -12,6 +12,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useHousehold } from "../../lib/household-context";
+import { queryKeys } from "../../lib/query-keys";
 import { unreadMatchCount } from "../../server/functions/shortlist";
 
 type Tab = {
@@ -41,7 +42,7 @@ const MATCHES_TAB: Tab = {
 };
 
 const unreadMatchesQueryOptions = {
-  queryKey: ["matches", "unread"] as const,
+  queryKey: queryKeys.matchesUnread(),
   queryFn: () => unreadMatchCount(),
   staleTime: 30_000,
 };

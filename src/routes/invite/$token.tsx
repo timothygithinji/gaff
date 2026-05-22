@@ -7,7 +7,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { householdQueryOptions } from "../../lib/household-context";
+import { queryKeys } from "../../lib/query-keys";
 import { acceptInvite } from "../../server/functions/household";
 
 export const Route = createFileRoute("/invite/$token")({
@@ -21,13 +21,32 @@ function InvitePage() {
 
   const accept = useMutation({
     mutationFn: () => acceptInvite({ data: { token } }),
+    // Optimistic UX: the page already renders "Joining household…" so
+    // the visual side is implicit. We snapshot any existing cached
+    // household payload before we wipe it; on error the screen flips to
+    // the error message and we restore the previous cache so a parent
+    // route doesn't blank out behind the modal-style invite screen.
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.household() });
+      const prev = queryClient.getQueryData(queryKeys.household());
+      // Wipe the cache so the next read after acceptInvite resolves
+      // pulls the freshly-joined membership rather than the stale one.
+      queryClient.setQueryData(queryKeys.household(), undefined);
+      return { prev };
+    },
     onSuccess: async () => {
-      // Drop any cached household payload before navigating so the
-      // app immediately picks up the newly-joined household.
       await queryClient.invalidateQueries({
-        queryKey: householdQueryOptions.queryKey,
+        queryKey: queryKeys.household(),
       });
       navigate({ to: "/" });
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        queryClient.setQueryData(queryKeys.household(), ctx.prev);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.household() });
     },
   });
 

@@ -2,17 +2,23 @@
  * The shared Search create / edit form.
  *
  * `/searches/new` and `/searches/$id` both mount this with different
- * `mode` + `initial` props. State lives in React Hook Form so the cost
- * estimate, CTA disabled-ness, etc. all stay in sync via `watch()` —
- * Zod validation runs on submit (the server function will re-validate
+ * `mode` + `initial` props. State now lives in TanStack Form — the cost
+ * estimate, CTA disabled-ness, etc. stay reactive via `form.useStore`
+ * (no `form.watch()` indirection); per-field Zod validators provide the
+ * client-side guard rails (the server function will re-validate
  * authoritatively).
  *
  * The layout mirrors the "Search create" Paper artboard:
  * eyebrow + tap-to-edit headline → Postcodes (INCLUDE + EXCLUDE chips)
  * → Price slider + Bed/Bath pills → AI floor plan rules
  * → Commute target → Portals → Re-scrape cadence → sticky CTA footer.
+ *
+ * Sub-components remain plain controlled inputs that take `value` +
+ * `onChange` — `form.Field` adapts cleanly to that shape so we don't
+ * need a `Controller` indirection on the way down.
  */
-import { useForm } from "react-hook-form";
+import { useForm, useStore } from "@tanstack/react-form";
+import { z } from "zod";
 import {
   type Portal,
   estimateCost,
@@ -77,6 +83,23 @@ export function bathOptionFor(id: string): BathOption {
   return BATH_OPTIONS.find((b) => b.id === id) ?? DEFAULT_BATH;
 }
 
+// -----------------------------------------------------------------------------
+// Per-field Zod validators
+// -----------------------------------------------------------------------------
+//
+// The server function re-validates with its own schema (see
+// `src/server/functions/searches.ts`) so these are client-side guard
+// rails only. They surface inline errors / disable the CTA while the
+// user is still inside the form.
+
+const nameSchema = z.string().trim().min(1, "Give the search a name");
+const outcodesIncludeSchema = z
+  .array(z.string())
+  .min(1, "Pick at least one outcode");
+const portalsSchema = z
+  .array(z.enum(["rightmove", "zoopla", "openrent"]))
+  .min(1, "Pick at least one portal");
+
 type Props = {
   mode: "create" | "edit";
   initial?: Partial<SearchFormValues>;
@@ -94,49 +117,50 @@ export function SearchForm({
   onReset,
   onSubmit,
 }: Props) {
-  const defaults = { ...DEFAULT_FORM_VALUES, ...initial };
-  const form = useForm<SearchFormValues>({ defaultValues: defaults });
-  const watched = form.watch();
+  const defaults: SearchFormValues = { ...DEFAULT_FORM_VALUES, ...initial };
+  const form = useForm({
+    defaultValues: defaults,
+    onSubmit: ({ value }) => {
+      onSubmit(value);
+    },
+  });
 
-  const setField = <K extends keyof SearchFormValues>(
-    key: K,
-    value: SearchFormValues[K]
-  ) => {
-    // `form.setValue` has a deeply generic path type. We've already
-    // constrained `key` to top-level keys via `K extends keyof
-    // SearchFormValues`, so the cast collapses the path inference noise
-    // without losing type safety at the call site.
-    form.setValue(key as Parameters<typeof form.setValue>[0], value as never, {
-      shouldDirty: true,
-    });
-  };
+  // Live-derived values via TanStack Form's `useStore`. Each selector
+  // returns a primitive (or stable reference) so React's bailouts kick
+  // in when unrelated parts of the form change.
+  const outcodesInclude = useStore(form.store, (s) => s.values.outcodesInclude);
+  const portals = useStore(form.store, (s) => s.values.portals);
+  const cadenceId = useStore(form.store, (s) => s.values.cadenceId);
+  const minPrice = useStore(form.store, (s) => s.values.minPrice);
+  const maxPrice = useStore(form.store, (s) => s.values.maxPrice);
+  const name = useStore(form.store, (s) => s.values.name);
 
-  const cadence = findCadenceById(watched.cadenceId);
+  const cadence = findCadenceById(cadenceId);
   const cost = estimateCost({
-    outcodeCount: watched.outcodesInclude.length,
-    portals: watched.portals,
+    outcodeCount: outcodesInclude.length,
+    portals,
     scrapesPerDay: cadence.scrapesPerDay,
   });
   const listingsPerWeek = estimateListingsPerWeek({
-    outcodeCount: watched.outcodesInclude.length,
-    portals: watched.portals,
+    outcodeCount: outcodesInclude.length,
+    portals,
   });
 
   const canSubmit =
-    watched.outcodesInclude.length > 0 &&
-    watched.portals.length > 0 &&
-    watched.name.trim().length > 0 &&
-    watched.minPrice <= watched.maxPrice;
-
-  const handleSubmit = () => {
-    if (!canSubmit) {
-      return;
-    }
-    onSubmit(form.getValues());
-  };
+    outcodesInclude.length > 0 &&
+    portals.length > 0 &&
+    name.trim().length > 0 &&
+    minPrice <= maxPrice;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-ground">
+    <form
+      className="mx-auto flex min-h-screen max-w-md flex-col bg-ground"
+      onSubmit={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        form.handleSubmit();
+      }}
+    >
       {/* Header — close + title + reset */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-brass/15 border-b bg-paper px-4 py-3">
         <button
@@ -168,12 +192,18 @@ export function SearchForm({
           <p className="text-[11px] text-brass uppercase tracking-[0.16em]">
             WHAT WE'RE LOOKING FOR
           </p>
-          <input
-            className="-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-4xl text-ink leading-[1.05] outline-none placeholder:text-brass/50 focus:bg-bone/60"
-            onChange={(e) => setField("name", e.target.value)}
-            placeholder="A flat in North London"
-            value={watched.name}
-          />
+          <form.Field name="name" validators={{ onChange: nameSchema }}>
+            {(field) => (
+              <input
+                className="-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-4xl text-ink leading-[1.05] outline-none placeholder:text-brass/50 focus:bg-bone/60"
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder="A flat in North London"
+                type="text"
+                value={field.state.value}
+              />
+            )}
+          </form.Field>
           <p className="mt-2 text-brass text-xs italic">tap to rename</p>
         </section>
 
@@ -194,53 +224,80 @@ export function SearchForm({
           <p className="-mt-3 text-brass text-sm">
             Include what you want, kill what you don't.
           </p>
-          <OutcodeChips
-            countLabel={
-              watched.outcodesInclude.length > 0
-                ? `${watched.outcodesInclude.length} ${watched.outcodesInclude.length === 1 ? "AREA" : "AREAS"}`
-                : undefined
-            }
-            onChange={(next) => setField("outcodesInclude", next)}
-            values={watched.outcodesInclude}
-            variant="include"
-          />
-          <OutcodeChips
-            countLabel={
-              watched.outcodesExclude.length > 0
-                ? `${watched.outcodesExclude.length} ${watched.outcodesExclude.length === 1 ? "AREA" : "AREAS"}`
-                : undefined
-            }
-            onChange={(next) => setField("outcodesExclude", next)}
-            values={watched.outcodesExclude}
-            variant="exclude"
-          />
+          <form.Field
+            name="outcodesInclude"
+            validators={{ onChange: outcodesIncludeSchema }}
+          >
+            {(field) => (
+              <OutcodeChips
+                countLabel={
+                  field.state.value.length > 0
+                    ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
+                    : undefined
+                }
+                onChange={(next) => field.handleChange(next)}
+                values={field.state.value}
+                variant="include"
+              />
+            )}
+          </form.Field>
+          <form.Field name="outcodesExclude">
+            {(field) => (
+              <OutcodeChips
+                countLabel={
+                  field.state.value.length > 0
+                    ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
+                    : undefined
+                }
+                onChange={(next) => field.handleChange(next)}
+                values={field.state.value}
+                variant="exclude"
+              />
+            )}
+          </form.Field>
         </section>
 
         {/* Price + size */}
         <section className="space-y-3">
           <h2 className="font-serif text-2xl text-ink">Price & size</h2>
-          <PriceSlider
-            max={5000}
-            min={1000}
-            onChange={([lo, hi]) => {
-              setField("minPrice", lo);
-              setField("maxPrice", hi);
-            }}
-            value={[watched.minPrice, watched.maxPrice]}
-          />
+          <form.Field name="minPrice">
+            {(minField) => (
+              <form.Field name="maxPrice">
+                {(maxField) => (
+                  <PriceSlider
+                    max={5000}
+                    min={1000}
+                    onChange={([lo, hi]) => {
+                      minField.handleChange(lo);
+                      maxField.handleChange(hi);
+                    }}
+                    value={[minField.state.value, maxField.state.value]}
+                  />
+                )}
+              </form.Field>
+            )}
+          </form.Field>
           <div className="flex gap-3">
-            <PillGroup
-              onChange={(id) => setField("bedsId", id)}
-              options={BED_OPTIONS}
-              selectedId={watched.bedsId}
-              title="BEDS"
-            />
-            <PillGroup
-              onChange={(id) => setField("bathsId", id)}
-              options={BATH_OPTIONS}
-              selectedId={watched.bathsId}
-              title="BATHS"
-            />
+            <form.Field name="bedsId">
+              {(field) => (
+                <PillGroup
+                  onChange={(id) => field.handleChange(id)}
+                  options={BED_OPTIONS}
+                  selectedId={field.state.value}
+                  title="BEDS"
+                />
+              )}
+            </form.Field>
+            <form.Field name="bathsId">
+              {(field) => (
+                <PillGroup
+                  onChange={(id) => field.handleChange(id)}
+                  options={BATH_OPTIONS}
+                  selectedId={field.state.value}
+                  title="BATHS"
+                />
+              )}
+            </form.Field>
           </div>
         </section>
 
@@ -253,47 +310,63 @@ export function SearchForm({
           <p className="text-brass text-sm">
             Claude reads every floor plan against these.
           </p>
-          <AiRulesEditor
-            onChange={(next) => setField("aiRules", next)}
-            rules={watched.aiRules}
-          />
+          <form.Field name="aiRules">
+            {(field) => (
+              <AiRulesEditor
+                onChange={(next) => field.handleChange(next)}
+                rules={field.state.value}
+              />
+            )}
+          </form.Field>
         </section>
 
         {/* Commute */}
         <section className="space-y-3">
           <h2 className="font-serif text-2xl text-ink">Commute to</h2>
-          <CommuteTargetRow
-            onChange={(next) => setField("commute", next)}
-            value={watched.commute}
-          />
+          <form.Field name="commute">
+            {(field) => (
+              <CommuteTargetRow
+                onChange={(next) => field.handleChange(next)}
+                value={field.state.value}
+              />
+            )}
+          </form.Field>
         </section>
 
         {/* Portals */}
         <section className="space-y-3">
           <h2 className="font-serif text-2xl text-ink">Portals to watch</h2>
-          <PortalToggles
-            onChange={(next) => setField("portals", next)}
-            selected={watched.portals}
-          />
+          <form.Field name="portals" validators={{ onChange: portalsSchema }}>
+            {(field) => (
+              <PortalToggles
+                onChange={(next) => field.handleChange(next)}
+                selected={field.state.value}
+              />
+            )}
+          </form.Field>
         </section>
 
         {/* Cadence */}
         <section className="space-y-3">
-          <CadencePicker
-            onChange={(id) => setField("cadenceId", id)}
-            perDayUsd={cost.perDayUsd}
-            selectedId={watched.cadenceId}
-          />
+          <form.Field name="cadenceId">
+            {(field) => (
+              <CadencePicker
+                onChange={(id) => field.handleChange(id)}
+                perDayUsd={cost.perDayUsd}
+                selectedId={field.state.value}
+              />
+            )}
+          </form.Field>
         </section>
       </div>
 
       <CostEstimate
         ctaLabel={mode === "create" ? "Start watching" : "Save changes"}
-        disabled={!canSubmit}
+        disabled={!canSubmit || Boolean(pending)}
         listingsPerWeek={listingsPerWeek}
-        onSubmit={handleSubmit}
+        onSubmit={() => form.handleSubmit()}
         pending={pending}
       />
-    </div>
+    </form>
   );
 }

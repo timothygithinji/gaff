@@ -19,7 +19,12 @@ import {
   householdQueryOptions,
   useHousehold,
 } from "../../lib/household-context";
-import { createInvite, removeMember } from "../../server/functions/household";
+import { queryKeys } from "../../lib/query-keys";
+import {
+  type HouseholdPayload,
+  createInvite,
+  removeMember,
+} from "../../server/functions/household";
 
 export const Route = createFileRoute("/settings/household")({
   loader: ({ context }) =>
@@ -155,12 +160,37 @@ function RemoveMemberButton({
   name: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const qc = useQueryClient();
   const remove = useMutation({
     mutationFn: () => removeMember({ data: { memberId } }),
+    // Optimistic: drop the member from the cached household payload so
+    // the list re-paints immediately. The server still authorises
+    // ownership and burns the row — on error we roll back and show a
+    // banner above the dialog footer.
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.household() });
+      const prev = qc.getQueryData<HouseholdPayload>(queryKeys.household());
+      if (prev) {
+        qc.setQueryData<HouseholdPayload>(queryKeys.household(), {
+          ...prev,
+          members: prev.members.filter((m) => m.id !== memberId),
+        });
+      }
+      return { prev };
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: householdQueryOptions.queryKey });
+      setError(null);
       setOpen(false);
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(queryKeys.household(), ctx.prev);
+      }
+      setError(e.message ?? "Couldn't remove member");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.household() });
     },
   });
 
@@ -184,6 +214,9 @@ function RemoveMemberButton({
             Their swipe history stays; they just won't appear in mutual matches
             any more.
           </Dialog.Description>
+          {error ? (
+            <p className="mt-3 text-[#B05A38] text-sm">{error}</p>
+          ) : null}
           <div className="mt-4 flex justify-end gap-2">
             <Dialog.Close asChild>
               <button

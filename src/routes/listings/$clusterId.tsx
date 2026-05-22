@@ -34,6 +34,7 @@ import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
 import { WhereItSits } from "../../components/listing-detail/where-it-sits";
 import { useHousehold } from "../../lib/household-context";
+import { queryKeys } from "../../lib/query-keys";
 import {
   type ListingDetailPayload,
   getListingDetail,
@@ -42,7 +43,7 @@ import { recordSwipe } from "../../server/functions/review";
 
 const listingDetailQueryOptions = (clusterId: string) =>
   ({
-    queryKey: ["listing-detail", clusterId] as const,
+    queryKey: queryKeys.listingDetail(clusterId),
     queryFn: () => getListingDetail({ data: { clusterId } }),
     // Swipes from other household members can change `partnerSwipes`
     // without a navigation; re-validate on focus.
@@ -147,8 +148,8 @@ function ListingDetailPage() {
       qc.invalidateQueries({ queryKey: queryOpts.queryKey });
       // Also invalidate the review queue + shortlist queries; this
       // listing now has a different presence in those feeds.
-      qc.invalidateQueries({ queryKey: ["review", "next"] });
-      qc.invalidateQueries({ queryKey: ["shortlist"] });
+      qc.invalidateQueries({ queryKey: queryKeys.reviewNext() });
+      qc.invalidateQueries({ queryKey: queryKeys.shortlist() });
     },
   });
 

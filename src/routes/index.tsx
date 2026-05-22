@@ -28,6 +28,7 @@ import { ActionButtons } from "../components/review/action-buttons";
 import { ReviewCardView } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
+import { queryKeys } from "../lib/query-keys";
 import {
   type ReviewCard,
   getNextReviewCard,
@@ -37,7 +38,7 @@ import {
 import { readAiRules } from "../server/functions/searches";
 
 const reviewCardQueryOptions = {
-  queryKey: ["review", "next"] as const,
+  queryKey: queryKeys.reviewNext(),
   queryFn: () => getNextReviewCard(),
   // Always re-fetch on focus — a household member swiping on another
   // device can change what's at the top of our queue.
