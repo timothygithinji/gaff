@@ -7,7 +7,9 @@
       "node_modules",
       "coverage",
       ".wrangler",
-      "src/routeTree.gen.ts"
+      "src/routeTree.gen.ts",
+      "src/lib/api-clients/epc/generated",
+      "src/lib/api-clients/postcodes-io/generated"
     ]
   },
   "javascript": {

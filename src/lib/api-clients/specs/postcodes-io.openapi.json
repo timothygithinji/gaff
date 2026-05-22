@@ -1,0 +1,290 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "postcodes.io",
+    "version": "1.0.0",
+    "description": "Hand-written OpenAPI spec covering the subset of postcodes.io endpoints Gaff uses. Source: https://postcodes.io/docs and live responses captured from https://api.postcodes.io."
+  },
+  "servers": [
+    {
+      "url": "https://api.postcodes.io"
+    }
+  ],
+  "paths": {
+    "/postcodes/{postcode}": {
+      "get": {
+        "operationId": "lookupPostcode",
+        "summary": "Lookup a single UK postcode",
+        "tags": ["postcodes"],
+        "parameters": [
+          {
+            "name": "postcode",
+            "in": "path",
+            "required": true,
+            "description": "UK postcode (case- and whitespace-insensitive, e.g. 'SW1A1AA' or 'SW1A 1AA').",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Postcode found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PostcodeResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Postcode not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/postcodes": {
+      "post": {
+        "operationId": "bulkLookupPostcodes",
+        "summary": "Bulk lookup postcodes",
+        "tags": ["postcodes"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["postcodes"],
+                "properties": {
+                  "postcodes": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "maxItems": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk lookup results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPostcodeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outcodes/{outcode}": {
+      "get": {
+        "operationId": "lookupOutcode",
+        "summary": "Lookup an outcode (the part of a postcode before the space)",
+        "tags": ["outcodes"],
+        "parameters": [
+          {
+            "name": "outcode",
+            "in": "path",
+            "required": true,
+            "description": "Outcode (e.g. 'NW3').",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcode found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OutcodeResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Outcode not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PostcodeCodes": {
+        "type": "object",
+        "additionalProperties": { "type": ["string", "null"] },
+        "properties": {
+          "admin_district": { "type": "string" },
+          "admin_county": { "type": "string" },
+          "admin_ward": { "type": "string" },
+          "parish": { "type": "string" },
+          "parliamentary_constituency": { "type": "string" },
+          "parliamentary_constituency_2024": { "type": "string" },
+          "ccg": { "type": "string" },
+          "ccg_id": { "type": "string" },
+          "ced": { "type": "string" },
+          "nuts": { "type": "string" },
+          "lsoa": { "type": "string" },
+          "msoa": { "type": "string" },
+          "lau2": { "type": "string" },
+          "pfa": { "type": "string" },
+          "nhs_region": { "type": "string" },
+          "ttwa": { "type": "string" },
+          "national_park": { "type": "string" },
+          "bua": { "type": "string" },
+          "icb": { "type": "string" },
+          "cancer_alliance": { "type": "string" },
+          "lsoa11": { "type": "string" },
+          "msoa11": { "type": "string" },
+          "lsoa21": { "type": "string" },
+          "msoa21": { "type": "string" },
+          "oa21": { "type": "string" },
+          "ruc11": { "type": "string" },
+          "ruc21": { "type": "string" },
+          "lep1": { "type": ["string", "null"] },
+          "lep2": { "type": ["string", "null"] }
+        }
+      },
+      "Postcode": {
+        "type": "object",
+        "properties": {
+          "postcode": { "type": "string" },
+          "quality": { "type": "integer" },
+          "eastings": { "type": ["integer", "null"] },
+          "northings": { "type": ["integer", "null"] },
+          "country": { "type": "string" },
+          "nhs_ha": { "type": ["string", "null"] },
+          "longitude": { "type": ["number", "null"] },
+          "latitude": { "type": ["number", "null"] },
+          "european_electoral_region": { "type": ["string", "null"] },
+          "primary_care_trust": { "type": ["string", "null"] },
+          "region": { "type": ["string", "null"] },
+          "lsoa": { "type": ["string", "null"] },
+          "msoa": { "type": ["string", "null"] },
+          "incode": { "type": "string" },
+          "outcode": { "type": "string" },
+          "parliamentary_constituency": { "type": ["string", "null"] },
+          "parliamentary_constituency_2024": { "type": ["string", "null"] },
+          "admin_district": { "type": ["string", "null"] },
+          "parish": { "type": ["string", "null"] },
+          "admin_county": { "type": ["string", "null"] },
+          "date_of_introduction": { "type": ["string", "null"] },
+          "admin_ward": { "type": ["string", "null"] },
+          "ced": { "type": ["string", "null"] },
+          "ccg": { "type": ["string", "null"] },
+          "nuts": { "type": ["string", "null"] },
+          "pfa": { "type": ["string", "null"] },
+          "nhs_region": { "type": ["string", "null"] },
+          "ttwa": { "type": ["string", "null"] },
+          "national_park": { "type": ["string", "null"] },
+          "bua": { "type": ["string", "null"] },
+          "icb": { "type": ["string", "null"] },
+          "cancer_alliance": { "type": ["string", "null"] },
+          "lsoa11": { "type": ["string", "null"] },
+          "msoa11": { "type": ["string", "null"] },
+          "lsoa21": { "type": ["string", "null"] },
+          "msoa21": { "type": ["string", "null"] },
+          "oa21": { "type": ["string", "null"] },
+          "ruc11": { "type": ["string", "null"] },
+          "ruc21": { "type": ["string", "null"] },
+          "lep1": { "type": ["string", "null"] },
+          "lep2": { "type": ["string", "null"] },
+          "codes": { "$ref": "#/components/schemas/PostcodeCodes" }
+        },
+        "required": ["postcode", "incode", "outcode", "country", "quality"]
+      },
+      "PostcodeResponse": {
+        "type": "object",
+        "required": ["status", "result"],
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "result": { "$ref": "#/components/schemas/Postcode" }
+        }
+      },
+      "BulkPostcodeMatch": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string" },
+          "result": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Postcode" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "BulkPostcodeResponse": {
+        "type": "object",
+        "required": ["status", "result"],
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "result": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BulkPostcodeMatch" }
+          }
+        }
+      },
+      "Outcode": {
+        "type": "object",
+        "required": ["outcode"],
+        "properties": {
+          "outcode": { "type": "string" },
+          "longitude": { "type": ["number", "null"] },
+          "latitude": { "type": ["number", "null"] },
+          "northings": { "type": ["integer", "null"] },
+          "eastings": { "type": ["integer", "null"] },
+          "admin_district": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "parish": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "admin_county": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "admin_ward": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "country": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "parliamentary_constituency": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "OutcodeResponse": {
+        "type": "object",
+        "required": ["status", "result"],
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "result": { "$ref": "#/components/schemas/Outcode" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "integer" },
+          "error": { "type": "string" }
+        }
+      }
+    }
+  }
+}
