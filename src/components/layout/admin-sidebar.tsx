@@ -4,7 +4,7 @@
  * who's signed in and how. Hidden on `md-`.
  */
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useHousehold } from "../../lib/household-context";
+import { useHouseholdOptional } from "../../lib/household-context";
 
 type NavLink = { to: string; label: string };
 
@@ -15,16 +15,23 @@ const HOUSE_LINKS: NavLink[] = [
 ];
 
 const SYSTEM_LINKS: NavLink[] = [
+  { to: "/admin", label: "Dashboard" },
   { to: "/admin/runs", label: "Runs" },
   { to: "/admin/spend", label: "Spend" },
   { to: "/admin/schedules", label: "Schedules" },
-  { to: "/settings/household", label: "Settings" },
+  { to: "/admin/settings", label: "Settings" },
 ];
 
 export function AdminSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { members, currentUserId } = useHousehold();
-  const me = members.find((m) => m.userId === currentUserId);
+  // Sidebar renders on both the owner-only admin screens (where the
+  // household provider is guaranteed) and inside the OwnerGate 403
+  // panel for unauth'd users (where it isn't). Optional hook lets us
+  // degrade to a generic "signed out" footer rather than throwing.
+  const household = useHouseholdOptional();
+  const me = household?.members.find(
+    (m) => m.userId === household.currentUserId
+  );
 
   return (
     <aside className="hidden h-screen w-60 flex-col justify-between border-brass/20 border-r bg-paper px-4 py-6 md:flex">
@@ -62,8 +69,13 @@ function SidebarSection({
       </p>
       <ul className="space-y-1">
         {links.map((link) => {
-          const active =
-            link.to === "/" ? pathname === "/" : pathname.startsWith(link.to);
+          // `/` and `/admin` need exact-match (otherwise `/admin/runs`
+          // would also light up the `Dashboard` link). Everything else
+          // uses a startsWith so sub-routes light up their parent.
+          const exactMatch = link.to === "/" || link.to === "/admin";
+          const active = exactMatch
+            ? pathname === link.to
+            : pathname.startsWith(link.to);
           return (
             <li key={link.to}>
               <Link
