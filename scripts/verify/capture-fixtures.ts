@@ -19,7 +19,7 @@ import { zyteFetch } from "./lib/zyte";
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
   console.error(
-    "ZYTE_API_KEY not set — run via `doppler run … -- bun …` per script header.",
+    "ZYTE_API_KEY not set — run via `doppler run … -- bun …` per script header."
   );
   process.exit(1);
 }
@@ -83,7 +83,7 @@ async function capture(c: Capture): Promise<{ bytes: number; cost: number }> {
   await ensureDir(c.path);
   await writeFile(c.path, res.html, "utf8");
   console.log(
-    `  ✓ ${c.name}: ${res.html.length.toLocaleString()} bytes → ${c.path}`,
+    `  ✓ ${c.name}: ${res.html.length.toLocaleString()} bytes → ${c.path}`
   );
   return { bytes: res.html.length, cost: res.costEstimateUsd };
 }
@@ -110,11 +110,13 @@ for (const c of CAPTURES) {
 // After capturing the Zoopla search fixture, derive a detail URL from
 // it so the two fixtures are consistent.
 const zooplaSearchHtml = await Bun.file(
-  `${FIXTURE_DIR}/zoopla-search-2026-05.html`,
+  `${FIXTURE_DIR}/zoopla-search-2026-05.html`
 ).text();
 const zooplaDetailUrl = pickZooplaDetailUrl(zooplaSearchHtml);
 if (!zooplaDetailUrl) {
-  console.error("  ✗ Could not derive a Zoopla detail URL from the search fixture");
+  console.error(
+    "  ✗ Could not derive a Zoopla detail URL from the search fixture"
+  );
   process.exit(1);
 }
 const zooplaDetail: Capture = {

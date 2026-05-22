@@ -1,0 +1,62 @@
+/*
+ * Gaff global stylesheet.
+ *
+ * Tailwind v4 is CSS-driven — there's no JS config file. The `@theme`
+ * block below promotes the mineral palette and font stack into utility
+ * classes (so `bg-ground`, `text-copper`, `font-serif`, etc. all work)
+ * while ALSO exposing the underlying CSS variables on `:root` so non-
+ * Tailwind consumers (Radix portals, scoped styles) can reach them.
+ */
+
+@import "tailwindcss";
+
+@import "@fontsource/fraunces/index.css";
+@import "@fontsource/fraunces/400.css";
+@import "@fontsource/fraunces/500.css";
+@import "@fontsource/fraunces/600.css";
+@import "@fontsource/inter/index.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+
+/*
+ * Mineral palette — locked in PLAN.md. The same six tokens drive both
+ * the CSS-variable surface (`var(--copper)`) and the Tailwind utility
+ * surface (`bg-copper`). Light theme is the only theme we ship for v1;
+ * the `[data-theme="light"]` selector is here so future themes can be
+ * added without rewriting tokens.
+ */
+:root,
+[data-theme="light"] {
+  --ground: #f4efe6;
+  --copper: #9b5a3e;
+  --brass: #7a6a4a;
+  --ink: #18120b;
+  --bone: #fbf7ee;
+  --paper: #ffffff;
+}
+
+@theme {
+  --color-ground: #f4efe6;
+  --color-copper: #9b5a3e;
+  --color-brass: #7a6a4a;
+  --color-ink: #18120b;
+  --color-bone: #fbf7ee;
+  --color-paper: #ffffff;
+
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  background-color: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+}

@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
-import { zyteFetch } from "./lib/zyte";
 import { extractScriptJson, pluck, probe, summarise } from "./lib/extract";
+import { zyteFetch } from "./lib/zyte";
 
-const apiKey = process.env.ZYTE_API_KEY;
+const apiKey: string | undefined = process.env.ZYTE_API_KEY;
 if (!apiKey) {
-  console.error("ZYTE_API_KEY not set. Run with: doppler run -- bun scripts/verify/zyte-zoopla.ts");
+  console.error(
+    "ZYTE_API_KEY not set. Run with: doppler run -- bun scripts/verify/zyte-zoopla.ts"
+  );
   process.exit(1);
 }
+const ZYTE_KEY: string = apiKey;
 
 const SEARCH_URL =
   "https://www.zoopla.co.uk/to-rent/property/london/nw3/" +
@@ -26,13 +29,20 @@ async function tryFetch(mode: "http" | "browser") {
 
   const req =
     mode === "http"
-      ? { url: SEARCH_URL, httpResponseBody: true, httpResponseHeaders: true, geolocation: "GB" }
+      ? {
+          url: SEARCH_URL,
+          httpResponseBody: true,
+          httpResponseHeaders: true,
+          geolocation: "GB",
+        }
       : { url: SEARCH_URL, browserHtml: true, geolocation: "GB" };
 
   try {
-    const res = await zyteFetch(apiKey!, req);
+    const res = await zyteFetch(ZYTE_KEY, req);
     console.log(`HTML length: ${res.html.length}`);
-    console.log(`Content-Type: ${res.headers["content-type"] ?? "(none in browser mode)"}`);
+    console.log(
+      `Content-Type: ${res.headers["content-type"] ?? "(none in browser mode)"}`
+    );
 
     // Quick CF challenge detection
     const lower = res.html.slice(0, 4000).toLowerCase();
@@ -43,7 +53,7 @@ async function tryFetch(mode: "http" | "browser") {
       lower.includes("__cf_chl_") ||
       (res.status === 200 && res.html.length < 30000);
     if (cfChallenge) {
-      console.warn(`⚠ Looks like a Cloudflare challenge / blocked response`);
+      console.warn("⚠ Looks like a Cloudflare challenge / blocked response");
       return { ok: false, res };
     }
 
@@ -57,8 +67,13 @@ async function tryFetch(mode: "http" | "browser") {
       return { ok: false, res };
     }
 
-    const props = (nextData as { props?: { pageProps?: object } })?.props?.pageProps;
-    if (props) console.log(`props.pageProps keys: ${Object.keys(props).slice(0, 25).join(", ")}`);
+    const props = (nextData as { props?: { pageProps?: object } })?.props
+      ?.pageProps;
+    if (props) {
+      console.log(
+        `props.pageProps keys: ${Object.keys(props).slice(0, 25).join(", ")}`
+      );
+    }
 
     const candidatePaths: (string | number)[][] = [
       ["props", "pageProps", "regularListingsFormatted"],
@@ -71,7 +86,9 @@ async function tryFetch(mode: "http" | "browser") {
 
     const found = probe(nextData, candidatePaths);
     if (!found) {
-      console.error("✗ Could not find listings at expected paths — inspect manually");
+      console.error(
+        "✗ Could not find listings at expected paths — inspect manually"
+      );
       return { ok: false, res };
     }
 

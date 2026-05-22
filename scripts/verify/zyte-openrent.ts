@@ -41,12 +41,14 @@ const markers = [
   "data-listing-id",
   "data-id",
   "data-property-id",
-  '/property-to-rent/',
-  'listingid=',
+  "/property-to-rent/",
+  "listingid=",
 ];
 console.log("\n--- Marker probe ---");
 for (const m of markers) {
-  const count = (html.match(new RegExp(m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
+  const count = (
+    html.match(new RegExp(m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []
+  ).length;
   console.log(`  ${count > 0 ? "✓" : "·"} ${m} → ${count}`);
 }
 
@@ -69,7 +71,9 @@ for (const m of html.matchAll(/\b(data-[a-z-]+)=/gi)) {
   allDataAttrs.set(name, (allDataAttrs.get(name) ?? 0) + 1);
 }
 console.log("\nTop data-* attributes:");
-for (const [name, n] of [...allDataAttrs].sort((a, b) => b[1] - a[1]).slice(0, 20)) {
+for (const [name, n] of [...allDataAttrs]
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 20)) {
   console.log(`  ${name}: ${n}`);
 }
 
@@ -85,11 +89,14 @@ for (const m of html.matchAll(urlRe)) {
 console.log(`  Unique listing URLs: ${urls.size}`);
 console.log(`  Unique listing IDs: ${ids.size}`);
 const sample = [...urls].slice(0, 5);
-for (const u of sample) console.log(`    ${u}`);
+for (const u of sample) {
+  console.log(`    ${u}`);
+}
 
 // Look for JSON-LD or inline JSON
 console.log("\n--- Inline data probe ---");
-const jsonLdMatches = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>/gi) || [];
+const jsonLdMatches =
+  html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>/gi) || [];
 console.log(`  application/ld+json scripts: ${jsonLdMatches.length}`);
 const initialState = html.match(/window\.\w+\s*=\s*\{/g) || [];
 console.log(`  window.X = { ... } assignments: ${initialState.length}`);
@@ -120,18 +127,29 @@ if (ids.size > 0) {
   console.log("Detail markers:");
   for (const re of detailMarkers) {
     const m = detail.html.match(re) || [];
-    console.log(`  ${m.length > 0 ? "✓" : "·"} ${re.source} → ${m.length}${m[0] ? `   eg: ${m[0].slice(0, 60)}` : ""}`);
+    console.log(
+      `  ${m.length > 0 ? "✓" : "·"} ${re.source} → ${m.length}${m[0] ? `   eg: ${m[0].slice(0, 60)}` : ""}`
+    );
   }
 
   // ld+json on detail
-  const detailLd = detail.html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  const detailLd =
+    detail.html.match(
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    ) || [];
   console.log(`  application/ld+json scripts on detail: ${detailLd.length}`);
   if (detailLd[0]) {
-    const inner = detailLd[0].replace(/<script[^>]*>/, "").replace(/<\/script>/, "");
+    const inner = detailLd[0]
+      .replace(/<script[^>]*>/, "")
+      .replace(/<\/script>/, "");
     try {
       const parsed = JSON.parse(inner);
-      console.log(`  ld+json[0] @type: ${(parsed as { "@type"?: string })["@type"]}`);
-      console.log(`  ld+json[0] keys: ${Object.keys(parsed).slice(0, 15).join(", ")}`);
+      console.log(
+        `  ld+json[0] @type: ${(parsed as { "@type"?: string })["@type"]}`
+      );
+      console.log(
+        `  ld+json[0] keys: ${Object.keys(parsed).slice(0, 15).join(", ")}`
+      );
     } catch {
       console.log("  ld+json[0] parse failed");
     }

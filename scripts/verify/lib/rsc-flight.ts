@@ -32,18 +32,31 @@ export function parseFlight(html: string): FlightMap {
     let i = 0;
     while (i < payload.length) {
       // Skip whitespace
-      while (i < payload.length && (payload[i] === "\n" || payload[i] === "\r" || payload[i] === " ")) i++;
-      if (i >= payload.length) break;
+      while (
+        i < payload.length &&
+        (payload[i] === "\n" || payload[i] === "\r" || payload[i] === " ")
+      ) {
+        i++;
+      }
+      if (i >= payload.length) {
+        break;
+      }
       // Read id (hex up to ':')
       const idStart = i;
-      while (i < payload.length && payload[i] !== ":") i++;
-      if (i >= payload.length) break;
+      while (i < payload.length && payload[i] !== ":") {
+        i++;
+      }
+      if (i >= payload.length) {
+        break;
+      }
       const id = payload.slice(idStart, i);
       i++; // skip ':'
       // The value is JSON; find its end by tracking balance
       const valStart = i;
       const valEnd = findJsonEnd(payload, i);
-      if (valEnd === -1) break;
+      if (valEnd === -1) {
+        break;
+      }
       const valSrc = payload.slice(valStart, valEnd);
       i = valEnd;
       try {
@@ -52,7 +65,12 @@ export function parseFlight(html: string): FlightMap {
         // Silently skip malformed rows; we still capture the rest
       }
       // Move past trailing newline if any
-      while (i < payload.length && (payload[i] === "\n" || payload[i] === "\r")) i++;
+      while (
+        i < payload.length &&
+        (payload[i] === "\n" || payload[i] === "\r")
+      ) {
+        i++;
+      }
     }
   }
   return map;
@@ -61,11 +79,19 @@ export function parseFlight(html: string): FlightMap {
 /** Find end index (exclusive) of a JSON value starting at `start` in s. */
 function findJsonEnd(s: string, start: number): number {
   let i = start;
-  while (i < s.length && (s[i] === " " || s[i] === "\t")) i++;
-  if (i >= s.length) return -1;
+  while (i < s.length && (s[i] === " " || s[i] === "\t")) {
+    i++;
+  }
+  if (i >= s.length) {
+    return -1;
+  }
   const c = s[i];
-  if (c === '"') return findStringEnd(s, i);
-  if (c === "{" || c === "[") return findContainerEnd(s, i);
+  if (c === '"') {
+    return findStringEnd(s, i);
+  }
+  if (c === "{" || c === "[") {
+    return findContainerEnd(s, i);
+  }
   if (c === "t" || c === "f" || c === "n") {
     // true | false | null
     const lit = c === "t" ? "true" : c === "f" ? "false" : "null";
@@ -73,8 +99,12 @@ function findJsonEnd(s: string, start: number): number {
   }
   // number — read up to whitespace, comma, or closing bracket
   let j = i;
-  if (s[j] === "-") j++;
-  while (j < s.length && /[0-9.eE+-]/.test(s[j])) j++;
+  if (s[j] === "-") {
+    j++;
+  }
+  while (j < s.length && /[0-9.eE+-]/.test(s[j])) {
+    j++;
+  }
   return j > i ? j : -1;
 }
 
@@ -82,9 +112,13 @@ function findStringEnd(s: string, start: number): number {
   // start points at opening "
   let i = start + 1;
   while (i < s.length) {
-    if (s[i] === "\\") i += 2;
-    else if (s[i] === '"') return i + 1;
-    else i++;
+    if (s[i] === "\\") {
+      i += 2;
+    } else if (s[i] === '"') {
+      return i + 1;
+    } else {
+      i++;
+    }
   }
   return -1;
 }
@@ -98,13 +132,18 @@ function findContainerEnd(s: string, start: number): number {
     const c = s[i];
     if (c === '"') {
       i = findStringEnd(s, i);
-      if (i === -1) return -1;
+      if (i === -1) {
+        return -1;
+      }
       continue;
     }
-    if (c === open) depth++;
-    else if (c === close) {
+    if (c === open) {
+      depth++;
+    } else if (c === close) {
       depth--;
-      if (depth === 0) return i + 1;
+      if (depth === 0) {
+        return i + 1;
+      }
     }
     i++;
   }
@@ -117,27 +156,37 @@ function findContainerEnd(s: string, start: number): number {
  */
 export function findInFlight(
   flight: FlightMap,
-  predicate: (value: unknown) => boolean,
+  predicate: (value: unknown) => boolean
 ): unknown {
   for (const value of flight.values()) {
     const hit = deepFind(value, predicate);
-    if (hit !== undefined) return hit;
+    if (hit !== undefined) {
+      return hit;
+    }
   }
   return null;
 }
 
 function deepFind(node: unknown, predicate: (v: unknown) => boolean): unknown {
-  if (node === null || node === undefined) return undefined;
-  if (predicate(node)) return node;
+  if (node === null || node === undefined) {
+    return undefined;
+  }
+  if (predicate(node)) {
+    return node;
+  }
   if (Array.isArray(node)) {
     for (const child of node) {
       const hit = deepFind(child, predicate);
-      if (hit !== undefined) return hit;
+      if (hit !== undefined) {
+        return hit;
+      }
     }
   } else if (typeof node === "object") {
     for (const key of Object.keys(node as object)) {
       const hit = deepFind((node as Record<string, unknown>)[key], predicate);
-      if (hit !== undefined) return hit;
+      if (hit !== undefined) {
+        return hit;
+      }
     }
   }
   return undefined;
@@ -147,5 +196,12 @@ function deepFind(node: unknown, predicate: (v: unknown) => boolean): unknown {
  * Convenience: find the first object that has the given key, return obj[key].
  */
 export function findByKey(flight: FlightMap, key: string): unknown {
-  return findInFlight(flight, (v) => v !== null && typeof v === "object" && !Array.isArray(v) && key in (v as object));
+  return findInFlight(
+    flight,
+    (v) =>
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      key in (v as object)
+  );
 }

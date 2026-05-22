@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { zyteFetch } from "./lib/zyte";
 import { parseFlight } from "./lib/rsc-flight";
+import { zyteFetch } from "./lib/zyte";
 
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
@@ -9,7 +9,12 @@ if (!apiKey) {
 }
 
 const url = "https://www.zoopla.co.uk/to-rent/details/73260251/";
-const res = await zyteFetch(apiKey, { url, httpResponseBody: true, httpResponseHeaders: true, geolocation: "GB" });
+const res = await zyteFetch(apiKey, {
+  url,
+  httpResponseBody: true,
+  httpResponseHeaders: true,
+  geolocation: "GB",
+});
 const flight = parseFlight(res.html);
 console.log(`Parsed ${flight.size} flight rows`);
 
@@ -19,7 +24,17 @@ for (const [id, value] of flight) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const keys = Object.keys(value as object);
     if (keys.length >= 5 && keys.length < 80) {
-      const interesting = ["listingId", "numBedrooms", "bedrooms", "price", "address", "description", "branch", "floorPlan", "images"];
+      const interesting = [
+        "listingId",
+        "numBedrooms",
+        "bedrooms",
+        "price",
+        "address",
+        "description",
+        "branch",
+        "floorPlan",
+        "images",
+      ];
       const hits = keys.filter((k) => interesting.includes(k));
       if (hits.length >= 1) {
         sampled.push({
@@ -56,9 +71,13 @@ function walkAll(): void {
   ]);
   const found = new Map<string, number>();
   function visit(v: unknown): void {
-    if (v === null || v === undefined) return;
+    if (v === null || v === undefined) {
+      return;
+    }
     if (Array.isArray(v)) {
-      for (const child of v) visit(child);
+      for (const child of v) {
+        visit(child);
+      }
       return;
     }
     if (typeof v === "object") {
@@ -71,7 +90,9 @@ function walkAll(): void {
       }
     }
   }
-  for (const val of flight.values()) visit(val);
+  for (const val of flight.values()) {
+    visit(val);
+  }
   console.log(`\nDeep key hits across all chunks (${hits} total):`);
   for (const [k, n] of [...found].sort((a, b) => b[1] - a[1])) {
     console.log(`  ${k}: ${n}`);

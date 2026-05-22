@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { zyteFetch } from "./lib/zyte";
 import { extractScriptJson, pluck, probe, summarise } from "./lib/extract";
+import { zyteFetch } from "./lib/zyte";
 
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
@@ -23,7 +23,11 @@ const next = extractScriptJson(res.html, "__NEXT_DATA__");
 console.log("✓ __NEXT_DATA__ extracted");
 
 const props = (next as { props?: { pageProps?: object } })?.props?.pageProps;
-if (props) console.log(`props.pageProps keys: ${Object.keys(props).slice(0, 25).join(", ")}`);
+if (props) {
+  console.log(
+    `props.pageProps keys: ${Object.keys(props).slice(0, 25).join(", ")}`
+  );
+}
 
 const candidates: (string | number)[][] = [
   ["props", "pageProps", "propertyData"],
@@ -38,7 +42,9 @@ if (!found) {
 console.log(`✓ propertyData at .${found.path.join(".")}`);
 
 const pd = found.value as Record<string, unknown>;
-console.log(`Property keys (${Object.keys(pd).length}): ${Object.keys(pd).slice(0, 30).join(", ")}`);
+console.log(
+  `Property keys (${Object.keys(pd).length}): ${Object.keys(pd).slice(0, 30).join(", ")}`
+);
 
 console.log("\nDetail fields we need:");
 const fields = [
@@ -86,20 +92,28 @@ for (const path of fields) {
 }
 
 // Sample first floorplan + first image
-const floorplans = pd.floorplans as Array<{ url?: string; caption?: string }> | undefined;
+const floorplans = pd.floorplans as
+  | Array<{ url?: string; caption?: string }>
+  | undefined;
 if (floorplans && floorplans.length > 0) {
   console.log(`\n✓ ${floorplans.length} floorplan(s)`);
   console.log(`  First: ${JSON.stringify(floorplans[0]).slice(0, 200)}`);
 }
 
-const images = pd.images as Array<{ url?: string; caption?: string }> | undefined;
+const images = pd.images as
+  | Array<{ url?: string; caption?: string }>
+  | undefined;
 if (images && images.length > 0) {
   console.log(`\n✓ ${images.length} image(s)`);
   console.log(`  First: ${JSON.stringify(images[0]).slice(0, 200)}`);
 }
 
-const stations = pd.nearestStations as Array<{ name?: string; distance?: number; types?: string[] }> | undefined;
+const stations = pd.nearestStations as
+  | Array<{ name?: string; distance?: number; types?: string[] }>
+  | undefined;
 if (stations && stations.length > 0) {
   console.log(`\n✓ ${stations.length} nearest stations:`);
-  for (const s of stations.slice(0, 4)) console.log(`    ${s.name} (${s.distance}mi)`);
+  for (const s of stations.slice(0, 4)) {
+    console.log(`    ${s.name} (${s.distance}mi)`);
+  }
 }

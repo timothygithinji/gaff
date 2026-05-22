@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
-import { zyteFetch } from "./lib/zyte";
 import { extractScriptJson, pluck, probe, summarise } from "./lib/extract";
+import { zyteFetch } from "./lib/zyte";
 
 const apiKey = process.env.ZYTE_API_KEY;
 if (!apiKey) {
-  console.error("ZYTE_API_KEY not set. Run with: doppler run -- bun scripts/verify/zyte-rightmove.ts");
+  console.error(
+    "ZYTE_API_KEY not set. Run with: doppler run -- bun scripts/verify/zyte-rightmove.ts"
+  );
   process.exit(1);
 }
 
@@ -56,7 +58,8 @@ const candidatePaths: (string | number)[][] = [
 ];
 
 // Inspect searchResults shape if probe still fails
-const sr = (nextData as { props?: { pageProps?: { searchResults?: object } } })?.props?.pageProps?.searchResults;
+const sr = (nextData as { props?: { pageProps?: { searchResults?: object } } })
+  ?.props?.pageProps?.searchResults;
 if (sr) {
   console.log(`\nsearchResults keys: ${Object.keys(sr).join(", ")}`);
 }
@@ -64,9 +67,14 @@ if (sr) {
 const found = probe(nextData, candidatePaths);
 if (!found) {
   console.error("✗ Could not find listings array at any expected path");
-  console.error(`Top-level keys: ${Object.keys(nextData as object).join(", ")}`);
-  const props = (nextData as { props?: { pageProps?: object } })?.props?.pageProps;
-  if (props) console.error(`props.pageProps keys: ${Object.keys(props).join(", ")}`);
+  console.error(
+    `Top-level keys: ${Object.keys(nextData as object).join(", ")}`
+  );
+  const props = (nextData as { props?: { pageProps?: object } })?.props
+    ?.pageProps;
+  if (props) {
+    console.error(`props.pageProps keys: ${Object.keys(props).join(", ")}`);
+  }
   process.exit(1);
 }
 
