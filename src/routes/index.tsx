@@ -28,6 +28,7 @@ import { ActionButtons } from "../components/review/action-buttons";
 import { ReviewCardView } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
+import { requireSession } from "../lib/auth-guard";
 import { queryKeys } from "../lib/query-keys";
 import {
   type ReviewCard,
@@ -46,6 +47,9 @@ const reviewCardQueryOptions = {
 };
 
 export const Route = createFileRoute("/")({
+  beforeLoad: ({ context }) => {
+    requireSession(context as { currentUserId: string | null }, "/");
+  },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(reviewCardQueryOptions),
   component: ReviewPage,

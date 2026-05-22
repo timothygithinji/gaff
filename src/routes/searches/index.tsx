@@ -8,6 +8,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { TopBar } from "../../components/layout/top-bar";
+import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import { type SearchRow, listSearches } from "../../server/functions/searches";
 
@@ -18,6 +19,9 @@ const searchesQueryOptions = {
 };
 
 export const Route = createFileRoute("/searches/")({
+  beforeLoad: ({ context }) => {
+    requireSession(context as { currentUserId: string | null }, "/searches");
+  },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(searchesQueryOptions),
   component: SearchesIndexPage,

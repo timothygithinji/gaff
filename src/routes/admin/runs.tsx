@@ -13,6 +13,7 @@ import {
 } from "../../components/admin/runs-filter-pills";
 import { RunsTable } from "../../components/admin/runs-table";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import { listRecentRuns, runFilterCounts } from "../../server/functions/admin";
 
@@ -31,6 +32,9 @@ const filterCountsQueryOptions = {
 };
 
 export const Route = createFileRoute("/admin/runs")({
+  beforeLoad: ({ context }) => {
+    requireSession(context as { currentUserId: string | null }, "/admin/runs");
+  },
   // No loader-side prefetch: the admin queries require an owner-gated
   // session, and the loader runs before the OwnerGate component gets
   // a chance to render the 403 panel.

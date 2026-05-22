@@ -6,8 +6,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { OwnerGate } from "../../components/admin/owner-gate";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { requireSession } from "../../lib/auth-guard";
 
 export const Route = createFileRoute("/admin/settings")({
+  beforeLoad: ({ context }) => {
+    requireSession(
+      context as { currentUserId: string | null },
+      "/admin/settings"
+    );
+  },
   component: AdminSettingsPage,
 });
 

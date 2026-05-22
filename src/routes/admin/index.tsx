@@ -25,6 +25,7 @@ import {
 import { RunsTable } from "../../components/admin/runs-table";
 import { SystemStatusPill } from "../../components/admin/system-status-pill";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import {
   adminMetrics,
@@ -51,6 +52,9 @@ const filterCountsQueryOptions = {
 };
 
 export const Route = createFileRoute("/admin/")({
+  beforeLoad: ({ context }) => {
+    requireSession(context as { currentUserId: string | null }, "/admin");
+  },
   component: AdminIndexPage,
 });
 

@@ -18,6 +18,7 @@ import {
   SortDropdown,
   type SortKey,
 } from "../components/shortlist/sort-dropdown";
+import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
 import { queryKeys } from "../lib/query-keys";
 import {
@@ -33,6 +34,9 @@ const mutualQueryOptions = {
 };
 
 export const Route = createFileRoute("/matches")({
+  beforeLoad: ({ context }) => {
+    requireSession(context as { currentUserId: string | null }, "/matches");
+  },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(mutualQueryOptions),
   component: MatchesPage,

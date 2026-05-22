@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { requireSession } from "../../lib/auth-guard";
 import {
   householdQueryOptions,
   useHousehold,
@@ -27,6 +28,12 @@ import {
 } from "../../server/functions/household";
 
 export const Route = createFileRoute("/settings/household")({
+  beforeLoad: ({ context }) => {
+    requireSession(
+      context as { currentUserId: string | null },
+      "/settings/household"
+    );
+  },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(householdQueryOptions),
   component: HouseholdSettingsPage,

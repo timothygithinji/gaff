@@ -34,6 +34,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { OwnerGate } from "../../components/admin/owner-gate";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import {
   activateSchedule,
@@ -68,6 +69,12 @@ const timezoneSchema = z
   .max(64, "Timezone too long");
 
 export const Route = createFileRoute("/admin/schedules")({
+  beforeLoad: ({ context }) => {
+    requireSession(
+      context as { currentUserId: string | null },
+      "/admin/schedules"
+    );
+  },
   // No loader-side prefetch: schedules data goes through Trigger.dev
   // (always works) but `listSearches()` needs a session, so we leave
   // the queries to fire client-side under the OwnerGate.

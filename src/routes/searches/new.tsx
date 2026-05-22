@@ -19,6 +19,7 @@ import {
   bathOptionFor,
   bedOptionFor,
 } from "../../components/search-form/search-form";
+import { requireSession } from "../../lib/auth-guard";
 import { findCadenceById } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
 import {
@@ -28,6 +29,12 @@ import {
 } from "../../server/functions/searches";
 
 export const Route = createFileRoute("/searches/new")({
+  beforeLoad: ({ context }) => {
+    requireSession(
+      context as { currentUserId: string | null },
+      "/searches/new"
+    );
+  },
   component: NewSearchPage,
 });
 

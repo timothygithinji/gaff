@@ -9,8 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ShortlistRouteImport } from './routes/shortlist'
 import { Route as MatchesRouteImport } from './routes/matches'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -24,6 +26,11 @@ import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminSchedulesRouteImport } from './routes/admin/schedules'
 import { Route as AdminRunsRouteImport } from './routes/admin/runs'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShortlistRoute = ShortlistRouteImport.update({
   id: '/shortlist',
   path: '/shortlist',
@@ -32,6 +39,11 @@ const ShortlistRoute = ShortlistRouteImport.update({
 const MatchesRoute = MatchesRouteImport.update({
   id: '/matches',
   path: '/matches',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -97,8 +109,10 @@ const AdminRunsRoute = AdminRunsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
+  '/signup': typeof SignupRoute
   '/admin/runs': typeof AdminRunsRoute
   '/admin/schedules': typeof AdminSchedulesRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -113,8 +127,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
+  '/signup': typeof SignupRoute
   '/admin/runs': typeof AdminRunsRoute
   '/admin/schedules': typeof AdminSchedulesRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -130,8 +146,10 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
+  '/signup': typeof SignupRoute
   '/admin/runs': typeof AdminRunsRoute
   '/admin/schedules': typeof AdminSchedulesRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -148,8 +166,10 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/matches'
     | '/shortlist'
+    | '/signup'
     | '/admin/runs'
     | '/admin/schedules'
     | '/admin/settings'
@@ -164,8 +184,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/matches'
     | '/shortlist'
+    | '/signup'
     | '/admin/runs'
     | '/admin/schedules'
     | '/admin/settings'
@@ -180,8 +202,10 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/matches'
     | '/shortlist'
+    | '/signup'
     | '/admin/runs'
     | '/admin/schedules'
     | '/admin/settings'
@@ -197,8 +221,10 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   MatchesRoute: typeof MatchesRoute
   ShortlistRoute: typeof ShortlistRoute
+  SignupRoute: typeof SignupRoute
   AdminRunsRoute: typeof AdminRunsRoute
   AdminSchedulesRoute: typeof AdminSchedulesRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
@@ -214,6 +240,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/shortlist': {
       id: '/shortlist'
       path: '/shortlist'
@@ -226,6 +259,13 @@ declare module '@tanstack/react-router' {
       path: '/matches'
       fullPath: '/matches'
       preLoaderRoute: typeof MatchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -317,8 +357,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   MatchesRoute: MatchesRoute,
   ShortlistRoute: ShortlistRoute,
+  SignupRoute: SignupRoute,
   AdminRunsRoute: AdminRunsRoute,
   AdminSchedulesRoute: AdminSchedulesRoute,
   AdminSettingsRoute: AdminSettingsRoute,
