@@ -222,7 +222,7 @@ function EditSearchPage() {
       {error && (
         <div
           aria-live="polite"
-          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-ink px-4 py-3 text-bone text-sm shadow-lg"
+          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
         >
           {error}
         </div>
@@ -234,9 +234,9 @@ function EditSearchPage() {
         onSubmit={(v) => update.mutate(v)}
         pending={pending}
       />
-      <div className="mx-auto flex max-w-md justify-between gap-2 border-brass/20 border-t bg-paper px-5 py-3">
+      <div className="mx-auto flex max-w-md justify-between gap-2 border-border border-t bg-card px-5 py-3">
         <button
-          className="rounded-md border border-brass/30 px-4 py-2 text-brass text-xs"
+          className="rounded-md border border-border px-4 py-2 text-muted-foreground text-xs"
           disabled={pending || !search.active}
           onClick={() => archive.mutate()}
           type="button"

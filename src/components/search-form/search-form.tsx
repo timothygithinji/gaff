@@ -17,6 +17,8 @@
  * `onChange` — `form.Field` adapts cleanly to that shape so we don't
  * need a `Controller` indirection on the way down.
  */
+import { Cancel01Icon, MapPinIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { z } from "zod";
 import {
@@ -154,7 +156,7 @@ export function SearchForm({
 
   return (
     <form
-      className="mx-auto flex min-h-screen max-w-md flex-col bg-ground"
+      className="mx-auto flex min-h-screen max-w-md flex-col bg-background"
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -162,20 +164,20 @@ export function SearchForm({
       }}
     >
       {/* Header — close + title + reset */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-brass/15 border-b bg-paper px-4 py-3">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-border border-b bg-card px-4 py-3">
         <button
           aria-label="Close"
-          className="text-ink text-xl leading-none"
+          className="flex size-8 items-center justify-center rounded-full text-foreground hover:bg-muted"
           onClick={onCancel}
           type="button"
         >
-          ×
+          <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={2} />
         </button>
-        <h1 className="font-medium text-ink text-sm">
+        <h1 className="font-medium text-foreground text-sm">
           {mode === "create" ? "New search" : "Edit search"}
         </h1>
         <button
-          className="text-copper text-sm"
+          className="text-primary text-sm"
           onClick={() => {
             form.reset(DEFAULT_FORM_VALUES);
             onReset?.();
@@ -189,13 +191,13 @@ export function SearchForm({
       <div className="flex-1 space-y-8 px-5 pt-6 pb-8">
         {/* Editable headline */}
         <section>
-          <p className="text-[11px] text-brass uppercase tracking-[0.16em]">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
             WHAT WE'RE LOOKING FOR
           </p>
           <form.Field name="name" validators={{ onChange: nameSchema }}>
             {(field) => (
               <input
-                className="-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-4xl text-ink leading-[1.05] outline-none placeholder:text-brass/50 focus:bg-bone/60"
+                className="-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-4xl text-foreground leading-[1.05] outline-none placeholder:text-muted-foreground/50 focus:bg-muted/60"
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="A flat in North London"
@@ -204,24 +206,27 @@ export function SearchForm({
               />
             )}
           </form.Field>
-          <p className="mt-2 text-brass text-xs italic">tap to rename</p>
+          <p className="mt-2 text-muted-foreground text-xs italic">
+            tap to rename
+          </p>
         </section>
 
         {/* Postcodes */}
         <section className="space-y-4">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-serif text-2xl text-ink">Postcodes</h2>
+            <h2 className="font-serif text-2xl text-foreground">Postcodes</h2>
             <button
-              className="text-copper text-xs"
+              className="inline-flex items-center gap-1 text-primary text-xs"
               onClick={() => {
                 /* Map view deferred — PR 8 / 9.5 territory. */
               }}
               type="button"
             >
-              ▾ Map
+              <HugeiconsIcon icon={MapPinIcon} size={12} strokeWidth={2} />
+              Map
             </button>
           </div>
-          <p className="-mt-3 text-brass text-sm">
+          <p className="-mt-3 text-muted-foreground text-sm">
             Include what you want, kill what you don't.
           </p>
           <form.Field
@@ -259,7 +264,7 @@ export function SearchForm({
 
         {/* Price + size */}
         <section className="space-y-3">
-          <h2 className="font-serif text-2xl text-ink">Price & size</h2>
+          <h2 className="font-serif text-2xl text-foreground">Price & size</h2>
           <form.Field name="minPrice">
             {(minField) => (
               <form.Field name="maxPrice">
@@ -303,11 +308,13 @@ export function SearchForm({
 
         {/* AI rules */}
         <section className="space-y-3">
-          <p className="text-[11px] text-copper uppercase tracking-[0.16em]">
+          <p className="text-[11px] text-primary uppercase tracking-[0.16em]">
             + AI FLOOR PLAN RULES
           </p>
-          <h2 className="font-serif text-2xl text-ink">What makes it a yes</h2>
-          <p className="text-brass text-sm">
+          <h2 className="font-serif text-2xl text-foreground">
+            What makes it a yes
+          </h2>
+          <p className="text-muted-foreground text-sm">
             Claude reads every floor plan against these.
           </p>
           <form.Field name="aiRules">
@@ -322,7 +329,7 @@ export function SearchForm({
 
         {/* Commute */}
         <section className="space-y-3">
-          <h2 className="font-serif text-2xl text-ink">Commute to</h2>
+          <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
           <form.Field name="commute">
             {(field) => (
               <CommuteTargetRow
@@ -335,7 +342,9 @@ export function SearchForm({
 
         {/* Portals */}
         <section className="space-y-3">
-          <h2 className="font-serif text-2xl text-ink">Portals to watch</h2>
+          <h2 className="font-serif text-2xl text-foreground">
+            Portals to watch
+          </h2>
           <form.Field name="portals" validators={{ onChange: portalsSchema }}>
             {(field) => (
               <PortalToggles

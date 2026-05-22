@@ -58,11 +58,11 @@ export function MatchRow({ match, ageLabel, memberCount, onOpen }: Props) {
 
   return (
     <button
-      className="flex w-full gap-3.5 rounded-[14px] border border-[#E5DDD0] bg-paper p-3 text-left"
+      className="flex w-full gap-3.5 rounded-[14px] border border-border bg-card p-3 text-left"
       onClick={onOpen}
       type="button"
     >
-      <div className="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-[10px] bg-bone">
+      <div className="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-[10px] bg-muted">
         {headline.photoUrl ? (
           // biome-ignore lint/nursery/noImgElement: TanStack Start, not Next.js — R2 URLs are cache-tagged.
           <img
@@ -74,35 +74,35 @@ export function MatchRow({ match, ageLabel, memberCount, onOpen }: Props) {
       </div>
       <div className="flex min-w-0 grow basis-0 flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="line-clamp-1 font-medium font-serif text-[17px] text-ink leading-[110%] tracking-[-0.02em]">
+          <span className="line-clamp-1 font-medium font-serif text-[17px] text-foreground leading-[110%] tracking-[-0.02em]">
             {headline.addressRaw}
           </span>
-          <span className="shrink-0 font-medium font-serif text-[17px] text-ink tracking-[-0.02em]">
+          <span className="shrink-0 font-medium font-serif text-[17px] text-foreground tracking-[-0.02em]">
             {formatPrice(headline.priceMonthly)}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           {outcode ? (
-            <span className="font-medium text-[11px] text-brass uppercase tracking-[0.04em]">
+            <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-[0.04em]">
               {outcode}
             </span>
           ) : null}
           {outcode && bedBath ? (
-            <span className="h-[3px] w-[3px] shrink-0 rounded-full bg-[#C9BFAE]" />
+            <span className="h-[3px] w-[3px] shrink-0 rounded-full bg-border" />
           ) : null}
           {bedBath ? (
-            <span className="text-[11px] text-brass">{bedBath}</span>
+            <span className="text-[11px] text-muted-foreground">{bedBath}</span>
           ) : null}
         </div>
         {memberCount > 1 ? (
           <div className="mt-0.5 flex items-center gap-1.5">
             <CompactAvatarStack members={members} />
-            <span className="font-semibold text-[11px] text-brass">
+            <span className="font-semibold text-[11px] text-muted-foreground">
               {keptLabel} · {ageLabel}
             </span>
           </div>
         ) : (
-          <span className="font-semibold text-[11px] text-brass">
+          <span className="font-semibold text-[11px] text-muted-foreground">
             {keptLabel} · {ageLabel}
           </span>
         )}

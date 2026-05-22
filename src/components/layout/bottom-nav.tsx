@@ -9,28 +9,45 @@
  * that landed after the user last opened `/matches`. Tapping the route
  * clears the badge via `markMatchesSeen`.
  */
+import {
+  Search01Icon,
+  StarIcon,
+  SwipeRight03Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
+import { Badge } from "../../components/ui/badge";
 import { useHousehold } from "../../lib/household-context";
 import { queryKeys } from "../../lib/query-keys";
+import { cn } from "../../lib/utils";
 import { unreadMatchCount } from "../../server/functions/shortlist";
 
 type Tab = {
   to: string;
   label: string;
+  icon: typeof SwipeRight03Icon;
   match: (pathname: string) => boolean;
 };
 
 const TABS: Tab[] = [
-  { to: "/", label: "Review", match: (p) => p === "/" },
+  {
+    to: "/",
+    label: "Review",
+    icon: SwipeRight03Icon,
+    match: (p) => p === "/",
+  },
   {
     to: "/shortlist",
     label: "Shortlist",
+    icon: StarIcon,
     match: (p) => p.startsWith("/shortlist"),
   },
   {
     to: "/searches",
     label: "Searches",
+    icon: Search01Icon,
     match: (p) => p.startsWith("/searches"),
   },
 ];
@@ -38,6 +55,7 @@ const TABS: Tab[] = [
 const MATCHES_TAB: Tab = {
   to: "/matches",
   label: "Matches",
+  icon: UserGroupIcon,
   match: (p) => p.startsWith("/matches"),
 };
 
@@ -63,31 +81,35 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-brass/20 border-t bg-paper md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-border border-t bg-card md:hidden"
     >
       {tabs.map((tab) => {
         const active = tab.match(pathname);
         const isMatches = tab.to === "/matches";
         return (
           <Link
-            className={
-              active
-                ? "relative flex flex-col items-center justify-center py-3 text-copper"
-                : "relative flex flex-col items-center justify-center py-3 text-brass"
-            }
+            className={cn(
+              "relative flex flex-col items-center justify-center gap-1 py-2.5 transition-colors",
+              active ? "text-primary" : "text-muted-foreground"
+            )}
             key={tab.to}
             to={tab.to}
           >
-            <span className="font-medium text-xs uppercase tracking-wide">
+            <HugeiconsIcon
+              icon={tab.icon}
+              size={22}
+              strokeWidth={active ? 2 : 1.6}
+            />
+            <span className="font-medium text-[11px] tracking-wide">
               {tab.label}
             </span>
             {isMatches && unreadCount > 0 ? (
-              <span
+              <Badge
                 aria-label={`${unreadCount} unread match${unreadCount === 1 ? "" : "es"}`}
-                className="-top-0.5 absolute right-[28%] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-copper px-1 font-bold text-[9px] text-bone"
+                className="absolute top-1 right-[26%] h-4 min-w-4 rounded-full px-1 font-bold text-[9px] tabular-nums"
               >
                 {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
+              </Badge>
             ) : null}
           </Link>
         );

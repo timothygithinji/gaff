@@ -45,23 +45,23 @@ function HouseholdSettingsPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-6 font-serif text-2xl text-ink">Household</h1>
+      <h1 className="mb-6 font-serif text-2xl text-foreground">Household</h1>
 
       <section className="mb-6">
-        <h2 className="mb-3 font-medium text-ink text-sm uppercase tracking-wide">
+        <h2 className="mb-3 font-medium text-foreground text-sm uppercase tracking-wide">
           Members
         </h2>
-        <ul className="divide-y divide-brass/10 rounded-lg border border-brass/20 bg-paper">
+        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
           {members.map((member) => (
             <li
               key={member.id}
               className="flex items-center justify-between px-4 py-3"
             >
               <div>
-                <p className="text-ink text-sm">
+                <p className="text-foreground text-sm">
                   {member.name || member.email}
                 </p>
-                <p className="text-brass text-xs">
+                <p className="text-muted-foreground text-xs">
                   {member.email} · {member.role}
                 </p>
               </div>
@@ -100,19 +100,19 @@ function InviteSection() {
       >
         <Dialog.Trigger asChild>
           <button
-            className="rounded-md bg-copper px-4 py-2 font-medium text-bone text-sm"
+            className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm"
             type="button"
           >
             Invite someone
           </button>
         </Dialog.Trigger>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-          <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-paper p-6 shadow-xl">
-            <Dialog.Title className="font-serif text-ink text-lg">
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-foreground/40" />
+          <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-card p-6 shadow-xl">
+            <Dialog.Title className="font-serif text-foreground text-lg">
               Invite to household
             </Dialog.Title>
-            <Dialog.Description className="mt-1 text-brass text-sm">
+            <Dialog.Description className="mt-1 text-muted-foreground text-sm">
               Mint a single-use link, then paste it into WhatsApp / Signal.
               Expires in 7 days.
             </Dialog.Description>
@@ -120,12 +120,12 @@ function InviteSection() {
             {link ? (
               <div className="mt-4 space-y-3">
                 <input
-                  className="w-full rounded border border-brass/30 bg-ground px-3 py-2 text-ink text-sm"
+                  className="w-full rounded border border-border bg-background px-3 py-2 text-foreground text-sm"
                   readOnly
                   value={link}
                 />
                 <button
-                  className="rounded-md bg-copper px-4 py-2 text-bone text-sm"
+                  className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
                   onClick={() => navigator.clipboard.writeText(link)}
                   type="button"
                 >
@@ -136,14 +136,14 @@ function InviteSection() {
               <div className="mt-4 flex justify-end gap-2">
                 <Dialog.Close asChild>
                   <button
-                    className="rounded-md px-4 py-2 text-ink text-sm"
+                    className="rounded-md px-4 py-2 text-foreground text-sm"
                     type="button"
                   >
                     Cancel
                   </button>
                 </Dialog.Close>
                 <button
-                  className="rounded-md bg-copper px-4 py-2 text-bone text-sm"
+                  className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
                   disabled={create.isPending}
                   onClick={() => create.mutate()}
                   type="button"
@@ -205,19 +205,19 @@ function RemoveMemberButton({
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button
-          className="rounded border border-brass/30 px-3 py-1 text-brass text-xs"
+          className="rounded border border-border px-3 py-1 text-muted-foreground text-xs"
           type="button"
         >
           Remove
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-paper p-6 shadow-xl">
-          <Dialog.Title className="font-serif text-ink text-lg">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-foreground/40" />
+        <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-card p-6 shadow-xl">
+          <Dialog.Title className="font-serif text-foreground text-lg">
             Remove {name || "member"}?
           </Dialog.Title>
-          <Dialog.Description className="mt-1 text-brass text-sm">
+          <Dialog.Description className="mt-1 text-muted-foreground text-sm">
             Their swipe history stays; they just won't appear in mutual matches
             any more.
           </Dialog.Description>
@@ -227,14 +227,14 @@ function RemoveMemberButton({
           <div className="mt-4 flex justify-end gap-2">
             <Dialog.Close asChild>
               <button
-                className="rounded-md px-4 py-2 text-ink text-sm"
+                className="rounded-md px-4 py-2 text-foreground text-sm"
                 type="button"
               >
                 Cancel
               </button>
             </Dialog.Close>
             <button
-              className="rounded-md bg-copper px-4 py-2 text-bone text-sm"
+              className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
               disabled={remove.isPending}
               onClick={() => remove.mutate()}
               type="button"

@@ -2,9 +2,19 @@
  * Four-column meta strip — Commute · Walk · EPC · Fibre.
  *
  * Lives below the feature pills. Each cell has a tiny eyebrow label
- * (copper, all-caps) and a chunky Fraunces value. Missing values render
- * as "—" so the row stays aligned even with sparse enrichment data.
+ * (copper, all-caps) with a Hugeicons stroke icon and a chunky Fraunces
+ * value. Missing values render as "—" so the row stays aligned even with
+ * sparse enrichment data.
  */
+import {
+  FlashIcon,
+  Route01Icon,
+  WalkingIcon,
+  Wifi01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+
+type IconRef = typeof FlashIcon;
 
 type Props = {
   commuteMinutes: number | null;
@@ -20,22 +30,22 @@ export function InfoRow({
   broadbandMbps,
 }: Props) {
   return (
-    <dl className="grid grid-cols-4 gap-2 border-brass/15 border-b py-3">
+    <dl className="grid grid-cols-4 gap-2 border-border border-b py-3">
       <Cell
-        glyph="↦"
+        icon={Route01Icon}
         eyebrow="Commute"
         value={commuteMinutes === null ? "—" : `${commuteMinutes}`}
         unit={commuteMinutes === null ? "" : "min"}
       />
       <Cell
-        glyph="⌒"
+        icon={WalkingIcon}
         eyebrow="Walk"
         value={walkMinutes === null ? "—" : `${walkMinutes}`}
         unit={walkMinutes === null ? "" : "min walk"}
       />
-      <Cell glyph="⚡" eyebrow="EPC" value={epcRating ?? "—"} unit="" />
+      <Cell icon={FlashIcon} eyebrow="EPC" value={epcRating ?? "—"} unit="" />
       <Cell
-        glyph="◉"
+        icon={Wifi01Icon}
         eyebrow="Fibre"
         value={broadbandMbps === null ? "—" : `${broadbandMbps}`}
         unit={broadbandMbps === null ? "" : "Mb"}
@@ -45,27 +55,27 @@ export function InfoRow({
 }
 
 function Cell({
-  glyph,
+  icon,
   eyebrow,
   value,
   unit,
 }: {
-  glyph: string;
+  icon: IconRef;
   eyebrow: string;
   value: string;
   unit: string;
 }) {
   return (
     <div className="leading-tight">
-      <p className="font-medium text-[10px] text-copper uppercase tracking-wider">
-        <span aria-hidden className="mr-1">
-          {glyph}
-        </span>
+      <p className="flex items-center gap-1 font-medium text-[10px] text-primary uppercase tracking-wider">
+        <HugeiconsIcon icon={icon} size={12} strokeWidth={2} />
         {eyebrow}
       </p>
       <p className="mt-1">
-        <span className="font-serif text-ink text-lg">{value}</span>
-        {unit ? <span className="ml-1 text-brass text-xs">{unit}</span> : null}
+        <span className="font-serif text-foreground text-lg">{value}</span>
+        {unit ? (
+          <span className="ml-1 text-muted-foreground text-xs">{unit}</span>
+        ) : null}
       </p>
     </div>
   );

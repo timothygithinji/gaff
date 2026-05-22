@@ -3,11 +3,23 @@
  *
  * Renders the current pick as a single-line card (matching the design)
  * with the friendly label + "Est. cost · $X / day" beneath. Tapping
- * opens a Radix Dialog with the full preset list so the picker doesn't
+ * opens a shadcn Dialog with the full preset list so the picker doesn't
  * dominate the form's vertical rhythm.
  */
-import * as Dialog from "@radix-ui/react-dialog";
+import {
+  ArrowRight01Icon,
+  Clock02Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
 import { formatUsd } from "../../lib/cost-estimate";
 import {
   CADENCE_PRESETS,
@@ -27,62 +39,73 @@ export function CadencePicker({ selectedId, onChange, perDayUsd }: Props) {
   const selected = findCadenceById(selectedId);
 
   return (
-    <Dialog.Root onOpenChange={setOpen} open={open}>
-      <Dialog.Trigger asChild>
+    <Dialog onOpenChange={setOpen} open={open}>
+      <DialogTrigger asChild>
         <button
-          className="flex w-full items-center justify-between rounded-2xl bg-bone px-4 py-4 text-left"
+          className="flex w-full items-center justify-between rounded-2xl bg-muted px-4 py-4 text-left"
           type="button"
         >
           <span className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-copper/15">
-              <span className="text-copper">◷</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <HugeiconsIcon icon={Clock02Icon} size={18} strokeWidth={1.8} />
             </span>
             <span>
-              <span className="block text-ink text-sm">
+              <span className="block text-foreground text-sm">
                 {labelFor(selected)}
               </span>
-              <span className="block text-brass text-xs">
+              <span className="block text-muted-foreground text-xs">
                 {selected.cron === null
                   ? "No scraping — paused"
                   : `Est. cost · ${formatUsd(perDayUsd)} / day`}
               </span>
             </span>
           </span>
-          <span className="text-brass">›</span>
+          <HugeiconsIcon
+            className="text-muted-foreground"
+            icon={ArrowRight01Icon}
+            size={16}
+            strokeWidth={2}
+          />
         </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Dialog.Content className="-translate-x-1/2 fixed bottom-0 left-1/2 z-50 w-full max-w-md rounded-t-2xl bg-paper p-6 shadow-xl">
-          <Dialog.Title className="font-serif text-ink text-lg">
-            Re-scrape cadence
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-brass text-sm">
-            How often we ping the portals for fresh listings.
-          </Dialog.Description>
-          <ul className="mt-4 divide-y divide-brass/10">
-            {CADENCE_PRESETS.map((preset) => {
-              const active = preset.id === selected.id;
-              return (
-                <li key={preset.id}>
-                  <button
-                    className="flex w-full items-center justify-between py-3 text-left"
-                    onClick={() => {
-                      onChange(preset.id);
-                      setOpen(false);
-                    }}
-                    type="button"
-                  >
-                    <span className="text-ink text-sm">{labelFor(preset)}</span>
-                    {active && <span className="text-copper text-sm">✓</span>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogTitle className="font-serif text-foreground text-lg">
+          Re-scrape cadence
+        </DialogTitle>
+        <DialogDescription>
+          How often we ping the portals for fresh listings.
+        </DialogDescription>
+        <ul className="mt-2 divide-y divide-border">
+          {CADENCE_PRESETS.map((preset) => {
+            const active = preset.id === selected.id;
+            return (
+              <li key={preset.id}>
+                <button
+                  className="flex w-full items-center justify-between py-3 text-left"
+                  onClick={() => {
+                    onChange(preset.id);
+                    setOpen(false);
+                  }}
+                  type="button"
+                >
+                  <span className="text-foreground text-sm">
+                    {labelFor(preset)}
+                  </span>
+                  {active && (
+                    <HugeiconsIcon
+                      className="text-primary"
+                      icon={Tick02Icon}
+                      size={16}
+                      strokeWidth={2.5}
+                    />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -32,15 +32,19 @@ export function RunsFilterPills({
           <button
             className={
               active
-                ? "rounded-full bg-ink px-3 py-1.5 font-medium text-bone text-xs"
-                : "rounded-full bg-bone px-3 py-1.5 font-medium text-brass text-xs hover:bg-ground"
+                ? "rounded-full bg-foreground px-3 py-1.5 font-medium text-background text-xs"
+                : "rounded-full bg-muted px-3 py-1.5 font-medium text-muted-foreground text-xs hover:bg-background"
             }
             key={entry.id}
             onClick={() => onChange(entry.id)}
             type="button"
           >
             {entry.label}{" "}
-            <span className={active ? "text-bone/70" : "text-brass/70"}>
+            <span
+              className={
+                active ? "text-background/70" : "text-muted-foreground/70"
+              }
+            >
               {count}
             </span>
           </button>

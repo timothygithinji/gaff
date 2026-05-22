@@ -10,6 +10,8 @@
  * Validation is async (network round-trip), so the chip group exposes
  * a `pending` state to disable submission while a lookup is in flight.
  */
+import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import {
   createPostcodesClient,
@@ -87,7 +89,7 @@ export function OutcodeChips({ variant, values, onChange, countLabel }: Props) {
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-[11px] text-brass uppercase tracking-[0.14em]">
+        <span className="text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
           {isExclude ? "EXCLUDE" : "INCLUDE"}
           {countLabel ? ` · ${countLabel}` : ""}
         </span>
@@ -97,26 +99,29 @@ export function OutcodeChips({ variant, values, onChange, countLabel }: Props) {
           <button
             className={
               isExclude
-                ? "inline-flex items-center gap-1.5 rounded-full border border-copper/20 bg-bone px-3 py-1.5 text-ink text-sm line-through decoration-copper/60"
-                : "inline-flex items-center gap-1.5 rounded-full bg-copper/10 px-3 py-1.5 text-ink text-sm"
+                ? "inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-muted px-3 py-1.5 text-foreground text-sm line-through decoration-primary/60"
+                : "inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-foreground text-sm"
             }
             key={v}
             onClick={() => onChange(values.filter((o) => o !== v))}
             type="button"
           >
             <span>{v}</span>
-            <span aria-hidden className="text-brass">
-              ×
-            </span>
+            <HugeiconsIcon
+              className="text-muted-foreground"
+              icon={Cancel01Icon}
+              size={12}
+              strokeWidth={2}
+            />
             <span className="sr-only">Remove {v}</span>
           </button>
         ))}
         {adding ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-copper/60 border-dashed bg-paper px-2 py-1">
+          <span className="inline-flex items-center gap-1 rounded-full border border-primary/60 border-dashed bg-card px-2 py-1">
             <input
               aria-label="Outcode"
               autoFocus
-              className="w-16 bg-transparent text-ink text-sm outline-none placeholder:text-brass/60"
+              className="w-16 bg-transparent text-foreground text-sm outline-none placeholder:text-muted-foreground/60"
               disabled={pending}
               onBlur={() => {
                 if (!draft) {
@@ -144,19 +149,23 @@ export function OutcodeChips({ variant, values, onChange, countLabel }: Props) {
               value={draft}
             />
             <button
-              className="text-copper text-xs disabled:opacity-50"
+              className="flex h-5 w-5 items-center justify-center text-primary disabled:opacity-50"
               disabled={pending || !draft.trim()}
               onClick={() => {
                 submit();
               }}
               type="button"
             >
-              {pending ? "…" : "✓"}
+              {pending ? (
+                "…"
+              ) : (
+                <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} />
+              )}
             </button>
           </span>
         ) : (
           <button
-            className="inline-flex items-center gap-1 rounded-full border border-copper/60 border-dashed px-3 py-1.5 text-copper text-sm"
+            className="inline-flex items-center gap-1 rounded-full border border-primary/60 border-dashed px-3 py-1.5 text-primary text-sm"
             onClick={() => setAdding(true)}
             type="button"
           >
@@ -164,7 +173,7 @@ export function OutcodeChips({ variant, values, onChange, countLabel }: Props) {
           </button>
         )}
       </div>
-      {error && <p className="text-copper text-xs">{error}</p>}
+      {error && <p className="text-primary text-xs">{error}</p>}
     </div>
   );
 }

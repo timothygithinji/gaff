@@ -212,11 +212,11 @@ function ShortlistPage() {
   }
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-ground pb-24">
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
       {toast ? (
         <div
           aria-live="polite"
-          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-ink px-4 py-3 text-bone text-sm shadow-lg"
+          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
         >
           {toast}
         </div>
@@ -224,11 +224,11 @@ function ShortlistPage() {
 
       <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
         {eyebrow ? (
-          <span className="font-semibold text-[11px] text-brass uppercase tracking-[0.12em]">
+          <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
             {eyebrow}
           </span>
         ) : null}
-        <h1 className="font-medium font-serif text-[32px] text-ink leading-[110%] tracking-[-0.03em]">
+        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
           Shortlist
         </h1>
       </header>
@@ -246,7 +246,7 @@ function ShortlistPage() {
       ) : null}
 
       <div className="flex items-center justify-between px-6 pb-3">
-        <span className="font-semibold text-[10px] text-brass uppercase tracking-[0.12em]">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
           {sectionLabelFor(
             activeTab,
             memberCount,
@@ -259,7 +259,7 @@ function ShortlistPage() {
 
       <div className="flex flex-col gap-2.5 px-4">
         {rows.length === 0 ? (
-          <p className="rounded-2xl bg-bone p-8 text-center text-brass text-sm">
+          <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
             Nothing here yet. Keep swiping on the Review screen — picks land
             here as you (and your household) hit Keep.
           </p>
@@ -280,7 +280,7 @@ function ShortlistPage() {
           screen self-contained when there's nothing to look at. */}
       {rows.length === 0 && !featured ? (
         <div className="mt-6 px-6 text-center">
-          <Link className="text-copper text-xs" to="/searches">
+          <Link className="text-primary text-xs" to="/searches">
             Manage your searches →
           </Link>
         </div>

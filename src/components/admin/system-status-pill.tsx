@@ -12,16 +12,20 @@ const TONE_CLASS: Record<
   NonNullable<SystemStatusPillProps["tone"]>,
   { dot: string; text: string; bg: string }
 > = {
-  live: { dot: "bg-[#7A8C5C]", text: "text-[#3F4A2F]", bg: "bg-[#7A8C5C]/12" },
+  live: {
+    dot: "bg-emerald-600",
+    text: "text-emerald-700",
+    bg: "bg-emerald-100",
+  },
   degraded: {
-    dot: "bg-copper",
-    text: "text-copper",
-    bg: "bg-copper/10",
+    dot: "bg-primary",
+    text: "text-primary",
+    bg: "bg-primary/10",
   },
   down: {
-    dot: "bg-[#B05A38]",
-    text: "text-[#B05A38]",
-    bg: "bg-[#B05A38]/10",
+    dot: "bg-destructive",
+    text: "text-destructive",
+    bg: "bg-destructive/10",
   },
 };
 

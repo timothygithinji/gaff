@@ -23,6 +23,12 @@
  * No bottom-nav on this screen — the sticky CTA + back button replace
  * it on the artboard.
  */
+import {
+  ArrowLeft01Icon,
+  Bookmark01Icon,
+  Share05Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -162,9 +168,9 @@ function ListingDetailPage() {
 
   if (!data) {
     return (
-      <div className="mx-auto min-h-screen max-w-md bg-ground">
+      <div className="mx-auto min-h-screen max-w-md bg-background">
         <div className="flex h-screen items-center justify-center">
-          <div className="h-6 w-32 animate-pulse rounded bg-bone" />
+          <div className="h-6 w-32 animate-pulse rounded bg-muted" />
         </div>
       </div>
     );
@@ -196,11 +202,11 @@ function ListingDetailPage() {
     : title;
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-ground pb-32">
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-32">
       {error ? (
         <div
           aria-live="polite"
-          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-ink px-4 py-3 text-bone text-sm shadow-lg"
+          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
         >
           {error}
         </div>
@@ -210,7 +216,7 @@ function ListingDetailPage() {
       <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
         <button
           aria-label="Back"
-          className="flex size-9 items-center justify-center rounded-[999px] border border-[#E5DDD0] bg-[#FDFAF4]"
+          className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
           onClick={() => {
             // Prefer real back navigation; fall back to the review queue.
             if (typeof window !== "undefined" && window.history.length > 1) {
@@ -221,25 +227,12 @@ function ListingDetailPage() {
           }}
           type="button"
         >
-          <svg
-            fill="none"
-            height="16"
-            role="img"
-            stroke="#1C1A17"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2.2"
-            viewBox="0 0 24 24"
-            width="16"
-          >
-            <title>Back</title>
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={2.2} />
         </button>
         <div className="flex items-center gap-2.5">
           <button
             aria-label="Share"
-            className="flex size-9 items-center justify-center rounded-[999px] border border-[#E5DDD0] bg-[#FDFAF4]"
+            className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
             onClick={() => {
               if (typeof navigator !== "undefined" && navigator.share) {
                 navigator
@@ -254,45 +247,17 @@ function ListingDetailPage() {
             }}
             type="button"
           >
-            <svg
-              fill="none"
-              height="16"
-              role="img"
-              stroke="#1C1A17"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="16"
-            >
-              <title>Share</title>
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
-              <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
-            </svg>
+            <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={2} />
           </button>
           <button
             aria-label="Bookmark"
-            className="flex size-9 items-center justify-center rounded-[999px] border border-[#E5DDD0] bg-[#FDFAF4]"
+            className={`flex size-9 items-center justify-center rounded-[999px] border border-border bg-card ${
+              mySwipe === "shortlist" ? "text-primary" : "text-foreground"
+            }`}
             onClick={() => swipe.mutate({ outcome: "shortlist" })}
             type="button"
           >
-            <svg
-              fill={mySwipe === "shortlist" ? "#1C1A17" : "none"}
-              height="16"
-              role="img"
-              stroke="#1C1A17"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="16"
-            >
-              <title>Bookmark</title>
-              <path d="M18 2H6a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2z" />
-            </svg>
+            <HugeiconsIcon icon={Bookmark01Icon} size={16} strokeWidth={2} />
           </button>
         </div>
       </header>
@@ -304,26 +269,28 @@ function ListingDetailPage() {
       <section className="flex flex-col gap-3 px-6 pt-6">
         <div className="flex items-baseline justify-between">
           <div className="flex items-baseline gap-1">
-            <span className="font-medium font-serif text-[40px] text-ink leading-[100%] tracking-[-0.03em]">
+            <span className="font-medium font-serif text-[40px] text-foreground leading-[100%] tracking-[-0.03em]">
               {formatPrice(headline.priceMonthly)}
             </span>
-            <span className="font-medium text-[13px] text-brass">/mo</span>
+            <span className="font-medium text-[13px] text-muted-foreground">
+              /mo
+            </span>
           </div>
           <div className="flex flex-col items-end">
-            <span className="font-semibold text-[10px] text-brass uppercase leading-[110%] tracking-widest">
+            <span className="font-semibold text-[10px] text-muted-foreground uppercase leading-[110%] tracking-widest">
               {listedAgoLabel(headline.firstSeenAt)}
             </span>
-            <span className="mt-1 font-serif text-[13px] text-brass italic leading-[110%]">
+            <span className="mt-1 font-serif text-[13px] text-muted-foreground italic leading-[110%]">
               {portalsTrackingLabel}
             </span>
           </div>
         </div>
         <div className="flex flex-col gap-0.5">
-          <h1 className="font-medium font-serif text-[24px] text-ink leading-[115%] tracking-[-0.02em]">
+          <h1 className="font-medium font-serif text-[24px] text-foreground leading-[115%] tracking-[-0.02em]">
             {title}
           </h1>
           {locality ? (
-            <p className="text-[14px] text-brass">{locality}</p>
+            <p className="text-[14px] text-muted-foreground">{locality}</p>
           ) : null}
         </div>
       </section>

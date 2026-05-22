@@ -95,15 +95,17 @@ function SchedulesScreen() {
   const searchById = new Map(searches.map((s) => [s.id, s] as const));
 
   return (
-    <div className="flex min-h-screen bg-ground">
+    <div className="flex min-h-screen bg-background">
       <AdminSidebar />
       <main className="flex-1 px-10 py-8">
         <header className="mb-8">
-          <p className="font-semibold text-[11px] text-copper uppercase tracking-[0.14em]">
+          <p className="font-semibold text-[11px] text-primary uppercase tracking-[0.14em]">
             System · Schedules
           </p>
-          <h1 className="mt-2 font-serif text-3xl text-ink">Schedules</h1>
-          <p className="mt-2 text-brass text-sm">
+          <h1 className="mt-2 font-serif text-3xl text-foreground">
+            Schedules
+          </h1>
+          <p className="mt-2 text-muted-foreground text-sm">
             Every Trigger.dev schedule, live. Edit cron + timezone, pause, or
             fire manually — no need to leave the app.
           </p>
@@ -112,9 +114,9 @@ function SchedulesScreen() {
         {schedules.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-brass/15 bg-bone">
+          <div className="overflow-hidden rounded-2xl border border-border bg-muted">
             <table className="w-full text-left text-sm">
-              <thead className="bg-paper text-brass text-xs uppercase tracking-wide">
+              <thead className="bg-card text-muted-foreground text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Task</th>
                   <th className="px-4 py-3 font-semibold">Cron</th>
@@ -126,7 +128,7 @@ function SchedulesScreen() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-brass/10">
+              <tbody className="divide-y divide-border">
                 {schedules.map((s) => (
                   <ScheduleRow
                     key={s.id}
@@ -149,9 +151,9 @@ function SchedulesScreen() {
 
 function EmptyState() {
   return (
-    <div className="rounded-2xl bg-bone p-8 text-center">
-      <p className="font-serif text-2xl text-ink">No schedules yet</p>
-      <p className="mt-2 text-brass text-sm">
+    <div className="rounded-2xl bg-muted p-8 text-center">
+      <p className="font-serif text-2xl text-foreground">No schedules yet</p>
+      <p className="mt-2 text-muted-foreground text-sm">
         Each active search creates a schedule on Trigger.dev. Make one in
         Searches and it'll show up here.
       </p>
@@ -168,31 +170,35 @@ function ScheduleRow({
 }) {
   return (
     <tr>
-      <td className="px-4 py-3 font-medium text-ink">{row.task}</td>
-      <td className="px-4 py-3 text-brass">
-        <code className="rounded bg-ground px-2 py-0.5 text-[12px] text-ink">
+      <td className="px-4 py-3 font-medium text-foreground">{row.task}</td>
+      <td className="px-4 py-3 text-muted-foreground">
+        <code className="rounded bg-background px-2 py-0.5 text-[12px] text-foreground">
           {row.generator.expression}
         </code>
-        <span className="ml-2 text-brass/70 text-xs">{row.timezone}</span>
+        <span className="ml-2 text-muted-foreground/70 text-xs">
+          {row.timezone}
+        </span>
       </td>
-      <td className="px-4 py-3 text-brass">{formatNextRun(row.nextRun)}</td>
-      <td className="px-4 py-3 text-brass">
+      <td className="px-4 py-3 text-muted-foreground">
+        {formatNextRun(row.nextRun)}
+      </td>
+      <td className="px-4 py-3 text-muted-foreground">
         {row.externalId ? (
           linkedSearchName ? (
             <Link
-              className="text-copper underline"
+              className="text-primary underline"
               params={{ id: row.externalId }}
               to="/searches/$id"
             >
               {linkedSearchName}
             </Link>
           ) : (
-            <span className="font-mono text-brass/80 text-xs">
+            <span className="font-mono text-muted-foreground/80 text-xs">
               {row.externalId}
             </span>
           )
         ) : (
-          <span className="text-brass/60">—</span>
+          <span className="text-muted-foreground/60">—</span>
         )}
       </td>
       <td className="px-4 py-3">
@@ -201,7 +207,7 @@ function ScheduleRow({
             Active
           </span>
         ) : (
-          <span className="rounded-full bg-brass/15 px-2 py-0.5 text-[11px] text-brass uppercase tracking-wide">
+          <span className="rounded-full bg-muted-foreground/15 px-2 py-0.5 text-[11px] text-muted-foreground uppercase tracking-wide">
             Paused
           </span>
         )}
@@ -235,7 +241,7 @@ function RunNowButton({ task }: { task: SchedulableTaskId }) {
   return (
     <div className="flex flex-col items-end">
       <button
-        className="rounded-full bg-copper px-3 py-1 font-medium text-bone text-xs disabled:opacity-50"
+        className="rounded-full bg-primary px-3 py-1 font-medium text-primary-foreground text-xs disabled:opacity-50"
         disabled={mutation.isPending}
         onClick={() => mutation.mutate()}
         type="button"
@@ -289,7 +295,7 @@ function TogglePauseButton({
   return (
     <div className="flex flex-col items-end">
       <button
-        className="rounded-full border border-brass/30 px-3 py-1 text-brass text-xs disabled:opacity-50"
+        className="rounded-full border border-border px-3 py-1 text-muted-foreground text-xs disabled:opacity-50"
         disabled={mutation.isPending}
         onClick={() => mutation.mutate()}
         type="button"
@@ -441,19 +447,19 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
     >
       <Dialog.Trigger asChild>
         <button
-          className="rounded-full border border-brass/30 px-3 py-1 text-brass text-xs"
+          className="rounded-full border border-border px-3 py-1 text-muted-foreground text-xs"
           type="button"
         >
           Edit
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
-        <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-paper p-6 shadow-xl">
-          <Dialog.Title className="font-serif text-ink text-lg">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-foreground/40" />
+        <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-card p-6 shadow-xl">
+          <Dialog.Title className="font-serif text-foreground text-lg">
             Edit schedule
           </Dialog.Title>
-          <Dialog.Description className="mt-1 text-brass text-sm">
+          <Dialog.Description className="mt-1 text-muted-foreground text-sm">
             Updates fire immediately on Trigger.dev — the next run reschedules
             to match.
           </Dialog.Description>
@@ -468,11 +474,11 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
               <form.Field name="cron" validators={{ onChange: cronSchema }}>
                 {(field) => (
                   <label className="block">
-                    <span className="block text-brass text-xs uppercase tracking-wide">
+                    <span className="block text-muted-foreground text-xs uppercase tracking-wide">
                       Cron
                     </span>
                     <input
-                      className="mt-1 w-full rounded border border-brass/30 bg-ground px-3 py-2 font-mono text-ink text-sm"
+                      className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-foreground text-sm"
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
                       type="text"
@@ -492,11 +498,11 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
               >
                 {(field) => (
                   <label className="block">
-                    <span className="block text-brass text-xs uppercase tracking-wide">
+                    <span className="block text-muted-foreground text-xs uppercase tracking-wide">
                       Timezone (IANA)
                     </span>
                     <input
-                      className="mt-1 w-full rounded border border-brass/30 bg-ground px-3 py-2 text-ink text-sm"
+                      className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-foreground text-sm"
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
                       type="text"
@@ -517,7 +523,7 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
             <div className="mt-4 flex justify-end gap-2">
               <Dialog.Close asChild>
                 <button
-                  className="rounded-md px-4 py-2 text-ink text-sm"
+                  className="rounded-md px-4 py-2 text-foreground text-sm"
                   type="button"
                 >
                   Cancel
@@ -528,7 +534,7 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
               >
                 {([canSubmit, isSubmitting]) => (
                   <button
-                    className="rounded-md bg-copper px-4 py-2 text-bone text-sm disabled:opacity-50"
+                    className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:opacity-50"
                     disabled={!canSubmit || isSubmitting || mutation.isPending}
                     type="submit"
                   >

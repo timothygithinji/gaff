@@ -8,6 +8,8 @@
  * (i.e. the spec's "headline portal has agent info but others don't"
  * edge case).
  */
+import { SparklesIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { ListingDetailPortalRow } from "../../server/functions/listing-detail";
 
 type Props = {
@@ -82,17 +84,20 @@ export function PortalCrossList({ portals }: Props) {
   }
 
   return (
-    <section className="mx-4 mt-5 flex flex-col gap-3.5 rounded-[14px] border border-[#E5DDD0] bg-[#FDFAF4] px-4 py-4">
+    <section className="mx-4 mt-5 flex flex-col gap-3.5 rounded-[14px] border border-border bg-card px-4 py-4">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span aria-hidden className="text-copper">
-            ✦
-          </span>
-          <span className="font-semibold text-[11px] text-ink uppercase tracking-[0.08em]">
+          <HugeiconsIcon
+            className="text-primary"
+            icon={SparklesIcon}
+            size={12}
+            strokeWidth={2}
+          />
+          <span className="font-semibold text-[11px] text-foreground uppercase tracking-[0.08em]">
             Same property · {portals.length} portals
           </span>
         </div>
-        <span className="font-medium text-[11px] text-brass">
+        <span className="font-medium text-[11px] text-muted-foreground">
           {MATCH_LABEL}
         </span>
       </header>
@@ -133,33 +138,33 @@ function PortalRow({
       >
         <div
           className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${
-            isHeadline ? "bg-[#E8D6C9]" : "bg-[#F4E8DE]"
+            isHeadline ? "bg-primary/20" : "bg-primary/10"
           }`}
         >
           <span
             className={`font-semibold font-serif text-[13px] ${
-              isHeadline ? "text-copper" : "text-brass"
+              isHeadline ? "text-primary" : "text-muted-foreground"
             }`}
           >
             {portalInitial(row.portal)}
           </span>
         </div>
         <div className="grow basis-0">
-          <p className="font-semibold text-[14px] text-ink leading-[120%]">
+          <p className="font-semibold text-[14px] text-foreground leading-[120%]">
             {portalLabel(row.portal)}
           </p>
-          <p className="mt-0.5 text-[11px] text-brass leading-[120%]">
+          <p className="mt-0.5 text-[11px] text-muted-foreground leading-[120%]">
             {agentSubtitle(row)}
           </p>
         </div>
         <div className="flex flex-col items-end">
-          <span className="font-medium font-serif text-[18px] text-ink leading-[110%] tracking-[-0.02em]">
+          <span className="font-medium font-serif text-[18px] text-foreground leading-[110%] tracking-[-0.02em]">
             {formatPrice(row.priceMonthly)}
           </span>
           {delta ? (
             <span
               className={`mt-0.5 font-medium text-[10px] leading-[110%] ${
-                deltaPositive ? "text-[#8C3A35]" : "text-[#3F5A2E]"
+                deltaPositive ? "text-destructive" : "text-emerald-700"
               }`}
             >
               {delta}
@@ -167,7 +172,7 @@ function PortalRow({
           ) : null}
         </div>
       </a>
-      {showDivider ? <div className="h-px bg-[#F0E8DC]" /> : null}
+      {showDivider ? <div className="h-px bg-border" /> : null}
     </div>
   );
 }

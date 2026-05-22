@@ -15,6 +15,8 @@
  * The component is presentational — swipe actions live on the parent
  * route which wires the mutations.
  */
+import { FloorPlanIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { Features } from "../../lib/ai/prompt";
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
 import type { StoredAiRules } from "../../server/functions/searches";
@@ -87,7 +89,7 @@ export function ReviewCardView({ card, aiRules }: Props) {
   const broadbandMbps = parseBroadbandMbps(features?.broadband);
 
   return (
-    <article className="mx-4 overflow-hidden rounded-2xl bg-paper">
+    <article className="mx-4 overflow-hidden rounded-2xl bg-card">
       <div className="relative aspect-[4/5] w-full overflow-hidden">
         {heroPhoto ? (
           // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. Photo URLs already point at R2 with cache-friendly headers.
@@ -97,44 +99,48 @@ export function ReviewCardView({ card, aiRules }: Props) {
             src={heroPhoto}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-bone">
-            <p className="text-brass text-sm">No photo yet</p>
+          <div className="flex h-full w-full items-center justify-center bg-muted">
+            <p className="text-muted-foreground text-sm">No photo yet</p>
           </div>
         )}
         {alsoOnLabel ? (
-          <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-ink/70 px-3 py-1 font-medium text-[10px] text-bone uppercase tracking-wider backdrop-blur">
+          <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-foreground/70 px-3 py-1 font-medium text-[10px] text-primary-foreground uppercase tracking-wider backdrop-blur">
             {alsoOnLabel}
           </span>
         ) : null}
-        <span className="absolute right-3 bottom-3 rounded-full bg-ink/60 px-3 py-1 text-[10px] text-bone backdrop-blur">
+        <span className="absolute right-3 bottom-3 rounded-full bg-foreground/60 px-3 py-1 text-[10px] text-primary-foreground backdrop-blur">
           1 / {photoCount}
         </span>
         <button
-          className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-paper/90 px-3 py-1 font-medium text-[11px] text-ink"
+          className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1 font-medium text-[11px] text-foreground backdrop-blur"
           type="button"
         >
-          <span aria-hidden>▤</span>
+          <HugeiconsIcon icon={FloorPlanIcon} size={12} strokeWidth={2} />
           Floor plan
         </button>
       </div>
 
       <div className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-3">
-          <p className="font-serif text-3xl text-ink leading-none">
+          <p className="font-serif text-3xl text-foreground leading-none">
             {formatPrice(hl.priceMonthly)}
-            <span className="ml-1 font-sans text-brass text-sm">/mo</span>
+            <span className="ml-1 font-sans text-muted-foreground text-sm">
+              /mo
+            </span>
           </p>
           <div className="text-right leading-tight">
-            <p className="font-medium text-[10px] text-brass uppercase tracking-wider">
+            <p className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
               Cheapest on
             </p>
-            <p className="font-medium text-copper">{portalLabel(hl.portal)}</p>
+            <p className="font-medium text-primary">{portalLabel(hl.portal)}</p>
           </div>
         </div>
 
         <div>
-          <h2 className="font-serif text-2xl text-ink">{hl.addressRaw}</h2>
-          <p className="mt-1 text-brass text-sm">
+          <h2 className="font-serif text-2xl text-foreground">
+            {hl.addressRaw}
+          </h2>
+          <p className="mt-1 text-muted-foreground text-sm">
             {hl.outcode || "—"} · Listed via {portalLabel(hl.portal)}
           </p>
         </div>

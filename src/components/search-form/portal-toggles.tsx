@@ -1,11 +1,12 @@
 /**
  * Three-portal toggle row.
  *
- * Selected portals are ink-on-bone with a copper check; unselected are
- * brass-on-paper. At least one must be active for the form to submit —
- * the validation lives in the parent Zod schema but the empty-state is
- * also visually suppressed (no submit if no portals lit).
+ * Selected portals are foreground-on-background with a primary check;
+ * unselected are muted on card. At least one must be active for the form
+ * to submit — validation lives in the parent Zod schema.
  */
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { Portal } from "../../lib/cost-estimate";
 
 const PORTALS: Array<{ id: Portal; label: string }> = [
@@ -28,8 +29,8 @@ export function PortalToggles({ selected, onChange }: Props) {
           <button
             className={
               active
-                ? "inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 font-medium text-bone text-sm"
-                : "inline-flex items-center gap-1.5 rounded-full border border-brass/30 bg-paper px-4 py-2 text-brass text-sm"
+                ? "inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 font-medium text-background text-sm"
+                : "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2 text-muted-foreground text-sm"
             }
             key={p.id}
             onClick={() => {
@@ -41,7 +42,9 @@ export function PortalToggles({ selected, onChange }: Props) {
             }}
             type="button"
           >
-            <span aria-hidden>{active ? "✓" : ""}</span>
+            {active ? (
+              <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} />
+            ) : null}
             <span>{p.label}</span>
           </button>
         );

@@ -23,6 +23,13 @@
  * "Kept" here means the user's swipe outcome is `keep` or `shortlist`
  * — both flag the listing as something the household wants to pursue.
  */
+import {
+  Cancel01Icon,
+  FavouriteIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Button } from "../../components/ui/button";
 import type { ListingDetailPartnerSwipe } from "../../server/functions/listing-detail";
 
 type Props = {
@@ -116,77 +123,44 @@ export function DetailCta({
   const iKept = isKept(mySwipe);
 
   return (
-    <div className="fixed right-0 bottom-0 left-0 z-30 mx-auto flex max-w-md items-center gap-2.5 border-[#E5DDD0] border-t bg-[#F4EFE6EB] px-5 pt-3.5 pb-7 backdrop-blur">
-      <button
+    <div className="fixed right-0 bottom-0 left-0 z-30 mx-auto flex max-w-md items-center gap-2.5 border-border border-t bg-background/95 px-5 pt-3.5 pb-7 backdrop-blur">
+      <Button
         aria-label="Skip"
-        className="flex h-13 w-13 shrink-0 items-center justify-center rounded-[999px] border border-[#E5DDD0] bg-[#FDFAF4] disabled:opacity-50"
+        className="size-13 shrink-0 rounded-full border-border bg-card text-foreground hover:bg-muted"
         disabled={disabled}
         onClick={onSkip}
+        size="icon"
         type="button"
+        variant="outline"
       >
-        <svg
-          fill="none"
-          height="20"
-          role="img"
-          stroke="#8C3A35"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2.2"
-          viewBox="0 0 24 24"
-          width="20"
-        >
-          <title>Skip</title>
-          <line x1="18" x2="6" y1="6" y2="18" />
-          <line x1="6" x2="18" y1="6" y2="18" />
-        </svg>
-      </button>
+        <HugeiconsIcon icon={Cancel01Icon} size={20} strokeWidth={2.2} />
+      </Button>
 
-      <button
+      <Button
         aria-pressed={iKept}
-        className="flex h-13 grow basis-0 items-center justify-center gap-2 rounded-[999px] bg-copper disabled:opacity-60"
+        className="h-13 grow basis-0 rounded-full font-semibold text-[15px] tracking-[-0.01em]"
         disabled={disabled}
         onClick={onKeep}
         type="button"
       >
-        <svg
-          fill="#FDFAF4"
-          height="18"
-          role="img"
-          viewBox="0 0 24 24"
-          width="18"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <title>Keep</title>
-          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-        </svg>
-        <span className="font-semibold text-[15px] text-bone tracking-[-0.01em]">
-          {label}
-        </span>
-      </button>
+        <HugeiconsIcon icon={FavouriteIcon} size={18} strokeWidth={2.2} />
+        {label}
+      </Button>
 
-      <button
+      <Button
         aria-label="Shortlist"
         aria-pressed={mySwipe === "shortlist"}
-        className="flex h-13 w-13 shrink-0 items-center justify-center rounded-[999px] border border-[#E5DDD0] bg-[#FDFAF4] disabled:opacity-50"
+        className={`size-13 shrink-0 rounded-full border-border bg-card hover:bg-muted ${
+          mySwipe === "shortlist" ? "text-foreground" : "text-muted-foreground"
+        }`}
         disabled={disabled}
         onClick={onShortlist}
+        size="icon"
         type="button"
+        variant="outline"
       >
-        <svg
-          fill={mySwipe === "shortlist" ? "#7A6A4A" : "none"}
-          height="20"
-          role="img"
-          stroke="#7A6A4A"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          width="20"
-        >
-          <title>Shortlist</title>
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-        </svg>
-      </button>
+        <HugeiconsIcon icon={StarIcon} size={20} strokeWidth={2} />
+      </Button>
     </div>
   );
 }

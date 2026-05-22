@@ -27,8 +27,8 @@ export function PhotoGallery({ photos, alt }: Props) {
   if (!hero) {
     return (
       <div className="px-4 pt-2">
-        <div className="flex h-70 w-full items-center justify-center rounded-[14px] bg-bone">
-          <p className="text-brass text-sm">No photos yet</p>
+        <div className="flex h-70 w-full items-center justify-center rounded-[14px] bg-muted">
+          <p className="text-muted-foreground text-sm">No photos yet</p>
         </div>
       </div>
     );
@@ -36,7 +36,7 @@ export function PhotoGallery({ photos, alt }: Props) {
 
   return (
     <div className="flex flex-col gap-1.5 px-4 pt-2">
-      <div className="relative h-70 w-full overflow-hidden rounded-[14px] bg-bone">
+      <div className="relative h-70 w-full overflow-hidden rounded-[14px] bg-muted">
         {/* biome-ignore lint/nursery/noImgElement: TanStack Start; <Image> isn't available. */}
         <img alt={alt} className="h-full w-full object-cover" src={hero.url} />
         <button
@@ -53,7 +53,7 @@ export function PhotoGallery({ photos, alt }: Props) {
             const isLast = idx === thumbnails.length - 1;
             return (
               <div
-                className="relative h-16 grow basis-0 overflow-hidden rounded-md bg-bone"
+                className="relative h-16 grow basis-0 overflow-hidden rounded-md bg-muted"
                 key={`${p.position}:${p.url}`}
               >
                 {/* biome-ignore lint/nursery/noImgElement: same reasoning. */}
@@ -63,8 +63,8 @@ export function PhotoGallery({ photos, alt }: Props) {
                   src={p.url}
                 />
                 {isLast && overflow > 0 ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-ink/55">
-                    <span className="font-medium font-serif text-[15px] text-bone">
+                  <div className="absolute inset-0 flex items-center justify-center bg-foreground/55">
+                    <span className="font-medium font-serif text-[15px] text-primary-foreground">
                       +{overflow}
                     </span>
                   </div>

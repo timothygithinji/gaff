@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
+import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { redirectIfSignedIn } from "../lib/auth-guard";
 
@@ -71,13 +72,13 @@ function LoginPage() {
   });
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ground px-6 py-12 text-ink">
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
       <div className="w-full max-w-sm space-y-8">
         <header className="space-y-2">
-          <p className="text-brass text-xs uppercase tracking-widest">
+          <p className="text-muted-foreground text-xs uppercase tracking-widest">
             Welcome back
           </p>
-          <h1 className="font-display text-4xl">Sign in</h1>
+          <h1 className="font-serif text-4xl">Sign in</h1>
         </header>
 
         <form
@@ -99,12 +100,12 @@ function LoginPage() {
           >
             {(field) => (
               <label className="block space-y-1.5">
-                <span className="text-brass text-xs uppercase tracking-widest">
+                <span className="text-muted-foreground text-xs uppercase tracking-widest">
                   Email
                 </span>
                 <input
                   autoComplete="email"
-                  className="w-full rounded-lg border border-brass/30 bg-bone px-3 py-2.5 text-ink outline-none focus:border-copper"
+                  className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-foreground outline-none focus:border-primary"
                   inputMode="email"
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
@@ -112,7 +113,7 @@ function LoginPage() {
                   value={field.state.value}
                 />
                 {field.state.meta.errors[0] ? (
-                  <span className="text-copper text-xs">
+                  <span className="text-primary text-xs">
                     {String(field.state.meta.errors[0])}
                   </span>
                 ) : null}
@@ -131,19 +132,19 @@ function LoginPage() {
           >
             {(field) => (
               <label className="block space-y-1.5">
-                <span className="text-brass text-xs uppercase tracking-widest">
+                <span className="text-muted-foreground text-xs uppercase tracking-widest">
                   Password
                 </span>
                 <input
                   autoComplete="current-password"
-                  className="w-full rounded-lg border border-brass/30 bg-bone px-3 py-2.5 text-ink outline-none focus:border-copper"
+                  className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-foreground outline-none focus:border-primary"
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   type="password"
                   value={field.state.value}
                 />
                 {field.state.meta.errors[0] ? (
-                  <span className="text-copper text-xs">
+                  <span className="text-primary text-xs">
                     {String(field.state.meta.errors[0])}
                   </span>
                 ) : null}
@@ -152,23 +153,24 @@ function LoginPage() {
           </form.Field>
 
           {serverError ? (
-            <p className="rounded-md bg-copper/10 px-3 py-2 text-copper text-sm">
+            <p className="rounded-md bg-primary/10 px-3 py-2 text-primary text-sm">
               {serverError}
             </p>
           ) : null}
 
-          <button
-            className="w-full rounded-full bg-copper py-3 font-medium text-bone transition hover:bg-copper/90 disabled:opacity-60"
+          <Button
+            className="w-full rounded-full"
             disabled={signIn.isPending}
+            size="lg"
             type="submit"
           >
             {signIn.isPending ? "Signing in…" : "Sign in"}
-          </button>
+          </Button>
         </form>
 
-        <p className="text-center text-brass text-sm">
+        <p className="text-center text-muted-foreground text-sm">
           New here?{" "}
-          <Link className="font-medium text-copper underline" to="/signup">
+          <Link className="font-medium text-primary underline" to="/signup">
             Create an account
           </Link>
         </p>

@@ -13,6 +13,8 @@
  * That keeps re-enabling a rule a render-time toggle rather than a
  * re-run of the enrichment task.
  */
+import { Alert01Icon, Tick01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { Features } from "../../lib/ai/prompt";
 import type { StoredAiRules } from "../../server/functions/searches";
 
@@ -110,7 +112,7 @@ export function FeaturePills({ features, aiRules }: Props) {
 
   return (
     <section>
-      <p className="font-medium text-[11px] text-copper uppercase tracking-wider">
+      <p className="font-medium text-[11px] text-primary uppercase tracking-wider">
         + Floor plan read
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -123,15 +125,15 @@ export function FeaturePills({ features, aiRules }: Props) {
 }
 
 const PILL_PALETTE: Record<PillItem["variant"], string> = {
-  positive: "border-copper/20 bg-copper/10 text-ink",
-  caution: "border-brass/30 bg-brass/10 text-ink",
-  problem: "border-copper/40 bg-copper/15 text-copper",
+  positive: "border-primary/20 bg-primary/10 text-foreground",
+  caution: "border-muted-foreground/30 bg-muted text-foreground",
+  problem: "border-primary/40 bg-primary/15 text-primary",
 };
 
-const PILL_GLYPH: Record<PillItem["variant"], string> = {
-  positive: "✓",
-  caution: "!",
-  problem: "!",
+const PILL_ICON: Record<PillItem["variant"], typeof Tick01Icon> = {
+  positive: Tick01Icon,
+  caution: Alert01Icon,
+  problem: Alert01Icon,
 };
 
 function FeaturePill({
@@ -145,9 +147,7 @@ function FeaturePill({
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${PILL_PALETTE[variant]}`}
     >
-      <span aria-hidden className="font-semibold">
-        {PILL_GLYPH[variant]}
-      </span>
+      <HugeiconsIcon icon={PILL_ICON[variant]} size={12} strokeWidth={2.2} />
       <span>{label}</span>
     </span>
   );
