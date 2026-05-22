@@ -32,6 +32,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
 import { FloorplanAnalysis } from "../../components/listing-detail/floorplan-analysis";
 import { PhotoGallery } from "../../components/listing-detail/photo-gallery";
@@ -202,7 +203,7 @@ function ListingDetailPage() {
     : title;
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-32">
+    <>
       {error ? (
         <div
           aria-live="polite"
@@ -212,6 +213,15 @@ function ListingDetailPage() {
         </div>
       ) : null}
 
+      <DesktopListingDetail
+        data={data}
+        disabled={swipe.isPending}
+        onKeep={() => swipe.mutate({ outcome: "keep" })}
+        onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
+        onSkip={() => swipe.mutate({ outcome: "skip" })}
+      />
+
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-32 md:hidden">
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
         <button
@@ -326,6 +336,7 @@ function ListingDetailPage() {
         onSkip={() => swipe.mutate({ outcome: "skip" })}
         partnerSwipes={partnerSwipes}
       />
-    </div>
+      </div>
+    </>
   );
 }

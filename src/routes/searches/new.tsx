@@ -13,6 +13,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { nanoid } from "nanoid";
 import { useState } from "react";
+import { DesktopSearchCreate } from "../../components/search-form/desktop-search-create";
 import {
   SearchForm,
   type SearchFormValues,
@@ -102,12 +103,20 @@ function NewSearchPage() {
           {error}
         </div>
       )}
-      <SearchForm
+      <DesktopSearchCreate
         mode="create"
         onCancel={() => navigate({ to: "/searches" })}
         onSubmit={(v) => create.mutate(v)}
         pending={create.isPending}
       />
+      <div className="md:hidden">
+        <SearchForm
+          mode="create"
+          onCancel={() => navigate({ to: "/searches" })}
+          onSubmit={(v) => create.mutate(v)}
+          pending={create.isPending}
+        />
+      </div>
     </>
   );
 }

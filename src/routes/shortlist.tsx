@@ -17,6 +17,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { BottomNav } from "../components/layout/bottom-nav";
+import { DesktopShortlist } from "../components/shortlist/desktop-shortlist";
 import { MatchCard, usePlanViewing } from "../components/shortlist/match-card";
 import { MatchRow } from "../components/shortlist/match-row";
 import {
@@ -204,78 +205,110 @@ function ShortlistPage() {
     });
   }
 
+  const otherForLabel = otherMembers[0];
+  const partnerLabel = otherForLabel ? firstNameOf(otherForLabel) : null;
+  const sectionLabel = sectionLabelFor(
+    activeTab,
+    memberCount,
+    otherMemberQueries,
+    me?.name
+  );
+
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
-      {toast ? (
-        <div
-          aria-live="polite"
-          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
-        >
-          {toast}
-        </div>
-      ) : null}
+    <>
+      <DesktopShortlist
+        activeTab={activeTab}
+        featured={featured}
+        featuredAgeLabel={featured ? timeAgo(featured.matchedAt) : undefined}
+        memberCount={memberCount}
+        onOpen={(clusterId) => openCluster(clusterId)}
+        onPlanViewing={(m) => planViewing(m.headline)}
+        onSortChange={setSort}
+        onTabChange={setActiveTab}
+        partnerLabel={partnerLabel}
+        rowAgeLabel={(m) => timeAgo(m.matchedAt)}
+        rows={rows}
+        sectionLabel={sectionLabel}
+        sortKey={sort}
+        tabs={tabs}
+      />
 
-      <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
-          Shortlist
-        </h1>
-      </header>
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 md:hidden">
+        {toast ? (
+          <div
+            aria-live="polite"
+            className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
+          >
+            {toast}
+          </div>
+        ) : null}
 
-      <ShortlistTabs activeId={activeTab} onChange={setActiveTab} tabs={tabs} />
+        <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
+          <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
+            Shortlist
+          </h1>
+        </header>
 
-      {featured ? (
-        <MatchCard
-          ageLabel={timeAgo(featured.matchedAt)}
-          match={featured}
-          memberCount={memberCount}
-          onOpen={() => openCluster(featured.clusterId)}
-          onPlanViewing={() => planViewing(featured.headline)}
+        <ShortlistTabs
+          activeId={activeTab}
+          onChange={setActiveTab}
+          tabs={tabs}
         />
-      ) : null}
 
-      <div className="flex items-center justify-between px-6 pb-3">
-        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-          {sectionLabelFor(
-            activeTab,
-            memberCount,
-            otherMemberQueries,
-            me?.name
-          )}
-        </span>
-        <SortDropdown onChange={setSort} value={sort} />
-      </div>
+        {featured ? (
+          <MatchCard
+            ageLabel={timeAgo(featured.matchedAt)}
+            match={featured}
+            memberCount={memberCount}
+            onOpen={() => openCluster(featured.clusterId)}
+            onPlanViewing={() => planViewing(featured.headline)}
+          />
+        ) : null}
 
-      <div className="flex flex-col gap-2.5 px-4">
-        {rows.length === 0 ? (
-          <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
-            Nothing here yet. Keep swiping on the Review screen — picks land
-            here as you (and your household) hit Keep.
-          </p>
-        ) : (
-          rows.map((m) => (
-            <MatchRow
-              ageLabel={timeAgo(m.matchedAt)}
-              key={`${m.clusterId}:${m.searchId}`}
-              match={m}
-              memberCount={memberCount}
-              onOpen={() => openCluster(m.clusterId)}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Settings link sneaks into the empty-state corner — keeps the
-          screen self-contained when there's nothing to look at. */}
-      {rows.length === 0 && !featured ? (
-        <div className="mt-6 px-6 text-center">
-          <Link className="text-primary text-xs" to="/searches">
-            Manage your searches →
-          </Link>
+        <div className="flex items-center justify-between px-6 pb-3">
+          <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+            {sectionLabelFor(
+              activeTab,
+              memberCount,
+              otherMemberQueries,
+              me?.name
+            )}
+          </span>
+          <SortDropdown onChange={setSort} value={sort} />
         </div>
-      ) : null}
 
-      <BottomNav />
-    </div>
+        <div className="flex flex-col gap-2.5 px-4">
+          {rows.length === 0 ? (
+            <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
+              Nothing here yet. Keep swiping on the Review screen — picks land
+              here as you (and your household) hit Keep.
+            </p>
+          ) : (
+            rows.map((m) => (
+              <MatchRow
+                ageLabel={timeAgo(m.matchedAt)}
+                key={`${m.clusterId}:${m.searchId}`}
+                match={m}
+                memberCount={memberCount}
+                onOpen={() => openCluster(m.clusterId)}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Settings link sneaks into the empty-state corner — keeps the
+          screen self-contained when there's nothing to look at. */}
+        {rows.length === 0 && !featured ? (
+          <div className="mt-6 px-6 text-center">
+            <Link className="text-primary text-xs" to="/searches">
+              Manage your searches →
+            </Link>
+          </div>
+        ) : null}
+
+        <BottomNav />
+      </div>
+    </>
   );
 }
 
