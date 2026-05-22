@@ -5,7 +5,6 @@ import { getAmenityCounts } from "../../src/lib/overpass";
 import { getCrimeAggregate } from "../../src/lib/police-uk";
 
 const POLICE_503_RE = /data\.police\.uk 503/;
-const OVERPASS_503_RE = /Overpass 503/;
 
 function jsonResponse(body: unknown, init: ResponseInit = { status: 200 }) {
   return new Response(JSON.stringify(body), {
@@ -61,39 +60,22 @@ describe("getCrimeAggregate", () => {
   });
 });
 
-describe("getAmenityCounts", () => {
-  it("buckets OSM elements by category", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        elements: [
-          { type: "node", tags: { shop: "supermarket" } },
-          { type: "node", tags: { shop: "supermarket" } },
-          { type: "node", tags: { amenity: "cafe" } },
-          { type: "node", tags: { leisure: "park" } },
-        ],
-      })
-    );
-    const result = await getAmenityCounts({ lat: 51.6, lng: -0.13 });
-    expect(result.withinMeters).toBe(500);
-    expect(result.counts.supermarket).toBe(2);
-    expect(result.counts.cafe).toBe(1);
-    expect(result.counts.park).toBe(1);
-    expect(result.counts.pub).toBe(0);
-  });
-
-  it("returns zero counts when the area has no amenities", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ elements: [] }));
-    const result = await getAmenityCounts({ lat: 51.6, lng: -0.13 });
+describe("getAmenityCounts (stubbed)", () => {
+  it("returns zero counts for every category at the requested radius", async () => {
+    const result = await getAmenityCounts({
+      lat: 51.6,
+      lng: -0.13,
+      radiusMeters: 250,
+    });
+    expect(result.withinMeters).toBe(250);
     expect(Object.values(result.counts).every((v) => v === 0)).toBe(true);
+    expect(result.counts.supermarket).toBe(0);
+    expect(result.counts.cafe).toBe(0);
   });
 
-  it("throws on non-2xx", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("boom", { status: 503, statusText: "Service Unavailable" })
-    );
-    await expect(getAmenityCounts({ lat: 51.6, lng: -0.13 })).rejects.toThrow(
-      OVERPASS_503_RE
-    );
+  it("never makes a network call while stubbed", async () => {
+    await getAmenityCounts({ lat: 51.6, lng: -0.13 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

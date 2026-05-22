@@ -1,21 +1,23 @@
 /**
  * Overpass API client (OpenStreetMap query language).
  *
- * Public, unauthenticated, generously rate-limited for our volume.
- * We use it to count amenities within walking distance of a cluster:
- * "how many supermarkets / cafes / parks / etc. are within 500 m of
- * this property?". OSM coverage of London independents (cafes, pubs,
- * gyms) tends to be richer than Google Places for free-text searches.
+ * **Status: stubbed.** Every public Overpass mirror we've tried
+ * refuses us:
  *
- * One round-trip per cluster: a single Overpass query with multiple
- * tag filters, then group counts client-side.
+ *   - `overpass-api.de` (main + lz4) → 406 Not Acceptable for our UA
+ *   - `overpass.openstreetmap.fr` → 403 "only available to white-listed
+ *     usages"
+ *   - `overpass.private.coffee` → 504 Gateway Timeout (overloaded)
+ *
+ * Public Overpass is rate-limited per-IP and Trigger.dev's worker IPs
+ * sit in cloud ranges that the mirrors block. Real coverage will need
+ * either Zyte HTTP-proxied requests or a paid provider
+ * (Geoapify / Foursquare / Mapbox SearchBox). Until then `getAmenityCounts`
+ * resolves to a zero-filled map so the `enrichments.amenities` slot
+ * is still populated.
  */
 
-// The main `overpass-api.de` instance is intermittently 406-ing
-// unauthenticated POST requests (load-shedding). The French mirror is
-// the most reliable secondary; it serves the same dataset with the
-// same query language and accepts plain-text bodies.
-const OVERPASS_ENDPOINT = "https://overpass.openstreetmap.fr/api/interpreter";
+const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
 
 /**
  * The amenity buckets we collect counts for. Each entry maps a UI
@@ -92,12 +94,33 @@ function buildQuery(lat: number, lng: number, radius: number): string {
 out tags;`;
 }
 
+function zeroCounts(): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const category of AMENITY_CATEGORIES) {
+    counts[category.label] = 0;
+  }
+  return counts;
+}
+
 /**
- * Count amenities within `radiusMeters` of (lat, lng). Returns zero
- * counts for any category that has no nearby matches — the caller
- * gets a stable shape regardless of geography.
+ * Stub. Returns a zero-filled `AmenityCounts` for the requested
+ * radius until we wire a real provider. See the file header.
  */
+// biome-ignore lint/suspicious/useAwait: signature must stay async to match the eventual real implementation.
 export async function getAmenityCounts(
+  input: GetAmenitiesInput
+): Promise<AmenityCounts> {
+  return {
+    withinMeters: input.radiusMeters ?? 500,
+    counts: zeroCounts(),
+  };
+}
+
+/**
+ * Legacy Overpass-driven implementation. Unused at runtime — kept as
+ * a starting point for the real provider once we pick one.
+ */
+export async function _legacyOverpassAmenities(
   input: GetAmenitiesInput
 ): Promise<AmenityCounts> {
   const radius = input.radiusMeters ?? 500;
@@ -116,10 +139,7 @@ export async function getAmenityCounts(
   }
   const data = (await res.json()) as OverpassResponse;
 
-  const counts: Record<string, number> = {};
-  for (const category of AMENITY_CATEGORIES) {
-    counts[category.label] = 0;
-  }
+  const counts = zeroCounts();
   for (const element of data.elements ?? []) {
     const tags = element.tags ?? {};
     for (const category of AMENITY_CATEGORIES) {
