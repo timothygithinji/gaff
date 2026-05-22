@@ -41,6 +41,7 @@ import {
   rightmoveSearchUrl,
   zooplaSearchUrl,
 } from "../lib/portal-urls";
+import { createRightmoveLocationCache } from "../lib/rightmove-location";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { clusterTask } from "./cluster";
 import { scrapeQueue } from "./queues";
@@ -73,17 +74,31 @@ function getZyteKey(): string {
   return key;
 }
 
-function buildSearchUrl(
+type SearchFilters = {
+  minBedrooms: number | null;
+  maxBedrooms: number | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  propertyTypes: string[];
+};
+
+async function buildSearchUrl(
   portal: Portal,
   outcode: string,
-  search: {
-    minBedrooms: number | null;
-    maxBedrooms: number | null;
-    minPrice: number | null;
-    maxPrice: number | null;
-    propertyTypes: string[];
+  search: SearchFilters,
+  resolveRightmoveLocation: (outcode: string) => Promise<string>
+): Promise<string> {
+  if (portal === "rightmove") {
+    const locationIdentifier = await resolveRightmoveLocation(outcode);
+    return rightmoveSearchUrl({
+      locationIdentifier,
+      minBedrooms: search.minBedrooms,
+      maxBedrooms: search.maxBedrooms,
+      minPrice: search.minPrice,
+      maxPrice: search.maxPrice,
+      propertyTypes: search.propertyTypes,
+    });
   }
-): string {
   const params = {
     outcode,
     minBedrooms: search.minBedrooms,
@@ -92,9 +107,6 @@ function buildSearchUrl(
     maxPrice: search.maxPrice,
     propertyTypes: search.propertyTypes,
   };
-  if (portal === "rightmove") {
-    return rightmoveSearchUrl(params);
-  }
   if (portal === "zoopla") {
     return zooplaSearchUrl(params);
   }
@@ -359,14 +371,23 @@ export const scrapePortalTask = task({
     // Per-portal cost fallback when Zyte's response header is missing.
     const portalCostFallback = PORTAL_COST_USD[portal];
 
+    // Resolves outcode → Rightmove locationIdentifier once per unique
+    // outcode per task run; no-op for other portals.
+    const resolveRightmoveLocation = createRightmoveLocationCache();
+
     for (const outcode of search.outcodes) {
-      const url = buildSearchUrl(portal, outcode, {
-        minBedrooms: search.minBedrooms,
-        maxBedrooms: search.maxBedrooms,
-        minPrice: search.minPrice,
-        maxPrice: search.maxPrice,
-        propertyTypes: search.propertyTypes,
-      });
+      const url = await buildSearchUrl(
+        portal,
+        outcode,
+        {
+          minBedrooms: search.minBedrooms,
+          maxBedrooms: search.maxBedrooms,
+          minPrice: search.minPrice,
+          maxPrice: search.maxPrice,
+          propertyTypes: search.propertyTypes,
+        },
+        resolveRightmoveLocation
+      );
 
       logger.log("scrape-portal: fetching", { portal, outcode, url });
 
