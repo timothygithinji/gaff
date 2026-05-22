@@ -222,120 +222,120 @@ function ListingDetailPage() {
       />
 
       <div className="mx-auto min-h-screen max-w-md bg-background pb-32 md:hidden">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
-        <button
-          aria-label="Back"
-          className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
-          onClick={() => {
-            // Prefer real back navigation; fall back to the review queue.
-            if (typeof window !== "undefined" && window.history.length > 1) {
-              window.history.back();
-            } else {
-              navigate({ to: "/" });
-            }
-          }}
-          type="button"
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={2.2} />
-        </button>
-        <div className="flex items-center gap-2.5">
+        {/* Top bar */}
+        <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
           <button
-            aria-label="Share"
+            aria-label="Back"
             className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
             onClick={() => {
-              if (typeof navigator !== "undefined" && navigator.share) {
-                navigator
-                  .share({
-                    title: headline.addressRaw,
-                    url: headline.url,
-                  })
-                  .catch(() => {
-                    // user cancelled
-                  });
+              // Prefer real back navigation; fall back to the review queue.
+              if (typeof window !== "undefined" && window.history.length > 1) {
+                window.history.back();
+              } else {
+                navigate({ to: "/" });
               }
             }}
             type="button"
           >
-            <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={2} />
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={2.2} />
           </button>
-          <button
-            aria-label="Bookmark"
-            className={`flex size-9 items-center justify-center rounded-[999px] border border-border bg-card ${
-              mySwipe === "shortlist" ? "text-primary" : "text-foreground"
-            }`}
-            onClick={() => swipe.mutate({ outcome: "shortlist" })}
-            type="button"
-          >
-            <HugeiconsIcon icon={Bookmark01Icon} size={16} strokeWidth={2} />
-          </button>
-        </div>
-      </header>
-
-      {/* Photo gallery */}
-      <PhotoGallery alt={headline.addressRaw} photos={photos} />
-
-      {/* Price + listed-ago */}
-      <section className="flex flex-col gap-3 px-6 pt-6">
-        <div className="flex items-baseline justify-between">
-          <div className="flex items-baseline gap-1">
-            <span className="font-medium font-serif text-[40px] text-foreground leading-[100%] tracking-[-0.03em]">
-              {formatPrice(headline.priceMonthly)}
-            </span>
-            <span className="font-medium text-[13px] text-muted-foreground">
-              /mo
-            </span>
+          <div className="flex items-center gap-2.5">
+            <button
+              aria-label="Share"
+              className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
+              onClick={() => {
+                if (typeof navigator !== "undefined" && navigator.share) {
+                  navigator
+                    .share({
+                      title: headline.addressRaw,
+                      url: headline.url,
+                    })
+                    .catch(() => {
+                      // user cancelled
+                    });
+                }
+              }}
+              type="button"
+            >
+              <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={2} />
+            </button>
+            <button
+              aria-label="Bookmark"
+              className={`flex size-9 items-center justify-center rounded-[999px] border border-border bg-card ${
+                mySwipe === "shortlist" ? "text-primary" : "text-foreground"
+              }`}
+              onClick={() => swipe.mutate({ outcome: "shortlist" })}
+              type="button"
+            >
+              <HugeiconsIcon icon={Bookmark01Icon} size={16} strokeWidth={2} />
+            </button>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="font-semibold text-[10px] text-muted-foreground uppercase leading-[110%] tracking-widest">
-              {listedAgoLabel(headline.firstSeenAt)}
-            </span>
-            <span className="mt-1 font-serif text-[13px] text-muted-foreground italic leading-[110%]">
-              {portalsTrackingLabel}
-            </span>
+        </header>
+
+        {/* Photo gallery */}
+        <PhotoGallery alt={headline.addressRaw} photos={photos} />
+
+        {/* Price + listed-ago */}
+        <section className="flex flex-col gap-3 px-6 pt-6">
+          <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline gap-1">
+              <span className="font-medium font-serif text-[40px] text-foreground leading-[100%] tracking-[-0.03em]">
+                {formatPrice(headline.priceMonthly)}
+              </span>
+              <span className="font-medium text-[13px] text-muted-foreground">
+                /mo
+              </span>
+            </div>
+            <div className="flex flex-col items-end">
+              <span className="font-semibold text-[10px] text-muted-foreground uppercase leading-[110%] tracking-widest">
+                {listedAgoLabel(headline.firstSeenAt)}
+              </span>
+              <span className="mt-1 font-serif text-[13px] text-muted-foreground italic leading-[110%]">
+                {portalsTrackingLabel}
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <h1 className="font-medium font-serif text-[24px] text-foreground leading-[115%] tracking-[-0.02em]">
-            {title}
-          </h1>
-          {locality ? (
-            <p className="text-[14px] text-muted-foreground">{locality}</p>
-          ) : null}
-        </div>
-      </section>
+          <div className="flex flex-col gap-0.5">
+            <h1 className="font-medium font-serif text-[24px] text-foreground leading-[115%] tracking-[-0.02em]">
+              {title}
+            </h1>
+            {locality ? (
+              <p className="text-[14px] text-muted-foreground">{locality}</p>
+            ) : null}
+          </div>
+        </section>
 
-      {/* Portal cross-list */}
-      <PortalCrossList portals={portalSpread} />
+        {/* Portal cross-list */}
+        <PortalCrossList portals={portalSpread} />
 
-      {/* "What we see" — floorplan */}
-      <FloorplanAnalysis features={features} floorplan={floorplan} />
+        {/* "What we see" — floorplan */}
+        <FloorplanAnalysis features={features} floorplan={floorplan} />
 
-      {/* "What's in the small print" */}
-      <SmallPrint items={smallPrint} />
+        {/* "What's in the small print" */}
+        <SmallPrint items={smallPrint} />
 
-      {/* "Where it sits" — map + commute */}
-      <WhereItSits
-        apiKey={googleMapsApiKey}
-        commuteMinutes={commuteMinutes}
-        lat={cluster.lat}
-        lng={cluster.lng}
-        title={whereTitle || "Where it sits"}
-      />
+        {/* "Where it sits" — map + commute */}
+        <WhereItSits
+          apiKey={googleMapsApiKey}
+          commuteMinutes={commuteMinutes}
+          lat={cluster.lat}
+          lng={cluster.lng}
+          title={whereTitle || "Where it sits"}
+        />
 
-      {/* "Public records" */}
-      <PublicRecords epc={epc} publicRecords={publicRecords} />
+        {/* "Public records" */}
+        <PublicRecords epc={epc} publicRecords={publicRecords} />
 
-      {/* Sticky bottom CTA */}
-      <DetailCta
-        disabled={swipe.isPending}
-        memberCount={memberCount}
-        mySwipe={mySwipe}
-        onKeep={() => swipe.mutate({ outcome: "keep" })}
-        onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
-        onSkip={() => swipe.mutate({ outcome: "skip" })}
-        partnerSwipes={partnerSwipes}
-      />
+        {/* Sticky bottom CTA */}
+        <DetailCta
+          disabled={swipe.isPending}
+          memberCount={memberCount}
+          mySwipe={mySwipe}
+          onKeep={() => swipe.mutate({ outcome: "keep" })}
+          onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
+          onSkip={() => swipe.mutate({ outcome: "skip" })}
+          partnerSwipes={partnerSwipes}
+        />
       </div>
     </>
   );
