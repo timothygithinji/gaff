@@ -22,7 +22,6 @@ import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as ListingsClusterIdRouteImport } from './routes/listings/$clusterId'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
 import { Route as AdminSpendRouteImport } from './routes/admin/spend'
-import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminSchedulesRouteImport } from './routes/admin/schedules'
 import { Route as AdminRunsRouteImport } from './routes/admin/runs'
 
@@ -91,11 +90,6 @@ const AdminSpendRoute = AdminSpendRouteImport.update({
   path: '/admin/spend',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminSettingsRoute = AdminSettingsRouteImport.update({
-  id: '/admin/settings',
-  path: '/admin/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminSchedulesRoute = AdminSchedulesRouteImport.update({
   id: '/admin/schedules',
   path: '/admin/schedules',
@@ -115,7 +109,6 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/admin/runs': typeof AdminRunsRoute
   '/admin/schedules': typeof AdminSchedulesRoute
-  '/admin/settings': typeof AdminSettingsRoute
   '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
@@ -133,7 +126,6 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/admin/runs': typeof AdminRunsRoute
   '/admin/schedules': typeof AdminSchedulesRoute
-  '/admin/settings': typeof AdminSettingsRoute
   '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
@@ -152,7 +144,6 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/admin/runs': typeof AdminRunsRoute
   '/admin/schedules': typeof AdminSchedulesRoute
-  '/admin/settings': typeof AdminSettingsRoute
   '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
@@ -172,7 +163,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin/runs'
     | '/admin/schedules'
-    | '/admin/settings'
     | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
@@ -190,7 +180,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin/runs'
     | '/admin/schedules'
-    | '/admin/settings'
     | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
@@ -208,7 +197,6 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin/runs'
     | '/admin/schedules'
-    | '/admin/settings'
     | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
@@ -227,7 +215,6 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   AdminRunsRoute: typeof AdminRunsRoute
   AdminSchedulesRoute: typeof AdminSchedulesRoute
-  AdminSettingsRoute: typeof AdminSettingsRoute
   AdminSpendRoute: typeof AdminSpendRoute
   InviteTokenRoute: typeof InviteTokenRoute
   ListingsClusterIdRoute: typeof ListingsClusterIdRoute
@@ -331,13 +318,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSpendRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/settings': {
-      id: '/admin/settings'
-      path: '/admin/settings'
-      fullPath: '/admin/settings'
-      preLoaderRoute: typeof AdminSettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin/schedules': {
       id: '/admin/schedules'
       path: '/admin/schedules'
@@ -363,7 +343,6 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   AdminRunsRoute: AdminRunsRoute,
   AdminSchedulesRoute: AdminSchedulesRoute,
-  AdminSettingsRoute: AdminSettingsRoute,
   AdminSpendRoute: AdminSpendRoute,
   InviteTokenRoute: InviteTokenRoute,
   ListingsClusterIdRoute: ListingsClusterIdRoute,

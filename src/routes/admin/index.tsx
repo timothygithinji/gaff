@@ -29,6 +29,7 @@ import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import {
   adminMetrics,
+  getSystemStatus,
   listRecentRuns,
   runFilterCounts,
 } from "../../server/functions/admin";
@@ -48,6 +49,12 @@ const recentRunsQueryOptions = (filter: RunFilter) => ({
 const filterCountsQueryOptions = {
   queryKey: queryKeys.admin.filterCounts(),
   queryFn: () => runFilterCounts(),
+  staleTime: 30_000,
+};
+
+const systemStatusQueryOptions = {
+  queryKey: queryKeys.admin.systemStatus(),
+  queryFn: () => getSystemStatus(),
   staleTime: 30_000,
 };
 
@@ -75,11 +82,12 @@ function AdminDashboard() {
   const { data: metrics } = useSuspenseQuery(metricsQueryOptions);
   const { data: counts } = useSuspenseQuery(filterCountsQueryOptions);
   const { data: runs } = useSuspenseQuery(recentRunsQueryOptions(filter));
+  const { data: status } = useSuspenseQuery(systemStatusQueryOptions);
 
   return (
     <AdminSidebar>
       <div className="flex-1 px-10 py-8">
-        <DashboardHeader />
+        <DashboardHeader status={status} />
         <MetricCardsRow metrics={metrics} />
         <section className="mt-10">
           <div className="mb-4 flex items-baseline justify-between">
@@ -97,7 +105,11 @@ function AdminDashboard() {
   );
 }
 
-function DashboardHeader() {
+function DashboardHeader({
+  status,
+}: {
+  status: Awaited<ReturnType<typeof getSystemStatus>>;
+}) {
   return (
     <header className="mb-8 flex items-start justify-between">
       <div>
@@ -108,7 +120,7 @@ function DashboardHeader() {
           {pickHeadline()}
         </h1>
       </div>
-      <SystemStatusPill />
+      <SystemStatusPill label={status.label} tone={status.tone} />
     </header>
   );
 }

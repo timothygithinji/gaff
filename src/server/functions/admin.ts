@@ -684,3 +684,331 @@ export type _AdminAdjacentTypes = {
   cluster: typeof propertyClusters.$inferSelect;
   enrichment: typeof enrichments.$inferSelect;
 };
+
+// -----------------------------------------------------------------------------
+// System status — drives the SystemStatusPill on /admin.
+// -----------------------------------------------------------------------------
+
+export type SystemStatus = {
+  tone: "live" | "degraded" | "down";
+  label: string;
+  failureCount: number;
+  runningCount: number;
+};
+
+const STATUS_WINDOW_MINUTES = 60;
+
+export const getSystemStatus = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SystemStatus> => {
+    const householdId = await requireHouseholdId();
+    const db = getDb(env as unknown as Env);
+    const since = new Date(Date.now() - STATUS_WINDOW_MINUTES * 60 * 1000);
+
+    const [scrapeFails, aiFails, scrapeRunning, aiRunning] = await Promise.all([
+      db
+        .select({ count: sql<string>`COUNT(*)` })
+        .from(scrapeRuns)
+        .innerJoin(searches, eq(searches.id, scrapeRuns.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            eq(scrapeRuns.status, "failure"),
+            gte(scrapeRuns.startedAt, since)
+          )
+        ),
+      db
+        .select({ count: sql<string>`COUNT(*)` })
+        .from(aiRuns)
+        .innerJoin(listings, eq(listings.id, aiRuns.listingId))
+        .innerJoin(searches, eq(searches.id, listings.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            eq(aiRuns.status, "failure"),
+            gte(aiRuns.startedAt, since)
+          )
+        ),
+      db
+        .select({ count: sql<string>`COUNT(*)` })
+        .from(scrapeRuns)
+        .innerJoin(searches, eq(searches.id, scrapeRuns.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            eq(scrapeRuns.status, "running")
+          )
+        ),
+      db
+        .select({ count: sql<string>`COUNT(*)` })
+        .from(aiRuns)
+        .innerJoin(listings, eq(listings.id, aiRuns.listingId))
+        .innerJoin(searches, eq(searches.id, listings.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            eq(aiRuns.status, "running")
+          )
+        ),
+    ]);
+
+    const failureCount =
+      Number(scrapeFails[0]?.count ?? 0) + Number(aiFails[0]?.count ?? 0);
+    const runningCount =
+      Number(scrapeRunning[0]?.count ?? 0) + Number(aiRunning[0]?.count ?? 0);
+
+    if (failureCount === 0) {
+      return {
+        tone: "live",
+        label: runningCount > 0 ? "Live · scraping" : "All systems live",
+        failureCount: 0,
+        runningCount,
+      };
+    }
+    if (failureCount <= 3) {
+      return {
+        tone: "degraded",
+        label: `${failureCount} fail${failureCount === 1 ? "" : "s"} · last 1h`,
+        failureCount,
+        runningCount,
+      };
+    }
+    return {
+      tone: "down",
+      label: `${failureCount} fails · last 1h`,
+      failureCount,
+      runningCount,
+    };
+  }
+);
+
+// -----------------------------------------------------------------------------
+// Spend breakdown — drives /admin/spend.
+//
+// Three views over the same household-scoped cost data:
+//   - per-day  (last 30 days, scrape + ai, bucketed daily)
+//   - per-model (this month, grouped by ai_runs.model + scrape portal)
+//   - per-search (this month, grouped by searches.id)
+// -----------------------------------------------------------------------------
+
+export type SpendDayRow = { date: string; usd: number };
+export type SpendModelRow = { model: string; calls: number; usd: number };
+export type SpendSearchRow = {
+  searchId: string;
+  name: string;
+  runs: number;
+  usd: number;
+};
+
+export type SpendBreakdown = {
+  totalUsd: number;
+  budgetUsd: number;
+  perDay: SpendDayRow[];
+  perModel: SpendModelRow[];
+  perSearch: SpendSearchRow[];
+};
+
+export const getSpendBreakdown = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SpendBreakdown> => {
+    const householdId = await requireHouseholdId();
+    const db = getDb(env as unknown as Env);
+    const w = buildTimeWindows();
+
+    const [
+      scrapeDay,
+      aiDay,
+      aiModel,
+      scrapePortal,
+      perSearchScrape,
+      perSearchAi,
+    ] = await Promise.all([
+      db
+        .select({
+          day: sql<string>`DATE(${scrapeRuns.startedAt})`,
+          usd: sql<string>`COALESCE(SUM(${scrapeRuns.costUsd}), 0)`,
+        })
+        .from(scrapeRuns)
+        .innerJoin(searches, eq(searches.id, scrapeRuns.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            gte(scrapeRuns.startedAt, w.last30d)
+          )
+        )
+        .groupBy(sql`DATE(${scrapeRuns.startedAt})`),
+      db
+        .select({
+          day: sql<string>`DATE(${aiRuns.startedAt})`,
+          usd: sql<string>`COALESCE(SUM(${aiRuns.costUsd}), 0)`,
+        })
+        .from(aiRuns)
+        .innerJoin(listings, eq(listings.id, aiRuns.listingId))
+        .innerJoin(searches, eq(searches.id, listings.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            gte(aiRuns.startedAt, w.last30d)
+          )
+        )
+        .groupBy(sql`DATE(${aiRuns.startedAt})`),
+      db
+        .select({
+          model: aiRuns.model,
+          calls: sql<string>`COUNT(*)`,
+          usd: sql<string>`COALESCE(SUM(${aiRuns.costUsd}), 0)`,
+        })
+        .from(aiRuns)
+        .innerJoin(listings, eq(listings.id, aiRuns.listingId))
+        .innerJoin(searches, eq(searches.id, listings.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            gte(aiRuns.startedAt, w.startOfMonth)
+          )
+        )
+        .groupBy(aiRuns.model),
+      db
+        .select({
+          portal: scrapeRuns.portal,
+          calls: sql<string>`COUNT(*)`,
+          usd: sql<string>`COALESCE(SUM(${scrapeRuns.costUsd}), 0)`,
+        })
+        .from(scrapeRuns)
+        .innerJoin(searches, eq(searches.id, scrapeRuns.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            gte(scrapeRuns.startedAt, w.startOfMonth)
+          )
+        )
+        .groupBy(scrapeRuns.portal),
+      db
+        .select({
+          searchId: scrapeRuns.searchId,
+          name: searches.name,
+          runs: sql<string>`COUNT(*)`,
+          usd: sql<string>`COALESCE(SUM(${scrapeRuns.costUsd}), 0)`,
+        })
+        .from(scrapeRuns)
+        .innerJoin(searches, eq(searches.id, scrapeRuns.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            gte(scrapeRuns.startedAt, w.startOfMonth)
+          )
+        )
+        .groupBy(scrapeRuns.searchId, searches.name),
+      db
+        .select({
+          searchId: searches.id,
+          name: searches.name,
+          runs: sql<string>`COUNT(*)`,
+          usd: sql<string>`COALESCE(SUM(${aiRuns.costUsd}), 0)`,
+        })
+        .from(aiRuns)
+        .innerJoin(listings, eq(listings.id, aiRuns.listingId))
+        .innerJoin(searches, eq(searches.id, listings.searchId))
+        .where(
+          and(
+            eq(searches.householdId, householdId),
+            gte(aiRuns.startedAt, w.startOfMonth)
+          )
+        )
+        .groupBy(searches.id, searches.name),
+    ]);
+
+    const perDay = mergeDailySpend(scrapeDay, aiDay, w.last30d, w.now);
+    const perModel = mergeModelSpend(aiModel, scrapePortal);
+    const perSearch = mergeSearchSpend(perSearchScrape, perSearchAi);
+    const totalUsd = perDay.reduce((sum, r) => sum + r.usd, 0);
+
+    return {
+      totalUsd,
+      budgetUsd: MONTHLY_BUDGET_USD,
+      perDay,
+      perModel,
+      perSearch,
+    };
+  }
+);
+
+function mergeDailySpend(
+  scrape: Array<{ day: string; usd: string }>,
+  ai: Array<{ day: string; usd: string }>,
+  since: Date,
+  now: Date
+): SpendDayRow[] {
+  const map = new Map<string, number>();
+  for (const r of scrape) {
+    map.set(r.day, (map.get(r.day) ?? 0) + Number(r.usd));
+  }
+  for (const r of ai) {
+    map.set(r.day, (map.get(r.day) ?? 0) + Number(r.usd));
+  }
+  const dayMs = 24 * 60 * 60 * 1000;
+  const out: SpendDayRow[] = [];
+  const startMs = Date.UTC(
+    since.getUTCFullYear(),
+    since.getUTCMonth(),
+    since.getUTCDate()
+  );
+  const endMs = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  for (let t = startMs; t <= endMs; t += dayMs) {
+    const date = new Date(t).toISOString().slice(0, 10);
+    out.push({ date, usd: map.get(date) ?? 0 });
+  }
+  return out;
+}
+
+function mergeModelSpend(
+  ai: Array<{ model: string; calls: string; usd: string }>,
+  scrape: Array<{ portal: string; calls: string; usd: string }>
+): SpendModelRow[] {
+  const rows: SpendModelRow[] = [];
+  for (const r of ai) {
+    rows.push({
+      model: modelLabelFor(r.model),
+      calls: Number(r.calls),
+      usd: Number(r.usd),
+    });
+  }
+  for (const r of scrape) {
+    rows.push({
+      model: scrapeModelLabelFor(r.portal),
+      calls: Number(r.calls),
+      usd: Number(r.usd),
+    });
+  }
+  rows.sort((a, b) => b.usd - a.usd);
+  return rows;
+}
+
+function mergeSearchSpend(
+  scrape: Array<{
+    searchId: string;
+    name: string;
+    runs: string;
+    usd: string;
+  }>,
+  ai: Array<{ searchId: string; name: string; runs: string; usd: string }>
+): SpendSearchRow[] {
+  const map = new Map<string, SpendSearchRow>();
+  for (const r of [...scrape, ...ai]) {
+    const existing = map.get(r.searchId);
+    if (existing) {
+      existing.runs += Number(r.runs);
+      existing.usd += Number(r.usd);
+    } else {
+      map.set(r.searchId, {
+        searchId: r.searchId,
+        name: r.name,
+        runs: Number(r.runs),
+        usd: Number(r.usd),
+      });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.usd - a.usd);
+}

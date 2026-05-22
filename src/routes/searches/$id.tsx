@@ -20,6 +20,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { DesktopSearchCreate } from "../../components/search-form/desktop-search-create";
 import {
   DEFAULT_FORM_VALUES,
   SearchForm,
@@ -217,6 +218,25 @@ function EditSearchPage() {
 
   const pending = update.isPending || archive.isPending || remove.isPending;
 
+  const pauseAction = {
+    label: search.active ? "Pause search" : "Paused",
+    disabled: pending || !search.active,
+    onClick: () => archive.mutate(),
+  };
+  const deleteAction = {
+    label: "Delete search",
+    disabled: pending,
+    onClick: () => {
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm("Delete this search? This can't be undone.")
+      ) {
+        return;
+      }
+      remove.mutate();
+    },
+  };
+
   return (
     <>
       {error && (
@@ -227,38 +247,41 @@ function EditSearchPage() {
           {error}
         </div>
       )}
-      <SearchForm
+      <DesktopSearchCreate
+        deleteAction={deleteAction}
         initial={initial}
         mode="edit"
         onCancel={() => navigate({ to: "/searches" })}
         onSubmit={(v) => update.mutate(v)}
+        pauseAction={pauseAction}
         pending={pending}
       />
-      <div className="mx-auto flex max-w-md justify-between gap-2 border-border border-t bg-card px-5 py-3">
-        <button
-          className="rounded-md border border-border px-4 py-2 text-muted-foreground text-xs"
-          disabled={pending || !search.active}
-          onClick={() => archive.mutate()}
-          type="button"
-        >
-          {search.active ? "Pause search" : "Paused"}
-        </button>
-        <button
-          className="rounded-md bg-[#B05A38]/10 px-4 py-2 text-[#B05A38] text-xs"
-          disabled={pending}
-          onClick={() => {
-            if (
-              typeof window !== "undefined" &&
-              !window.confirm("Delete this search? This can't be undone.")
-            ) {
-              return;
-            }
-            remove.mutate();
-          }}
-          type="button"
-        >
-          Delete search
-        </button>
+      <div className="md:hidden">
+        <SearchForm
+          initial={initial}
+          mode="edit"
+          onCancel={() => navigate({ to: "/searches" })}
+          onSubmit={(v) => update.mutate(v)}
+          pending={pending}
+        />
+        <div className="mx-auto flex max-w-md justify-between gap-2 border-border border-t bg-card px-5 py-3">
+          <button
+            className="rounded-md border border-border px-4 py-2 text-muted-foreground text-xs"
+            disabled={pauseAction.disabled}
+            onClick={pauseAction.onClick}
+            type="button"
+          >
+            {pauseAction.label}
+          </button>
+          <button
+            className="rounded-md bg-[#B05A38]/10 px-4 py-2 text-[#B05A38] text-xs"
+            disabled={deleteAction.disabled}
+            onClick={deleteAction.onClick}
+            type="button"
+          >
+            {deleteAction.label}
+          </button>
+        </div>
       </div>
     </>
   );

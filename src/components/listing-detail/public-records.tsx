@@ -1,23 +1,27 @@
 /**
- * "Public records" — the 5-row data grid showing EPC, broadband,
- * crime, flood, amenities. Each row has an icon, label, and right-
- * aligned headline + secondary sub.
+ * "Public records" — the data grid showing EPC, broadband, and crime.
+ * Each row has an icon, label, and right-aligned headline + secondary
+ * sub.
  *
  * Missing-data handling:
- *   - EPC: "EPC pending" + null sub when the enrichment hasn't run.
- *   - Broadband: "Pending" headline; AI extraction populates over
- *     time.
+ *   - EPC + Broadband: "Pending" rows when the enrichment hasn't run
+ *     yet. Honest placeholder because both WILL be populated by the
+ *     enrichment pipeline.
  *   - Crime: postcodes.io always gives us the area label when the
  *     postcode resolves; the rate is "See police.uk" until a future
  *     PR wires police.uk numbers.
- *   - Flood + Within 500m: hard-coded "Pending" placeholders. These
- *     need their own external clients (EA Flood, OS amenities) which
- *     are punted to v1.1.
+ *
+ * Flood risk + Within-500m amenities used to live here as static
+ * "Pending" rows; they had no external client wired and never
+ * populated. Removed until those data sources land — re-add the rows
+ * then.
+ *
+ * If none of the rows have *any* data (no enrichment, no postcode
+ * resolved), the whole section is hidden so we don't paint a wall of
+ * "Pending" labels.
  */
 import {
-  CloudIcon,
   FlashIcon,
-  MapPinIcon,
   Shield01Icon,
   Wifi01Icon,
 } from "@hugeicons/core-free-icons";
@@ -46,17 +50,15 @@ function epcRow(epc: ListingDetailEpc | undefined): Row {
     return {
       icon: FlashIcon,
       label: "EPC rating",
-      headline: "EPC pending",
-      sub: null,
+      headline: "Pending",
+      sub: "Enrichment not yet run",
     };
   }
-  const headline = epc.rating;
-  const sub = epc.potential ? `Potential ${epc.potential}` : null;
   return {
     icon: FlashIcon,
     label: "EPC rating",
-    headline,
-    sub,
+    headline: epc.rating,
+    sub: epc.potential ? `Potential ${epc.potential}` : null,
   };
 }
 
@@ -65,18 +67,13 @@ function broadbandRow(broadband?: string): Row {
     icon: Wifi01Icon,
     label: "Broadband",
     headline: broadband ?? "Pending",
-    sub: broadband ? null : "AI extraction not yet run",
+    sub: broadband ? null : "Enrichment not yet run",
   };
 }
 
-function crimeRow(crime?: ListingDetailPublicRecords["crime"]): Row {
+function crimeRow(crime?: ListingDetailPublicRecords["crime"]): Row | null {
   if (!crime) {
-    return {
-      icon: Shield01Icon,
-      label: "Crime · last 12mo",
-      headline: "Pending",
-      sub: null,
-    };
+    return null;
   }
   return {
     icon: Shield01Icon,
@@ -86,51 +83,12 @@ function crimeRow(crime?: ListingDetailPublicRecords["crime"]): Row {
   };
 }
 
-function floodRow(floodRisk?: string): Row {
-  return {
-    icon: CloudIcon,
-    label: "Flood risk",
-    headline: floodRisk ?? "Pending",
-    sub: floodRisk ? null : "EA Flood API not yet wired",
-  };
-}
-
-function withinRow(within?: ListingDetailPublicRecords["within500m"]): Row {
-  if (!within) {
-    return {
-      icon: MapPinIcon,
-      label: "Within 500m",
-      headline: "Pending",
-      sub: null,
-    };
-  }
-  const parts: string[] = [];
-  if (within.parks) {
-    parts.push(`${within.parks} park${within.parks === 1 ? "" : "s"}`);
-  }
-  if (within.cafes) {
-    parts.push(`${within.cafes} café${within.cafes === 1 ? "" : "s"}`);
-  }
-  if (within.pubs) {
-    parts.push(`${within.pubs} pub${within.pubs === 1 ? "" : "s"}`);
-  }
-  const sub = within.gp ? `Plus ${within.gp} GP nearby` : null;
-  return {
-    icon: MapPinIcon,
-    label: "Within 500m",
-    headline: parts.join(" · ") || "—",
-    sub,
-  };
-}
-
 export function PublicRecords({ epc, publicRecords }: Props) {
-  const rows: Row[] = [
-    epcRow(epc),
-    broadbandRow(publicRecords?.broadband),
-    crimeRow(publicRecords?.crime),
-    floodRow(publicRecords?.floodRisk),
-    withinRow(publicRecords?.within500m),
-  ];
+  const rows: Row[] = [epcRow(epc), broadbandRow(publicRecords?.broadband)];
+  const crime = crimeRow(publicRecords?.crime);
+  if (crime) {
+    rows.push(crime);
+  }
 
   return (
     <section className="flex flex-col gap-3.5 px-6 pt-7">

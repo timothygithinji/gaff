@@ -1,7 +1,8 @@
 /**
- * Status pill for the admin header. v1 hardcodes "All systems live" +
- * green; v1.1 will wire `tone` to live signals (recent successful
- * scrape, recent successful AI run, zero failures last hour).
+ * Status pill for the admin header. Tone + label are now derived from
+ * the `getSystemStatus` server fn (failures in last hour + running
+ * count). The optional defaults remain so the component still renders
+ * sensibly if called without data (e.g. while the query is in flight).
  */
 type SystemStatusPillProps = {
   label?: string;

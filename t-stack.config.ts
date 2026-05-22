@@ -13,6 +13,7 @@ export default {
   api: "none",
   database: "postgres",
   databaseHost: "neon",
+  databaseRegion: "aws-eu-central-1",
   orm: "drizzle",
   auth: "better-auth",
   storage: "r2",

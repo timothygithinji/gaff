@@ -14,10 +14,14 @@
  */
 export const queryKeys = {
   searches: () => ["searches"] as const,
+  searchesPortfolio: () => ["searches", "portfolio"] as const,
   search: (id: string) => ["searches", id] as const,
   household: () => ["household"] as const,
   schedules: () => ["schedules"] as const,
   reviewNext: () => ["review", "next"] as const,
+  reviewQueue: () => ["review", "queue"] as const,
+  reviewTodayStats: () => ["review", "today-stats"] as const,
+  reviewRecentSwipes: () => ["review", "recent-swipes"] as const,
   matchesUnread: () => ["matches", "unread"] as const,
   shortlist: () => ["shortlist"] as const,
   shortlistMutual: () => ["shortlist", "mutual"] as const,
@@ -31,5 +35,7 @@ export const queryKeys = {
     recentRuns: (filter: string) => ["admin", "recent-runs", filter] as const,
     filterCounts: () => ["admin", "filterCounts"] as const,
     schedules: () => ["admin", "schedules"] as const,
+    systemStatus: () => ["admin", "systemStatus"] as const,
+    spend: () => ["admin", "spend"] as const,
   },
 } as const;

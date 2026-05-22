@@ -23,11 +23,19 @@
  */
 import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../../db";
-import { type Search, searches } from "../../../db/schema";
+import {
+  type Search,
+  aiRuns,
+  householdMembers,
+  listings,
+  scrapeRuns,
+  searches,
+  swipes,
+} from "../../../db/schema";
 import type { Env } from "../../server";
 import {
   createSchedule,
@@ -477,3 +485,367 @@ export const deleteSearch = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+// -----------------------------------------------------------------------------
+// Portfolio aggregations — powers the desktop `/searches` view's metric
+// strip, per-card stats footer, and 7-day pulse chart in one round-trip.
+// -----------------------------------------------------------------------------
+
+export type SearchesPerSearchStats = {
+  searchId: string;
+  listingsThisWeek: number;
+  inQueue: number;
+  keptLast30d: number;
+  lastRunAt: Date | null;
+};
+
+export type SearchesPortfolioTotals = {
+  activeSearches: number;
+  totalSearches: number;
+  listingsThisWeek: number;
+  listingsLastWeek: number;
+  /** % delta vs last week. 0 when last week is 0 (no division-by-zero). */
+  listingsThisWeekDeltaPct: number;
+  inQueueTotal: number;
+  spendThisMonthUsd: number;
+  spendCapUsd: number;
+};
+
+export type SearchesPortfolio = {
+  perSearch: SearchesPerSearchStats[];
+  totals: SearchesPortfolioTotals;
+  /**
+   * Daily counts of new listings across all the household's searches
+   * over the trailing 7 days, oldest → newest. The component renders
+   * these as a bar chart; index 6 is "today".
+   */
+  pulseLast7Days: number[];
+};
+
+/**
+ * Hardcoded monthly budget cap, mirrors `admin.ts`'s `MONTHLY_BUDGET_USD`.
+ * Lives here separately so this file stays standalone — when we move
+ * the cap to a settings table, both sites collapse onto that read.
+ */
+const PORTFOLIO_BUDGET_USD = 15.0;
+
+async function requireHouseholdMembersForPortfolio(): Promise<{
+  householdId: string;
+  memberUserIds: string[];
+  currentUserId: string;
+}> {
+  const session = await getCurrentUser();
+  if (!session) {
+    throw new Error("unauthorized");
+  }
+  const db = getDb(env as unknown as Env);
+  const myMembership = await db.query.householdMembers.findFirst({
+    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
+  });
+  if (!myMembership) {
+    throw new Error("no_household");
+  }
+  const members = await db
+    .select({ userId: householdMembers.userId })
+    .from(householdMembers)
+    .where(eq(householdMembers.householdId, myMembership.householdId));
+  return {
+    householdId: myMembership.householdId,
+    memberUserIds: members.map((m) => m.userId),
+    currentUserId: session.userId,
+  };
+}
+
+export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
+  async (): Promise<SearchesPortfolio> => {
+    const { householdId, memberUserIds, currentUserId } =
+      await requireHouseholdMembersForPortfolio();
+    const db = getDb(env as unknown as Env);
+
+    const searchRows = await db
+      .select()
+      .from(searches)
+      .where(eq(searches.householdId, householdId));
+    const totalSearches = searchRows.length;
+    const activeSearches = searchRows.filter((s) => s.active).length;
+    const searchIds = searchRows.map((s) => s.id);
+
+    const now = new Date();
+    const startOfThisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startOfLastWeek = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const start30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    );
+
+    if (searchIds.length === 0) {
+      return {
+        perSearch: [],
+        totals: {
+          activeSearches: 0,
+          totalSearches: 0,
+          listingsThisWeek: 0,
+          listingsLastWeek: 0,
+          listingsThisWeekDeltaPct: 0,
+          inQueueTotal: 0,
+          spendThisMonthUsd: 0,
+          spendCapUsd: PORTFOLIO_BUDGET_USD,
+        },
+        pulseLast7Days: new Array(7).fill(0),
+      };
+    }
+
+    // Fire everything in parallel — five small queries.
+    const [
+      thisWeekListings,
+      lastWeekListings,
+      keptRows,
+      lastRunRows,
+      clusterRows,
+      mySwipesRows,
+      householdSkipRows,
+      spendRows,
+    ] = await Promise.all([
+      // Listings per search in the last 7d. We also need each row's
+      // firstSeenAt so we can bucket the pulse chart in JS.
+      db
+        .select({
+          searchId: listings.searchId,
+          firstSeenAt: listings.firstSeenAt,
+        })
+        .from(listings)
+        .where(
+          and(
+            inArray(listings.searchId, searchIds),
+            gte(listings.firstSeenAt, startOfThisWeek)
+          )
+        ),
+      // 7d–14d ago window for the week-over-week delta.
+      db
+        .select({ searchId: listings.searchId })
+        .from(listings)
+        .where(
+          and(
+            inArray(listings.searchId, searchIds),
+            gte(listings.firstSeenAt, startOfLastWeek),
+            sql`${listings.firstSeenAt} < ${startOfThisWeek}`
+          )
+        ),
+      // Current user's keep/shortlist swipes in the last 30 days.
+      db
+        .select({
+          searchId: swipes.searchId,
+          outcome: swipes.outcome,
+        })
+        .from(swipes)
+        .where(
+          and(
+            eq(swipes.userId, currentUserId),
+            inArray(swipes.searchId, searchIds),
+            gte(swipes.createdAt, start30d),
+            inArray(swipes.outcome, ["keep", "shortlist"])
+          )
+        ),
+      // Most recent scrape_run per search.
+      db
+        .select({
+          searchId: scrapeRuns.searchId,
+          lastRunAt: sql<Date>`MAX(${scrapeRuns.startedAt})`,
+        })
+        .from(scrapeRuns)
+        .where(inArray(scrapeRuns.searchId, searchIds))
+        .groupBy(scrapeRuns.searchId),
+      // (search_id, cluster_id) pairs — the raw material for in-queue.
+      db
+        .select({
+          searchId: listings.searchId,
+          clusterId: listings.clusterId,
+        })
+        .from(listings)
+        .where(
+          and(
+            inArray(listings.searchId, searchIds),
+            sql`${listings.clusterId} IS NOT NULL`
+          )
+        ),
+      // Current user's swipes (any outcome) — these clusters drop out.
+      db
+        .select({ clusterId: swipes.clusterId })
+        .from(swipes)
+        .where(eq(swipes.userId, currentUserId)),
+      // Household-wide skip swipes — asymmetric veto hides cards from
+      // the rest of the household.
+      db
+        .select({ clusterId: swipes.clusterId })
+        .from(swipes)
+        .where(
+          and(inArray(swipes.userId, memberUserIds), eq(swipes.outcome, "skip"))
+        ),
+      // Spend this month (scrape + ai). Cost is stored numeric → string
+      // in the row; cast + sum.
+      Promise.all([
+        db
+          .select({
+            total: sql<string>`COALESCE(SUM(${scrapeRuns.costUsd}), 0)`,
+          })
+          .from(scrapeRuns)
+          .where(
+            and(
+              inArray(scrapeRuns.searchId, searchIds),
+              gte(scrapeRuns.startedAt, startOfMonth)
+            )
+          ),
+        db
+          .select({
+            total: sql<string>`COALESCE(SUM(${aiRuns.costUsd}), 0)`,
+          })
+          .from(aiRuns)
+          .innerJoin(listings, eq(listings.id, aiRuns.listingId))
+          .where(
+            and(
+              inArray(listings.searchId, searchIds),
+              gte(aiRuns.startedAt, startOfMonth)
+            )
+          ),
+      ]),
+    ]);
+
+    const { listingsThisWeekBySearch, pulseLast7Days } = bucketListingsAndPulse(
+      thisWeekListings,
+      now
+    );
+    const keptBySearch = countBySearchId(keptRows);
+    const lastRunBySearch = mapLastRun(lastRunRows);
+    const queueClustersBySearch = bucketQueueClusters(
+      clusterRows,
+      new Set(mySwipesRows.map((s) => s.clusterId)),
+      new Set(householdSkipRows.map((s) => s.clusterId))
+    );
+
+    const perSearch: SearchesPerSearchStats[] = searchRows.map((s) => ({
+      searchId: s.id,
+      listingsThisWeek: listingsThisWeekBySearch.get(s.id) ?? 0,
+      inQueue: queueClustersBySearch.get(s.id)?.size ?? 0,
+      keptLast30d: keptBySearch.get(s.id) ?? 0,
+      lastRunAt: lastRunBySearch.get(s.id) ?? null,
+    }));
+
+    const listingsThisWeek = thisWeekListings.length;
+    const listingsLastWeek = lastWeekListings.length;
+    const listingsThisWeekDeltaPct =
+      listingsLastWeek === 0
+        ? 0
+        : ((listingsThisWeek - listingsLastWeek) / listingsLastWeek) * 100;
+
+    const [scrapeSpend, aiSpend] = spendRows;
+    const spendThisMonthUsd =
+      Number(scrapeSpend[0]?.total ?? 0) + Number(aiSpend[0]?.total ?? 0);
+
+    const inQueueTotal = countDistinct(queueClustersBySearch);
+
+    return {
+      perSearch,
+      totals: {
+        activeSearches,
+        totalSearches,
+        listingsThisWeek,
+        listingsLastWeek,
+        listingsThisWeekDeltaPct,
+        inQueueTotal,
+        spendThisMonthUsd,
+        spendCapUsd: PORTFOLIO_BUDGET_USD,
+      },
+      pulseLast7Days,
+    };
+  }
+);
+
+/**
+ * Bucket the trailing-7-days listings into per-search counts AND the
+ * 7-day pulse chart. Index 0 of `pulseLast7Days` is 6 days ago in UTC;
+ * index 6 is today. A row whose `firstSeenAt` somehow falls outside
+ * the window is dropped from the pulse (still counted per-search).
+ */
+function bucketListingsAndPulse(
+  rows: { searchId: string; firstSeenAt: Date }[],
+  now: Date
+): { listingsThisWeekBySearch: Map<string, number>; pulseLast7Days: number[] } {
+  const listingsThisWeekBySearch = new Map<string, number>();
+  const pulseLast7Days = new Array<number>(7).fill(0);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startOfPulseUtc = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() - 6
+  );
+  for (const r of rows) {
+    listingsThisWeekBySearch.set(
+      r.searchId,
+      (listingsThisWeekBySearch.get(r.searchId) ?? 0) + 1
+    );
+    const idx = Math.floor(
+      (new Date(r.firstSeenAt).getTime() - startOfPulseUtc) / dayMs
+    );
+    if (idx >= 0 && idx < 7) {
+      pulseLast7Days[idx] = (pulseLast7Days[idx] ?? 0) + 1;
+    }
+  }
+  return { listingsThisWeekBySearch, pulseLast7Days };
+}
+
+function countBySearchId<T extends { searchId: string }>(
+  rows: T[]
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    out.set(r.searchId, (out.get(r.searchId) ?? 0) + 1);
+  }
+  return out;
+}
+
+function mapLastRun(
+  rows: { searchId: string; lastRunAt: Date | null }[]
+): Map<string, Date> {
+  const out = new Map<string, Date>();
+  for (const r of rows) {
+    if (r.lastRunAt) {
+      out.set(r.searchId, new Date(r.lastRunAt));
+    }
+  }
+  return out;
+}
+
+/**
+ * Per-search distinct cluster ids remaining in the queue, after the
+ * household-skip veto + the current user's already-swiped set.
+ */
+function bucketQueueClusters(
+  clusterRows: { searchId: string; clusterId: string | null }[],
+  mySwiped: Set<string | null>,
+  householdSkip: Set<string | null>
+): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const r of clusterRows) {
+    if (!r.clusterId) {
+      continue;
+    }
+    if (mySwiped.has(r.clusterId) || householdSkip.has(r.clusterId)) {
+      continue;
+    }
+    const set = out.get(r.searchId) ?? new Set<string>();
+    set.add(r.clusterId);
+    out.set(r.searchId, set);
+  }
+  return out;
+}
+
+/** Distinct count of values across all sets in a Map<key, Set<value>>. */
+function countDistinct(map: Map<string, Set<string>>): number {
+  const seen = new Set<string>();
+  for (const set of map.values()) {
+    for (const v of set) {
+      seen.add(v);
+    }
+  }
+  return seen.size;
+}

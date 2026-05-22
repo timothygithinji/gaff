@@ -19,7 +19,6 @@ import {
   CoinsDollarIcon,
   Database01Icon,
   Search01Icon,
-  Settings02Icon,
   StarIcon,
   SwipeRight03Icon,
 } from "@hugeicons/core-free-icons";
@@ -64,7 +63,6 @@ const SYSTEM_LINKS: NavLink[] = [
   { to: "/admin/runs", label: "Runs", icon: Database01Icon },
   { to: "/admin/spend", label: "Spend", icon: CoinsDollarIcon },
   { to: "/admin/schedules", label: "Schedules", icon: Calendar03Icon },
-  { to: "/admin/settings", label: "Settings", icon: Settings02Icon },
 ];
 
 /**
