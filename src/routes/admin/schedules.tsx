@@ -21,7 +21,15 @@
  * externalId → search) is still household-scoped because we look up
  * searches via `listSearches()`.
  */
-import * as Dialog from "@radix-ui/react-dialog";
+import { Button } from "../../components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
 import { useForm } from "@tanstack/react-form";
 import {
   useMutation,
@@ -432,7 +440,7 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
   });
 
   return (
-    <Dialog.Root
+    <Dialog
       onOpenChange={(next) => {
         setOpen(next);
         if (next) {
@@ -445,24 +453,21 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
       }}
       open={open}
     >
-      <Dialog.Trigger asChild>
-        <button
-          className="rounded-full border border-border px-3 py-1 text-muted-foreground text-xs"
-          type="button"
-        >
-          Edit
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-foreground/40" />
-        <Dialog.Content className="-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50 w-[90vw] max-w-md rounded-lg bg-card p-6 shadow-xl">
-          <Dialog.Title className="font-serif text-foreground text-lg">
-            Edit schedule
-          </Dialog.Title>
-          <Dialog.Description className="mt-1 text-muted-foreground text-sm">
-            Updates fire immediately on Trigger.dev — the next run reschedules
-            to match.
-          </Dialog.Description>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="outline">
+            Edit
+          </Button>
+        }
+      />
+      <DialogContent>
+        <DialogTitle className="font-serif text-foreground text-lg">
+          Edit schedule
+        </DialogTitle>
+        <DialogDescription>
+          Updates fire immediately on Trigger.dev — the next run reschedules to
+          match.
+        </DialogDescription>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -521,32 +526,23 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
               )}
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <Dialog.Close asChild>
-                <button
-                  className="rounded-md px-4 py-2 text-foreground text-sm"
-                  type="button"
-                >
-                  Cancel
-                </button>
-              </Dialog.Close>
+              <DialogClose render={<Button variant="ghost">Cancel</Button>} />
               <form.Subscribe
                 selector={(s) => [s.canSubmit, s.isSubmitting] as const}
               >
                 {([canSubmit, isSubmitting]) => (
-                  <button
-                    className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:opacity-50"
+                  <Button
                     disabled={!canSubmit || isSubmitting || mutation.isPending}
                     type="submit"
                   >
                     {isSubmitting || mutation.isPending ? "Saving…" : "Save"}
-                  </button>
+                  </Button>
                 )}
               </form.Subscribe>
             </div>
           </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </DialogContent>
+      </Dialog>
   );
 }
 

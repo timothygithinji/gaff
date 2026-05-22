@@ -40,33 +40,28 @@ export function CadencePicker({ selectedId, onChange, perDayUsd }: Props) {
 
   return (
     <Dialog onOpenChange={setOpen} open={open}>
-      <DialogTrigger asChild>
-        <button
-          className="flex w-full items-center justify-between rounded-2xl bg-muted px-4 py-4 text-left"
-          type="button"
-        >
-          <span className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <HugeiconsIcon icon={Clock02Icon} size={18} strokeWidth={1.8} />
+      <DialogTrigger className="flex w-full items-center justify-between rounded-2xl bg-muted px-4 py-4 text-left">
+        <span className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+            <HugeiconsIcon icon={Clock02Icon} size={18} strokeWidth={1.8} />
+          </span>
+          <span>
+            <span className="block text-foreground text-sm">
+              {labelFor(selected)}
             </span>
-            <span>
-              <span className="block text-foreground text-sm">
-                {labelFor(selected)}
-              </span>
-              <span className="block text-muted-foreground text-xs">
-                {selected.cron === null
-                  ? "No scraping — paused"
-                  : `Est. cost · ${formatUsd(perDayUsd)} / day`}
-              </span>
+            <span className="block text-muted-foreground text-xs">
+              {selected.cron === null
+                ? "No scraping — paused"
+                : `Est. cost · ${formatUsd(perDayUsd)} / day`}
             </span>
           </span>
-          <HugeiconsIcon
-            className="text-muted-foreground"
-            icon={ArrowRight01Icon}
-            size={16}
-            strokeWidth={2}
-          />
-        </button>
+        </span>
+        <HugeiconsIcon
+          className="text-muted-foreground"
+          icon={ArrowRight01Icon}
+          size={16}
+          strokeWidth={2}
+        />
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogTitle className="font-serif text-foreground text-lg">

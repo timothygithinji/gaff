@@ -70,19 +70,17 @@ export function ActionButtons({
 
       <Button
         aria-label="More info"
-        asChild
         className="size-11 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
+        render={<Link params={{ clusterId }} to="/listings/$clusterId" />}
         size="icon"
         variant="outline"
       >
-        <Link params={{ clusterId }} to="/listings/$clusterId">
-          <HugeiconsIcon
-            icon={InformationCircleIcon}
-            size={18}
-            strokeWidth={1.8}
-          />
-        </Link>
+        <HugeiconsIcon
+          icon={InformationCircleIcon}
+          size={18}
+          strokeWidth={1.8}
+        />
       </Button>
 
       <Button

@@ -31,14 +31,9 @@ export function SortDropdown({ value, onChange }: Props) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          className="inline-flex items-center gap-1 font-medium text-[11px] text-primary"
-          type="button"
-        >
-          {current?.label}
-          <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2} />
-        </button>
+      <DropdownMenuTrigger className="inline-flex items-center gap-1 font-medium text-[11px] text-primary">
+        {current?.label}
+        <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[160px]">
         {OPTIONS.map((opt) => (
