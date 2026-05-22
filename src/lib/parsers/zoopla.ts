@@ -19,7 +19,12 @@ import {
   toNumber,
   coerceString as toStringSafe,
 } from "./common";
-import { findByKey, findInFlight, parseFlight } from "./rsc-flight";
+import {
+  findByKey,
+  findInFlight,
+  parseFlight,
+  resolveFlightRef,
+} from "./rsc-flight";
 import type { Furnished, ListingDetail, ListingSummary } from "./types";
 
 const ZOOPLA_IMG_BASE = "https://lid.zoocdn.com/645/430";
@@ -367,10 +372,16 @@ export function parseZooplaDetail(html: string): ListingDetail {
 
   const photos = zooplaDetailPhotos(c);
 
-  // `detailedDescription` is sometimes the RSC reference string ("$78"),
-  // sometimes the full text. Only accept it when it doesn't look like a
-  // bare reference.
-  const desc = toStringSafe(c.detailedDescription);
+  // `detailedDescription` is sometimes the prose inline, sometimes an
+  // RSC reference like `$77` pointing at a separate T-tagged flight
+  // chunk that holds the actual text. `resolveFlightRef` handles both:
+  // it returns plain strings as-is and follows references to their
+  // target chunk.
+  const rawDesc = c.detailedDescription;
+  const resolvedDesc = resolveFlightRef(flight, rawDesc);
+  const desc = toStringSafe(resolvedDesc);
+  // If the resolver returned another bare reference we couldn't follow
+  // (target chunk missing), drop it rather than poisoning the AI prompt.
   const description = desc && !ZOOPLA_RSC_REF_RE.test(desc) ? desc : undefined;
 
   const features = c.features as
