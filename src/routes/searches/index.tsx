@@ -5,9 +5,12 @@
  * used elsewhere (serif title, brass body text, copper accents). The
  * "New search" CTA in the top-right opens the full-screen create flow.
  */
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { TopBar } from "../../components/layout/top-bar";
+import { BottomNav } from "../../components/layout/bottom-nav";
+import { Button } from "../../components/ui/button";
 import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import { type SearchRow, listSearches } from "../../server/functions/searches";
@@ -31,21 +34,36 @@ function SearchesIndexPage() {
   const { data } = useSuspenseQuery(searchesQueryOptions);
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
-      <TopBar title="Searches" />
-      <main className="space-y-4 px-5 pt-6">
-        <div className="flex items-baseline justify-between">
-          <h1 className="font-serif text-3xl text-foreground">Your searches</h1>
-          <Link
-            className="rounded-full bg-primary px-4 py-2 font-medium text-primary-foreground text-xs"
-            to="/searches/new"
-          >
-            + New
-          </Link>
-        </div>
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-28">
+      <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
+        <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+          Your household
+        </span>
+        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
+          Searches
+        </h1>
+      </header>
 
+      <div className="flex items-center justify-between px-6 pb-3">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+          {data.length === 0
+            ? "No searches yet"
+            : `${data.length} search${data.length === 1 ? "" : "es"}`}
+        </span>
+        <Button
+          className="rounded-full"
+          render={<Link to="/searches/new" />}
+          size="sm"
+        >
+          <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
+          New
+        </Button>
+      </div>
+
+      <main className="space-y-4 px-4">
         {data.length === 0 ? <EmptyState /> : <SearchList searches={data} />}
       </main>
+      <BottomNav />
     </div>
   );
 }

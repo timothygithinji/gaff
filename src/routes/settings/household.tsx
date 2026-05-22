@@ -14,6 +14,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { BottomNav } from "../../components/layout/bottom-nav";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -53,37 +54,50 @@ function HouseholdSettingsPage() {
   useSuspenseQuery(householdQueryOptions); // keep the cache alive
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-6 font-serif text-2xl text-foreground">Household</h1>
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-28">
+      <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
+        <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+          Settings
+        </span>
+        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
+          Household
+        </h1>
+      </header>
 
-      <section className="mb-6">
-        <h2 className="mb-3 font-medium text-foreground text-sm uppercase tracking-wide">
-          Members
-        </h2>
-        <ul className="divide-y divide-border rounded-lg border border-border bg-card">
-          {members.map((member) => (
-            <li
-              key={member.id}
-              className="flex items-center justify-between px-4 py-3"
-            >
-              <div>
-                <p className="text-foreground text-sm">
-                  {member.name || member.email}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {member.email} · {member.role}
-                </p>
-              </div>
-              {isOwner && member.userId !== currentUserId && (
-                <RemoveMemberButton memberId={member.id} name={member.name} />
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <main className="space-y-6 px-4">
+        <section>
+          <p className="mb-2 px-2 font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+            Members
+          </p>
+          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+            {members.map((member) => (
+              <li
+                key={member.id}
+                className="flex items-center justify-between px-4 py-3"
+              >
+                <div>
+                  <p className="text-foreground text-sm">
+                    {member.name || member.email}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {member.email} · {member.role}
+                  </p>
+                </div>
+                {isOwner && member.userId !== currentUserId && (
+                  <RemoveMemberButton
+                    memberId={member.id}
+                    name={member.name}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
 
-      {isOwner && <InviteSection />}
-    </main>
+        {isOwner && <InviteSection />}
+      </main>
+      <BottomNav />
+    </div>
   );
 }
 
