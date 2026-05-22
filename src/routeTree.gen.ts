@@ -10,7 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
+import { Route as SearchesNewRouteImport } from './routes/searches/new'
+import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
 
 const IndexRoute = IndexRouteImport.update({
@@ -18,9 +21,24 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SearchesIndexRoute = SearchesIndexRouteImport.update({
+  id: '/searches/',
+  path: '/searches/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsHouseholdRoute = SettingsHouseholdRouteImport.update({
   id: '/settings/household',
   path: '/settings/household',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchesNewRoute = SearchesNewRouteImport.update({
+  id: '/searches/new',
+  path: '/searches/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchesIdRoute = SearchesIdRouteImport.update({
+  id: '/searches/$id',
+  path: '/searches/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
@@ -32,31 +50,62 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/searches/$id': typeof SearchesIdRoute
+  '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
+  '/searches/': typeof SearchesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/searches/$id': typeof SearchesIdRoute
+  '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
+  '/searches': typeof SearchesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/searches/$id': typeof SearchesIdRoute
+  '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
+  '/searches/': typeof SearchesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/invite/$token' | '/settings/household'
+  fullPaths:
+    | '/'
+    | '/invite/$token'
+    | '/searches/$id'
+    | '/searches/new'
+    | '/settings/household'
+    | '/searches/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/invite/$token' | '/settings/household'
-  id: '__root__' | '/' | '/invite/$token' | '/settings/household'
+  to:
+    | '/'
+    | '/invite/$token'
+    | '/searches/$id'
+    | '/searches/new'
+    | '/settings/household'
+    | '/searches'
+  id:
+    | '__root__'
+    | '/'
+    | '/invite/$token'
+    | '/searches/$id'
+    | '/searches/new'
+    | '/settings/household'
+    | '/searches/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  SearchesIdRoute: typeof SearchesIdRoute
+  SearchesNewRoute: typeof SearchesNewRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
+  SearchesIndexRoute: typeof SearchesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,11 +117,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/searches/': {
+      id: '/searches/'
+      path: '/searches'
+      fullPath: '/searches/'
+      preLoaderRoute: typeof SearchesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/household': {
       id: '/settings/household'
       path: '/settings/household'
       fullPath: '/settings/household'
       preLoaderRoute: typeof SettingsHouseholdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/searches/new': {
+      id: '/searches/new'
+      path: '/searches/new'
+      fullPath: '/searches/new'
+      preLoaderRoute: typeof SearchesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/searches/$id': {
+      id: '/searches/$id'
+      path: '/searches/$id'
+      fullPath: '/searches/$id'
+      preLoaderRoute: typeof SearchesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invite/$token': {
@@ -88,7 +158,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InviteTokenRoute: InviteTokenRoute,
+  SearchesIdRoute: SearchesIdRoute,
+  SearchesNewRoute: SearchesNewRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
+  SearchesIndexRoute: SearchesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
