@@ -2,3 +2,7 @@
 . "$(dirname -- "$0")/_/husky.sh"
 
 bunx biome check --staged --no-errors-on-unmatched
+
+# Validate migration journal/snapshot integrity and auto-generate when
+# schema files are staged without corresponding migration files.
+bun scripts/validation/migrations.ts
