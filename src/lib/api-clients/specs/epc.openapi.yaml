@@ -1,0 +1,940 @@
+openapi: 3.0.0
+info:
+  version: 1.0.0
+  title: Energy Performance Certificates API
+  description: >
+
+    This swagger interface is provided as a service to assist software developers in prototyping requests against our APIs.
+
+
+    The API is also documented for [domestic](/docs/api/domestic), [non-domestic](/docs/api/non-domestic) and [display certificates](/docs/api/display) on the main site.
+
+
+    **NOTE** To use this Swagger interface to make API requests you will need to click the Authorize button, and supply your Username (email address) and password (api-key).
+
+
+    You can find your username and api-key (password) printed in the footer when signed in to the main site.
+
+
+    If you have any comments on or feedback regarding these additions [contact us](/docs/guidance#user_engagement).
+
+servers:
+  - url: /api/v1
+
+security:
+  - BasicAuth: []
+
+tags:
+  - name: domestic
+    description: Domestic Certificates API
+  - name: non-domestic
+    description: Non-Domestic Certificates API
+  - name: display
+    description: Display Energy Certificates API
+  - name: general
+    description: General / metadata API
+  - name: downloads
+    description: Bulk download files
+
+paths:
+  /info:
+    get:
+      description: >
+        Dataset Metadata Information API
+
+
+        Registration is not required to use this API route and no Authorization header is required.
+      tags:
+        - general
+      responses:
+        '200':
+          description: Metadata about the EPC datasets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metadata'
+
+  /domestic/search:
+    get:
+      description: Returns a list of domestic EPCs
+      tags:
+        - domestic
+
+      parameters:
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/SearchAfter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/Address'
+        - $ref: '#/components/parameters/Postcode'
+        - $ref: '#/components/parameters/UPRN'
+        - $ref: '#/components/parameters/Local-authority'
+        - $ref: '#/components/parameters/Constituency'
+        - $ref: '#/components/parameters/Dom-Property-type'
+        - $ref: '#/components/parameters/Dom-Floor-area'
+        - $ref: '#/components/parameters/Dom-Energy-band'
+        - $ref: '#/components/parameters/From-month'
+        - $ref: '#/components/parameters/From-year'
+        - $ref: '#/components/parameters/To-month'
+        - $ref: '#/components/parameters/To-year'
+
+      responses:
+        '200':
+          description: Successfully returned a list of domestic EPCs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /domestic/certificate/{lmk-key}:
+    get:
+      description: Returns a specific domestic certificate
+      tags:
+        - domestic
+
+      parameters:
+        - name: lmk-key
+          in: path
+          description: lmk-key for property
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+
+      responses:
+        '200':
+          description: Successfully returned a domestic EPC
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /domestic/recommendations/{lmk-key}:
+    get:
+      description: Returns the recommendations for a specific property
+      tags:
+        - domestic
+
+      parameters:
+        - name: lmk-key
+          in: path
+          description: lmk-key for property
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+
+      responses:
+        '200':
+          description: Successfully returned a list of recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /display/search:
+    get:
+      description: Returns a list of display EPCs
+      tags:
+        - display
+
+      parameters:
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/SearchAfter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/Address'
+        - $ref: '#/components/parameters/Postcode'
+        - $ref: '#/components/parameters/UPRN'
+        - $ref: '#/components/parameters/Local-authority'
+        - $ref: '#/components/parameters/Constituency'
+        - $ref: '#/components/parameters/Display-Floor-area'
+        - $ref: '#/components/parameters/Display-Energy-band'
+        - $ref: '#/components/parameters/From-month'
+        - $ref: '#/components/parameters/From-year'
+        - $ref: '#/components/parameters/To-month'
+        - $ref: '#/components/parameters/To-year'
+
+      responses:
+        '200':
+          description: Successfully returned a list of display EPCs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /display/certificate/{lmk-key}:
+    get:
+      description: Returns a specific display certificate
+      tags:
+        - display
+
+      parameters:
+        - name: lmk-key
+          in: path
+          description: lmk-key for property
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+
+      responses:
+        '200':
+          description: Successfully returned a display EPC
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /display/recommendations/{lmk-key}:
+    get:
+      description: Returns the recommendations for a specific property
+      tags:
+        - display
+
+      parameters:
+        - name: lmk-key
+          in: path
+          description: lmk-key for property
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+
+      responses:
+        '200':
+          description: Successfully returned a list of recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+
+  /non-domestic/search:
+    get:
+      description: Returns a list of non-domestic EPCs
+      tags:
+        - non-domestic
+
+      parameters:
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/SearchAfter'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/Address'
+        - $ref: '#/components/parameters/Postcode'
+        - $ref: '#/components/parameters/UPRN'
+        - $ref: '#/components/parameters/Local-authority'
+        - $ref: '#/components/parameters/Constituency'
+        - $ref: '#/components/parameters/Non-Dom-Property-type'
+        - $ref: '#/components/parameters/Non-Dom-Floor-area'
+        - $ref: '#/components/parameters/Non-Dom-Energy-band'
+        - $ref: '#/components/parameters/From-month'
+        - $ref: '#/components/parameters/From-year'
+        - $ref: '#/components/parameters/To-month'
+        - $ref: '#/components/parameters/To-year'
+
+      responses:
+        '200':
+          description: Successfully returned a list of non-domestic EPCs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Certificates'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /non-domestic/certificate/{lmk-key}:
+    get:
+      description: Returns a specific non-domestic certificate
+      tags:
+        - non-domestic
+
+      parameters:
+        - name: lmk-key
+          in: path
+          description: lmk-key for property
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+
+      responses:
+        '200':
+          description: Successfully returned a non-domestic EPC
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/zip:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /non-domestic/recommendations/{lmk-key}:
+    get:
+      description: Returns the recommendations for a specific property
+      tags:
+        - non-domestic
+
+      parameters:
+        - name: lmk-key
+          in: path
+          description: lmk-key for property
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+
+      responses:
+        '200':
+          description: Successfully returned a list of recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            application/vnd.ms-excel:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+            text/csv:
+              schema:
+                $ref: '#/components/schemas/Recommendations'
+        '400':
+          $ref: '#/components/responses/400Error'
+
+  /files:
+    get:
+      description: >
+        Listing of available bulk download files.
+
+        For a detailed description of the files available,
+        please visit the bulk downloads page for the corresponding certificate type.
+      tags:
+        - downloads
+      responses:
+        '200':
+          description: Object describing files available for download, including size in bytes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Files'
+
+  /files/{file-name}:
+    get:
+      description: >
+        Bulk download file
+      tags:
+        - downloads
+      responses:
+        '302':
+          description: Redirect to a short-lived URL for the given bulk download file.
+
+      parameters:
+        - name: file-name
+          in: path
+          description: Name of bulk download file to download
+          required: true
+          schema:
+            type: string
+
+components:
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+
+  schemas:
+    Certificate:
+      type: object
+    Certificates:
+      type: array
+      items:
+        $ref: '#/components/schemas/Certificate'
+
+    Recommendation:
+      type: object
+    Recommendations:
+      type: array
+      items:
+        $ref: '#/components/schemas/Recommendation'
+
+    Metadata:
+      type: object
+      properties:
+        latestDate:
+          type: string
+          format: date
+          description: "Date of the most recent available certificate. Format: YYYY-MM-DD."
+        updatedDate:
+          type: string
+          format: date
+          description: "Last date the site was updated. Format: YYYY-MM-DD."
+      required:
+        - latestDate
+        - updatedDate
+
+    Files:
+      type: object
+      required:
+        - files
+      properties:
+        files:
+          type: object
+          description: "Map of file name to file properties"
+          additionalProperties:
+            required:
+              - size
+            type: object
+            description: "Bulk download file properties"
+            properties:
+              size:
+                type: integer
+                minimum: 0
+                description: "File size in bytes"
+      example:
+        files:
+          "all-domestic-certificates.zip":
+            size: 6199109043
+          "non-domestic-2023.zip":
+            size: 34557428
+          "display-E06000018-Nottingham.zip":
+            size: 661460
+
+  parameters:
+    Size:
+      name: size
+      in: query
+      description: Page size for request (max 5,000)
+      schema:
+        type: integer
+    SearchAfter:
+      name: search-after
+      in: query
+      description: >
+        Request the next page of results in a query.
+
+
+        Set this to the value of the `X-Next-Search-After` response header from a previous request.
+
+
+        There is no limit to the maximum quantity of results retrievable via this pagination approach.
+
+      schema:
+        type: string
+    From:
+      name: from
+      in: query
+      deprecated: true
+      description: >
+        This parameter is deprecated please use the `search-after` pagination approach instead.
+
+
+        Request a page of results from this offset.
+
+
+        The maximum quantity of results retrievable through this pagination approach is limited to 10,000.
+      schema:
+        type: integer
+
+    Address:
+      name: address
+      in: query
+      description: An arbitrary search string such as 'liverpool road'
+      schema:
+        type: string
+    Postcode:
+      name: postcode
+      in: query
+      description: An arbitrary postcode or prefix string of e.g. 'P', 'PR', 'PR8' or 'PR82EG'
+      schema:
+        type: string
+    UPRN:
+      name: UPRN
+      in: query
+      description: Unique Property Reference Number for a building, e.g. 100023336956
+      schema:
+        type: integer
+    Local-authority:
+      name: local-authority
+      in: query
+      description: Local-authority reference code e.g. E07000223 (Adur)
+      schema:
+        type: string #One of supported parameter codes (./import/resources/local-authority-geo-lookup.csv)
+    Constituency:
+      name: constituency
+      in: query
+      description: constituency reference code e.g. W07000049 (Aberavon)
+      schema:
+        type: string #One of supported parameter codes (.import/resources/constituency-geo-lookup.csv)
+
+    Dom-Property-type:
+      name: property-type
+      in: query
+      description: >
+          Type of property.
+
+          Code and descriptions:
+
+          - `bungalow` - Filter for properties of type 'Bungalow'
+
+          - `flat` - Filter for properties of type 'Flat'
+
+          - `house` - Filter for properties of type 'House'
+
+          - `maisonette` - Filter for properties of type 'Maisonette'
+
+          - `parkhome` - Filter for properties of type 'Park Home'
+
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [bungalow, flat, house, maisonette, parkhome]
+
+    Non-Dom-Property-type:
+      name: property-type
+      in: query
+      description: >
+        Describes the type of building that is being inspected. Based on planning use class.
+        Codes and descriptions:
+
+        - `a1-a2` - A1/A2 Retail and Financial/Professional services
+
+        - `a3-a4-a5` - A3/A4/A5 Restaurant and Cafes/Drinking Establishments and Hot Food takeaways
+
+        - `airport-terminal` - Airport terminals
+
+        - `b1-office` - B1 Offices and Workshop businesses
+
+        - `b2-to-b7` - B2 to B7 General Industrial and Special Industrial Groups
+
+        - `b8-storage` - B8 Storage or Distribution
+
+        - `bus-train-seaport-station` - Bus station/train station/seaport terminal
+
+        - `c1-hotel` - C1 Hotels
+
+        - `c2-res-hopsital` - C2 Residential Institutions: Hospitals and Care Homes
+
+        - `c2-res-school` - C2 Residential Institutions: Residential schools
+
+        - `c2-university` - C2 Residential Institutions: Universities and colleges
+
+        - `c2a-secure-res` - C2A Secure Residential Institutions
+
+        - `community-day-centre` - Community/day centre
+
+        - `crown-county-court` - Crown and county courts
+
+        - `d1-community` - D1 Non-residential Institutions: Community/Day Centre
+
+        - `d1-crown-county-court` - D1 Non-residential Institutions: Crown and County Courts
+
+        - `d1-education` - D1 Non-residential Institutions: Education
+
+        - `d1-libraries-museum`	- D1 Non-residential Institutions: Libraries Museums and Galleries
+
+        - `d1-primary-health-care` - D1 Non-residential Institutions: Primary Health Care Building
+
+        - `d2-leisure` - D2 General Assembly and Leisure plus Night Clubs and Theatres
+
+        - `dwelling` - Dwelling
+
+        - `emergency-service` - Emergency services
+
+        - `further-education` - Further education universities
+
+        - `hospital` - Hospital
+
+        - `hotel` - Hotel
+
+        - `industrial` - Industrial process building
+
+        - `launderette`	- Launderette
+
+        - `libraries-museums-gallery` -	Libraries/museums/galleries
+
+        - `miscellaneous-24` - Miscellaneous 24hr activities
+
+        - `nursing-residential` - Nursing residential homes and hostels
+
+        - `office` - Office
+
+        - `others-car-park` - Others: Car Parks 24 hrs
+
+        - `others-emergency-service` - Others: Emergency services
+
+        - `others-misc-24h`	Others - Miscellaneous 24hr activities
+
+        - `others-passenger-terminal` -	Others: Passenger terminals
+
+        - `others-telephone-exchange` - Others: Telephone exchanges
+
+        - `others-utility-block` - Others: Stand alone utility block
+
+        - `primary-health-care`	- Primary health care buildings
+
+        - `primary-school` - Primary school
+
+        - `prison` - Prisons
+
+        - `residential-space`	- Residential spaces
+
+        - `restaurant-public-house` - Restaurant/public house
+
+        - `retail` - Retail
+
+        - `retail-warehouse` - Retail warehouses
+
+        - `secondary-school` - Secondary school
+
+        - `social-club` - Social clubs
+
+        - `sports-centre-leisure-centre` - Sports centre/leisure centre
+
+        - `sports-ground-arena` - Sports ground arena
+
+        - `telephone-exchange` - Telephone exchanges
+
+        - `theatre-cimena-music` - Theatres/cinemas/music halls and auditoria
+
+        - `warehouse-storage` - Warehouse and storage
+
+        - `workshop-maintenance-depot` - Workshops/maintenance depot
+
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [a1-a2, a3-a4-a5, airport-terminal, b1-office, b2-to-b7, b8-storage, bus-train-seaport-station, c1-hotel, c2-res-hopsital, c2-res-school, c2-university, c2a-secure-res, community-day-centre, crown-county-court, d1-community, d1-crown-county-court, d1-education, d1-libraries-museum, d1-primary-health-care, d2-leisure, dwelling, emergency-service, further-education, hospital, hotel, industrial, launderette, libraries-museums-gallery, miscellaneous-24, nursing-residential, office, others-car-park, others-emergency-service, others-misc-24h, others-passenger-terminal, others-telephone-exchange, others-utility-block, primary-health-care, primary-school, prison, residential-space, restaurant-public-house, retail, retail-warehouse, secondary-school, social-club, sports-centre-leisure-centre, sports-ground-arena, telephone-exchange, theatre-cimena-music, warehouse-storage, workshop-maintenance-depot]
+
+
+    Dom-Floor-area:
+      name: floor-area
+      in: query
+      description: >
+        Bands and descriptions:
+
+        - `unknown` - A floor area recorded as 0
+
+        - `s` - A floor area between 1m² and 55m²
+
+        - `m` - A floor area between 55m² and 70m²
+
+        - `l` - A floor area between 70m² and 85m²
+
+        - `xl` - A floor area between 85m² and 110m²
+
+        - `xxl` - A floor area greater than 110m²
+
+
+        The total useful floor area is the total of all enclosed spaces measured to the internal face of the external walls (m²)
+
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [unkown, s, m, l, xl, xxl]
+
+    Non-Dom-Floor-area:
+      name: floor-area
+      in: query
+      description: >
+        Bands and descriptions:
+
+        - `unknown` - A floor area recorded as 0
+
+        - `s` - A floor area between 1m² and 80m²
+
+        - `m` - A floor area between 80m² and 160m²
+
+        - `l` - A floor area between 160m² and 300m²
+
+        - `xl` - A floor area between 300m² and 700m²
+
+        - `xxl` - A floor area greater than 700m²
+
+
+        The total useful floor area is the total of all enclosed spaces measured to the internal face of the external walls (m²)
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [unkown, s, m, l, xl, xxl]
+
+
+    Display-Floor-area:
+      name: floor-area
+      in: query
+      description: >
+        Bands and descriptions:
+
+        - `unknown` - A floor area recorded as 0
+
+        - `s` - A floor area between 1m² and 500m²
+
+        - `m` - A floor area between 500m² and 1000m²
+
+        - `l` - A floor area between 1000m² and 1600m²
+
+        - `xl` - A floor area between 1600m² and 2300m²
+
+        - `xxl` - A floor area between 2300m² and 4000m²
+
+        - `xxxl` - A floor area greater than 4000m²
+
+
+        The total useful floor area is the total of all enclosed spaces measured to the internal face of the external walls (m²)
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [unkown, s, m, l, xl, xxl, xxxl]
+
+
+    Dom-Energy-band:
+      name: energy-band
+      in: query
+      description: >
+        Bands and descriptions:
+
+        - `a` - A rated (92+)
+
+        - `b` - B rated (81-91)
+
+        - `c` - C rated (69-80)
+
+        - `d` - D rated (55-68)
+
+        - `e` - E rated (39-54)
+
+        - `f` - F rated (21-38)
+
+        - `g` - G rated (1-20)
+
+
+        Bands based on cost of energy [in kWh/year] multiplied by fuel costs. (£/m²/year where cost is derived from kWh).
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [a, b, c, d, e, f, g]
+
+    Non-Dom-Energy-band:
+      name: energy-band
+      in: query
+      description: >
+        Bands and descriptions:
+
+        - `a+` - A+ rated (Net zero)
+
+        - `a` - A rated (0-25)
+
+        - `b` - B rated (26-50)
+
+        - `c` - C rated (51-75)
+
+        - `d` - D rated (76-100)
+
+        - `e` - E rated (101-125)
+
+        - `f` - F rated (126-150)
+
+        - `g` - G rated (150+)
+
+        Energy Performance Asset Rating Band. Based on the CO₂ emissions from the actual building in comparison to a Standard Emission Rate. (kg CO₂/m²)
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [a+, a, b, c, d, e, f, g]
+
+
+    Display-Energy-band:
+      name: energy-band
+      in: query
+      description: >
+        Bands and descriptions:
+
+        - `a+` - A+ rated (Net zero)
+
+        - `a` - A rated (0-25)
+
+        - `b` - B rated (26-50)
+
+        - `c` - C rated (51-75)
+
+        - `d` - D rated (76-100)
+
+        - `e` - E rated (101-125)
+
+        - `f` - F rated (126-150)
+
+        - `g` - G rated (150+)
+
+        Operational Rating (OR) band. An OR is a measure of the annual (CO₂) emission per unit of area of the building caused by its consumption of energy, compared to a value that would be considered typical for the particular type of building.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [a+, a, b, c, d, e, f, g]
+
+
+    From-month:
+      name: from-month
+      in: query
+      description: A numeric month identifier 1-12, to establish the start of a date range, where 1 is January and 12 is December. If no from-month parameter is supplied 1 (January) is assumed.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 12
+    From-year:
+      name: from-year
+      in: query
+      description: A numeric year identifier to estalish the start of a date range between 2008 and the current year, e.g. 2015. If no year parameter is supplied 2008 is assumed.
+      schema:
+        type: integer
+        minimum: 2008
+    To-month:
+      name: to-month
+      in: query
+      description: A numeric month identifier 1-12, to establish the end of a date range, where 1 is January and 12 is December. If no to-month parameter is supplied then 12 is assumed.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 12
+    To-year:
+      name: to-year
+      in: query
+      description: A numeric year identifier between 2008 and the current year, e.g. 2015. If no to-year parameter is supplied then the current year is assumed.
+      schema:
+        type: integer
+        minimum: 2008
+
+
+  responses:
+    400Error:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
