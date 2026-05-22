@@ -16,6 +16,7 @@ import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
 import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
+import { Route as ListingsClusterIdRouteImport } from './routes/listings/$clusterId'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
 
 const ShortlistRoute = ShortlistRouteImport.update({
@@ -53,6 +54,11 @@ const SearchesIdRoute = SearchesIdRouteImport.update({
   path: '/searches/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ListingsClusterIdRoute = ListingsClusterIdRouteImport.update({
+  id: '/listings/$clusterId',
+  path: '/listings/$clusterId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/matches'
     | '/shortlist'
     | '/invite/$token'
+    | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/matches'
     | '/shortlist'
     | '/invite/$token'
+    | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/matches'
     | '/shortlist'
     | '/invite/$token'
+    | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   MatchesRoute: typeof MatchesRoute
   ShortlistRoute: typeof ShortlistRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  ListingsClusterIdRoute: typeof ListingsClusterIdRoute
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SearchesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/listings/$clusterId': {
+      id: '/listings/$clusterId'
+      path: '/listings/$clusterId'
+      fullPath: '/listings/$clusterId'
+      preLoaderRoute: typeof ListingsClusterIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   MatchesRoute: MatchesRoute,
   ShortlistRoute: ShortlistRoute,
   InviteTokenRoute: InviteTokenRoute,
+  ListingsClusterIdRoute: ListingsClusterIdRoute,
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
