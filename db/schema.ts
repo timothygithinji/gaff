@@ -239,6 +239,45 @@ export const enrichments = pgTable(
       .notNull(),
     epc: jsonb("epc"),
     commuteMinutes: jsonb("commute_minutes").$type<Record<string, number>>(),
+    /**
+     * Broadband availability from BT Wholesale.
+     * - technology: best available, in order FTTP > FTTC > ADSL.
+     * - downloadMbps / uploadMbps: estimated max speed for that tier.
+     * - fttpAvailable: shortcut for the headline "fibre or not" check.
+     */
+    broadband: jsonb("broadband").$type<{
+      technology: "FTTP" | "FTTC" | "ADSL" | null;
+      downloadMbps: number | null;
+      uploadMbps: number | null;
+      fttpAvailable: boolean;
+    }>(),
+    /**
+     * data.police.uk monthly crime aggregate, fetched once per cluster.
+     * - month: e.g. "2026-03" (most recent month with data).
+     * - total: count of all crimes within a 1mi radius for that month.
+     * - byCategory: per-category counts (anti-social-behaviour, burglary, …).
+     */
+    crime: jsonb("crime").$type<{
+      month: string;
+      total: number;
+      byCategory: Record<string, number>;
+    }>(),
+    /**
+     * Environment Agency flood risk for the cluster's location.
+     * Values mirror the EA's "Risk of Flooding from Rivers and Sea" bands.
+     */
+    flood: jsonb("flood").$type<{
+      riskLevel: "very-low" | "low" | "medium" | "high" | "unknown";
+    }>(),
+    /**
+     * Counts of OpenStreetMap amenities within `withinMeters` of the
+     * cluster. Categories are fixed at write-time so the UI can render
+     * a stable grid; consult `src/lib/amenities.ts` for the live list.
+     */
+    amenities: jsonb("amenities").$type<{
+      withinMeters: number;
+      counts: Record<string, number>;
+    }>(),
     aiRunId: text("ai_run_id").references(() => aiRuns.id, {
       onDelete: "set null",
     }),
