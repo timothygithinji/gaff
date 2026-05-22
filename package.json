@@ -19,6 +19,7 @@
     "db:env": "doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- bun scripts/neon-env.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check",
+    "lint:branch": "bun scripts/validation/branch-name.ts",
     "test": "vitest",
     "trigger:dev": "trigger dev",
     "codegen": "openapi-ts"
@@ -43,6 +44,8 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@cloudflare/workers-types": "^4.20241127.0",
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
     "@hey-api/openapi-ts": "^0.97.2",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
