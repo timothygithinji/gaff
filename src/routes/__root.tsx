@@ -6,13 +6,24 @@ import {
   createRootRouteWithContext,
 } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import {
   HouseholdProvider,
   householdQueryOptions,
 } from "../lib/household-context";
 import { getCurrentUser } from "../server/functions/session";
 import globalsCss from "../styles/globals.css?url";
+
+// react-grab: in-app element picker that pipes context to AI coding tools.
+// Dev-only — `import.meta.env.DEV` and the dynamic import together ensure
+// the package never lands in the production bundle.
+function useReactGrab() {
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      import("react-grab");
+    }
+  }, []);
+}
 
 /**
  * Server function that returns just the current user id, so the root
@@ -54,6 +65,7 @@ export const Route = createRootRouteWithContext<{
 
 function RootComponent() {
   const { currentUserId } = Route.useRouteContext();
+  useReactGrab();
   return (
     <RootDocument>
       <HouseholdProvider currentUserId={currentUserId}>
