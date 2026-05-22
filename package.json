@@ -27,6 +27,7 @@
     "codegen": "openapi-ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
     "@cloudflare/vite-plugin": "^1.37.3",
     "@fontsource/fraunces": "^5.2.9",
     "@fontsource/inter": "^5.2.8",

@@ -48,6 +48,7 @@ import {
 import type { ListingDetail, Portal } from "../lib/parsers/types";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { cachePhotosTask } from "./cache-photos";
+import { enrichAiTask } from "./enrich-ai";
 import { scrapeQueue } from "./queues";
 
 export type ScrapeDetailPayload = {
@@ -168,6 +169,15 @@ export const scrapeDetailTask = task({
         { payload: { listingId: output.listingId } },
       ]);
     }
+    // PR 6 wiring: fire-and-forget the AI enrichment now that
+    // `listings.rawJson` is populated with the rich ListingDetail. The
+    // enrich-ai task runs on the same scrapeQueue (concurrencyLimit 5),
+    // which doubles as a bound on Anthropic spend rate without an extra
+    // queue declaration. EPC enrichment fires from cluster.onSuccess
+    // instead — it's per-cluster, not per-listing.
+    await enrichAiTask.batchTrigger([
+      { payload: { listingId: output.listingId } },
+    ]);
   },
 
   /**
