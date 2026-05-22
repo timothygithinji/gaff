@@ -71,6 +71,21 @@
   --sidebar-ring: var(--copper);
 }
 
+/* Dark scene — the mineral palette flips, every shadcn alias (which is
+ * defined as `var(--...)` above) inherits the new scene automatically.
+ * Hex values still only live in mineral vars; semantic tokens stay aliased. */
+.dark,
+[data-theme="dark"] {
+  --ground: #14100a;
+  --copper: #d18664;
+  --brass: #a89673;
+  --ink: #f5ede0;
+  --bone: #2a2118;
+  --paper: #1c1610;
+
+  --destructive: oklch(0.704 0.191 22.216);
+}
+
 @theme inline {
   /* Mineral palette utilities — bg-copper, text-ink, etc. */
   --color-ground: var(--ground);
@@ -121,8 +136,8 @@
 
 html,
 body {
-  background-color: var(--ground);
-  color: var(--ink);
+  background-color: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans);
 }
 

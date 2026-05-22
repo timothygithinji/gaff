@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { type ReactNode, useEffect } from "react";
+import { ThemeProvider } from "../components/theme-provider";
 import {
   HouseholdProvider,
   householdQueryOptions,
@@ -68,16 +69,20 @@ function RootComponent() {
   useReactGrab();
   return (
     <RootDocument>
-      <HouseholdProvider initialUserId={currentUserId}>
-        <Outlet />
-      </HouseholdProvider>
+      <ThemeProvider defaultTheme="system">
+        <HouseholdProvider initialUserId={currentUserId}>
+          <Outlet />
+        </HouseholdProvider>
+      </ThemeProvider>
     </RootDocument>
   );
 }
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning silences the class mismatch on <html> caused
+    // by the pre-hydration theme script in ThemeProvider.
+    <html lang="en" suppressHydrationWarning>
       {/* biome-ignore lint/nursery/noHeadElement: TanStack Start's root document owns <head>. */}
       <head>
         <HeadContent />
