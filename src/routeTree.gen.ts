@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ShortlistRouteImport } from './routes/shortlist'
+import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
@@ -16,6 +18,16 @@ import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
 
+const ShortlistRoute = ShortlistRouteImport.update({
+  id: '/shortlist',
+  path: '/shortlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MatchesRoute = MatchesRouteImport.update({
+  id: '/matches',
+  path: '/matches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -49,6 +61,8 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/matches': typeof MatchesRoute
+  '/shortlist': typeof ShortlistRoute
   '/invite/$token': typeof InviteTokenRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
@@ -57,6 +71,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/matches': typeof MatchesRoute
+  '/shortlist': typeof ShortlistRoute
   '/invite/$token': typeof InviteTokenRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
@@ -66,6 +82,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/matches': typeof MatchesRoute
+  '/shortlist': typeof ShortlistRoute
   '/invite/$token': typeof InviteTokenRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
@@ -76,6 +94,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/matches'
+    | '/shortlist'
     | '/invite/$token'
     | '/searches/$id'
     | '/searches/new'
@@ -84,6 +104,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/matches'
+    | '/shortlist'
     | '/invite/$token'
     | '/searches/$id'
     | '/searches/new'
@@ -92,6 +114,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/matches'
+    | '/shortlist'
     | '/invite/$token'
     | '/searches/$id'
     | '/searches/new'
@@ -101,6 +125,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MatchesRoute: typeof MatchesRoute
+  ShortlistRoute: typeof ShortlistRoute
   InviteTokenRoute: typeof InviteTokenRoute
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
@@ -110,6 +136,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/shortlist': {
+      id: '/shortlist'
+      path: '/shortlist'
+      fullPath: '/shortlist'
+      preLoaderRoute: typeof ShortlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/matches': {
+      id: '/matches'
+      path: '/matches'
+      fullPath: '/matches'
+      preLoaderRoute: typeof MatchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -157,6 +197,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MatchesRoute: MatchesRoute,
+  ShortlistRoute: ShortlistRoute,
   InviteTokenRoute: InviteTokenRoute,
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
