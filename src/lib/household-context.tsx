@@ -17,6 +17,7 @@ import {
   type HouseholdMemberRow,
   getHousehold,
 } from "../server/functions/household";
+import { queryKeys } from "./query-keys";
 
 export interface HouseholdValue {
   household: Household;
@@ -30,7 +31,7 @@ export interface HouseholdValue {
 const HouseholdContext = createContext<HouseholdValue | null>(null);
 
 export const householdQueryOptions = {
-  queryKey: ["household"] as const,
+  queryKey: queryKeys.household(),
   queryFn: () => getHousehold(),
   // We refetch on focus because the membership list can change without
   // a router navigation (e.g. an owner invites you and you accept in

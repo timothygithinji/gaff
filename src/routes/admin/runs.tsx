@@ -13,18 +13,19 @@ import {
 } from "../../components/admin/runs-filter-pills";
 import { RunsTable } from "../../components/admin/runs-table";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { queryKeys } from "../../lib/query-keys";
 import { listRecentRuns, runFilterCounts } from "../../server/functions/admin";
 
 const RUNS_LIMIT = 500;
 
 const allRunsQueryOptions = (filter: RunFilter) => ({
-  queryKey: ["admin", "all-runs", filter] as const,
+  queryKey: queryKeys.admin.runs(filter),
   queryFn: () => listRecentRuns({ data: { filter, limit: RUNS_LIMIT } }),
   staleTime: 15_000,
 });
 
 const filterCountsQueryOptions = {
-  queryKey: ["admin", "filter-counts"] as const,
+  queryKey: queryKeys.admin.filterCounts(),
   queryFn: () => runFilterCounts(),
   staleTime: 30_000,
 };

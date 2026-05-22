@@ -5,6 +5,13 @@
  * (including the EXCLUDE outcodes tucked into `aiRules.excludeOutcodes`)
  * and the schedule's cron (looked up by externalId, falling back to
  * "off" if no schedule exists).
+ *
+ * Three mutations live here — `updateSearch`, `archiveSearch`, and
+ * `deleteSearch`. All three are optimistic against the `["searches"]`
+ * list cache; update + archive also patch the single-search cache.
+ * Pattern matches `src/routes/index.tsx` (the gold-standard swipe
+ * mutation): cancel → snapshot → patch → onError restore → onSettled
+ * invalidate.
  */
 import {
   useMutation,
@@ -21,8 +28,12 @@ import {
   bedOptionFor,
 } from "../../components/search-form/search-form";
 import { findCadenceByCron, findCadenceById } from "../../lib/cron-presets";
+import { queryKeys } from "../../lib/query-keys";
 import { listSchedules } from "../../server/functions/schedules";
 import {
+  type SearchRow,
+  archiveSearch,
+  deleteSearch,
   getSearch,
   readAiRules,
   updateSearch,
@@ -32,11 +43,11 @@ export const Route = createFileRoute("/searches/$id")({
   loader: async ({ params, context }) => {
     const [search, schedules] = await Promise.all([
       context.queryClient.ensureQueryData({
-        queryKey: ["search", params.id] as const,
+        queryKey: queryKeys.search(params.id),
         queryFn: () => getSearch({ data: { id: params.id } }),
       }),
       context.queryClient.ensureQueryData({
-        queryKey: ["schedules"] as const,
+        queryKey: queryKeys.schedules(),
         queryFn: () => listSchedules(),
         staleTime: 30_000,
       }),
@@ -53,11 +64,11 @@ function EditSearchPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: search } = useSuspenseQuery({
-    queryKey: ["search", params.id] as const,
+    queryKey: queryKeys.search(params.id),
     queryFn: () => getSearch({ data: { id: params.id } }),
   });
   const { data: schedules } = useSuspenseQuery({
-    queryKey: ["schedules"] as const,
+    queryKey: queryKeys.schedules(),
     queryFn: () => listSchedules(),
   });
 
@@ -88,16 +99,116 @@ function EditSearchPage() {
         },
       });
     },
+    onMutate: async (values) => {
+      await qc.cancelQueries({ queryKey: queryKeys.searches() });
+      await qc.cancelQueries({ queryKey: queryKeys.search(params.id) });
+      const prevList = qc.getQueryData<SearchRow[]>(queryKeys.searches());
+      const prevOne = qc.getQueryData<SearchRow>(queryKeys.search(params.id));
+      const patch = buildPatch(values, search);
+      // Patch the single-search cache so the form re-hydrates against
+      // the optimistic shape if the user navigates away and back.
+      if (prevOne) {
+        qc.setQueryData<SearchRow>(queryKeys.search(params.id), {
+          ...prevOne,
+          ...patch,
+        });
+      }
+      // Patch the list cache so `/searches` reflects the edit instantly.
+      if (prevList) {
+        qc.setQueryData<SearchRow[]>(queryKeys.searches(), (old) =>
+          (old ?? []).map((row) =>
+            row.id === params.id ? { ...row, ...patch } : row
+          )
+        );
+      }
+      return { prevList, prevOne };
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["searches"] });
-      qc.invalidateQueries({ queryKey: ["search", params.id] });
-      qc.invalidateQueries({ queryKey: ["schedules"] });
       navigate({ to: "/searches" });
     },
-    onError: (e: Error) => {
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prevList !== undefined) {
+        qc.setQueryData(queryKeys.searches(), ctx.prevList);
+      }
+      if (ctx?.prevOne !== undefined) {
+        qc.setQueryData(queryKeys.search(params.id), ctx.prevOne);
+      }
       setError(e.message ?? "Something went wrong");
     },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.searches() });
+      qc.invalidateQueries({ queryKey: queryKeys.search(params.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
   });
+
+  const archive = useMutation({
+    mutationFn: () => archiveSearch({ data: { id: params.id } }),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.searches() });
+      await qc.cancelQueries({ queryKey: queryKeys.search(params.id) });
+      const prevList = qc.getQueryData<SearchRow[]>(queryKeys.searches());
+      const prevOne = qc.getQueryData<SearchRow>(queryKeys.search(params.id));
+      if (prevOne) {
+        qc.setQueryData<SearchRow>(queryKeys.search(params.id), {
+          ...prevOne,
+          active: false,
+        });
+      }
+      if (prevList) {
+        qc.setQueryData<SearchRow[]>(queryKeys.searches(), (old) =>
+          (old ?? []).map((row) =>
+            row.id === params.id ? { ...row, active: false } : row
+          )
+        );
+      }
+      return { prevList, prevOne };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prevList !== undefined) {
+        qc.setQueryData(queryKeys.searches(), ctx.prevList);
+      }
+      if (ctx?.prevOne !== undefined) {
+        qc.setQueryData(queryKeys.search(params.id), ctx.prevOne);
+      }
+      setError(e.message ?? "Couldn't archive");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.searches() });
+      qc.invalidateQueries({ queryKey: queryKeys.search(params.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => deleteSearch({ data: { id: params.id } }),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.searches() });
+      const prevList = qc.getQueryData<SearchRow[]>(queryKeys.searches());
+      if (prevList) {
+        qc.setQueryData<SearchRow[]>(
+          queryKeys.searches(),
+          prevList.filter((row) => row.id !== params.id)
+        );
+      }
+      return { prevList };
+    },
+    onSuccess: () => {
+      navigate({ to: "/searches" });
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prevList !== undefined) {
+        qc.setQueryData(queryKeys.searches(), ctx.prevList);
+      }
+      setError(e.message ?? "Couldn't delete");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.searches() });
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
+  });
+
+  const pending = update.isPending || archive.isPending || remove.isPending;
 
   return (
     <>
@@ -114,10 +225,72 @@ function EditSearchPage() {
         mode="edit"
         onCancel={() => navigate({ to: "/searches" })}
         onSubmit={(v) => update.mutate(v)}
-        pending={update.isPending}
+        pending={pending}
       />
+      <div className="mx-auto flex max-w-md justify-between gap-2 border-brass/20 border-t bg-paper px-5 py-3">
+        <button
+          className="rounded-md border border-brass/30 px-4 py-2 text-brass text-xs"
+          disabled={pending || !search.active}
+          onClick={() => archive.mutate()}
+          type="button"
+        >
+          {search.active ? "Pause search" : "Paused"}
+        </button>
+        <button
+          className="rounded-md bg-[#B05A38]/10 px-4 py-2 text-[#B05A38] text-xs"
+          disabled={pending}
+          onClick={() => {
+            if (
+              typeof window !== "undefined" &&
+              !window.confirm("Delete this search? This can't be undone.")
+            ) {
+              return;
+            }
+            remove.mutate();
+          }}
+          type="button"
+        >
+          Delete search
+        </button>
+      </div>
     </>
   );
+}
+
+/**
+ * Build the optimistic patch for `["searches", id]` from form values.
+ * Mirrors the shape the server will write so the cache update converges
+ * with the eventual response.
+ */
+function buildPatch(
+  values: SearchFormValues,
+  existing: SearchRow
+): Partial<SearchRow> {
+  const beds = bedOptionFor(values.bedsId);
+  const cadence = findCadenceById(values.cadenceId);
+  return {
+    name: values.name,
+    portals: values.portals,
+    outcodes: values.outcodesInclude.map((o) => o.trim().toUpperCase()),
+    minBedrooms: beds.min,
+    maxBedrooms: beds.max,
+    minPrice: values.minPrice,
+    maxPrice: values.maxPrice,
+    propertyTypes: [],
+    commuteTargets: values.commute ? [values.commute] : [],
+    aiRules: {
+      rules: values.aiRules,
+      excludeOutcodes: values.outcodesExclude.map((o) =>
+        o.trim().toUpperCase()
+      ),
+    },
+    active: cadence.cron !== null,
+    updatedAt: new Date(),
+    // Preserve the immutable identifiers.
+    id: existing.id,
+    householdId: existing.householdId,
+    createdAt: existing.createdAt,
+  };
 }
 
 /** Hydrate the form from the stored row + matching schedule (if any). */

@@ -25,6 +25,7 @@ import {
 } from "../components/shortlist/sort-dropdown";
 import { type ShortlistTab, ShortlistTabs } from "../components/shortlist/tabs";
 import { useHousehold } from "../lib/household-context";
+import { queryKeys } from "../lib/query-keys";
 import {
   type MutualMatch,
   listMemberOutcomes,
@@ -33,13 +34,13 @@ import {
 } from "../server/functions/shortlist";
 
 const mutualQueryOptions = {
-  queryKey: ["shortlist", "mutual"] as const,
+  queryKey: queryKeys.shortlistMutual(),
   queryFn: () => listMutualMatches(),
   staleTime: 15_000,
 };
 
 const myQueryOptions = {
-  queryKey: ["shortlist", "mine"] as const,
+  queryKey: queryKeys.shortlistMine(),
   queryFn: () => listMyOutcomes({ data: { outcome: "keep_or_shortlist" } }),
   staleTime: 15_000,
 };
@@ -127,7 +128,7 @@ function ShortlistPage() {
   // keys; each response is small.
   const otherMemberResults = useQueries({
     queries: otherMembers.map((m) => ({
-      queryKey: ["shortlist", "member", m.userId] as const,
+      queryKey: queryKeys.shortlistMember(m.userId),
       queryFn: () =>
         listMemberOutcomes({
           data: { memberId: m.userId, outcome: "keep_or_shortlist" as const },

@@ -19,6 +19,7 @@ import {
   type SortKey,
 } from "../components/shortlist/sort-dropdown";
 import { useHousehold } from "../lib/household-context";
+import { queryKeys } from "../lib/query-keys";
 import {
   type MutualMatch,
   listMutualMatches,
@@ -26,7 +27,7 @@ import {
 } from "../server/functions/shortlist";
 
 const mutualQueryOptions = {
-  queryKey: ["shortlist", "mutual"] as const,
+  queryKey: queryKeys.shortlistMutual(),
   queryFn: () => listMutualMatches(),
   staleTime: 15_000,
 };
@@ -88,13 +89,29 @@ function MatchesPage() {
   const { data = [] } = useQuery(mutualQueryOptions);
   const [sort, setSort] = useState<SortKey>("newest");
 
-  // Clear the unread badge when the user lands here. Fire-and-forget;
-  // the query invalidate ensures the bottom-nav re-paints without the
-  // badge on next render.
+  // Clear the unread badge when the user lands here. Optimistic: drop
+  // the badge to zero immediately so the bottom-nav re-paints without
+  // a round-trip; on error restore whatever the server had; on settled
+  // re-fetch to reconcile.
   const seen = useMutation({
     mutationFn: () => markMatchesSeen(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["matches", "unread"] });
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.matchesUnread() });
+      const prev = qc.getQueryData<{ count: number }>(
+        queryKeys.matchesUnread()
+      );
+      qc.setQueryData<{ count: number }>(queryKeys.matchesUnread(), {
+        count: 0,
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(queryKeys.matchesUnread(), ctx.prev);
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.matchesUnread() });
     },
   });
 

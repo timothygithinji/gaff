@@ -7,12 +7,12 @@
  */
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import type { Search } from "../../../db/schema";
 import { TopBar } from "../../components/layout/top-bar";
-import { listSearches } from "../../server/functions/searches";
+import { queryKeys } from "../../lib/query-keys";
+import { type SearchRow, listSearches } from "../../server/functions/searches";
 
 const searchesQueryOptions = {
-  queryKey: ["searches"] as const,
+  queryKey: queryKeys.searches(),
   queryFn: () => listSearches(),
   staleTime: 30_000,
 };
@@ -64,7 +64,7 @@ function EmptyState() {
   );
 }
 
-function SearchList({ searches }: { searches: Search[] }) {
+function SearchList({ searches }: { searches: SearchRow[] }) {
   return (
     <ul className="space-y-3">
       {searches.map((s) => (

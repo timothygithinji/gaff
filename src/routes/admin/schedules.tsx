@@ -5,12 +5,15 @@
  *   - task id + friendly cron string + next run (Europe/London)
  *   - externalId, linked back to `/searches/$id` when it looks like a
  *     search id and that search is in the caller's household
- *   - active/paused pill
+ *   - active/paused pill (flips optimistically)
  *   - "Run now" → fires the underlying task immediately (whitelist gate
  *     lives on the server function so the UI can't be coaxed into
- *     launching arbitrary tasks)
- *   - Pause / Resume → activate/deactivate
- *   - Edit → Radix Dialog with cron + timezone inputs
+ *     launching arbitrary tasks). Shows a "Running…" pill on the row
+ *     until the mutation settles.
+ *   - Pause / Resume → activate/deactivate, optimistic flip
+ *   - Edit → TanStack Form dialog with cron + timezone inputs,
+ *     optimistic patch on submit
+ *   - Delete → optimistic remove from the schedules cache
  *
  * Owner-only at the UI layer; the server functions still talk to
  * Trigger.dev, so a non-owner who pokes the endpoint can only see /
@@ -19,6 +22,7 @@
  * searches via `listSearches()`.
  */
 import * as Dialog from "@radix-ui/react-dialog";
+import { useForm } from "@tanstack/react-form";
 import {
   useMutation,
   useQueryClient,
@@ -27,11 +31,14 @@ import {
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { ScheduleObject } from "@trigger.dev/core/v3";
 import { useState } from "react";
+import { z } from "zod";
 import { OwnerGate } from "../../components/admin/owner-gate";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { queryKeys } from "../../lib/query-keys";
 import {
   activateSchedule,
   deactivateSchedule,
+  deleteSchedule,
   listSchedules,
   runScheduleTaskNow,
   updateSchedule,
@@ -39,19 +46,26 @@ import {
 import { listSearches } from "../../server/functions/searches";
 
 const schedulesQueryOptions = {
-  queryKey: ["admin", "schedules"] as const,
+  queryKey: queryKeys.schedules(),
   queryFn: () => listSchedules(),
   staleTime: 15_000,
 };
 
 const searchesQueryOptions = {
-  queryKey: ["searches"] as const,
+  queryKey: queryKeys.searches(),
   queryFn: () => listSearches(),
   staleTime: 30_000,
 };
 
 const SCHEDULABLE_TASK_IDS = ["scrape-search"] as const;
 type SchedulableTaskId = (typeof SCHEDULABLE_TASK_IDS)[number];
+
+const cronSchema = z.string().trim().min(1, "Cron expression required");
+const timezoneSchema = z
+  .string()
+  .trim()
+  .min(1, "Timezone required")
+  .max(64, "Timezone too long");
 
 export const Route = createFileRoute("/admin/schedules")({
   // No loader-side prefetch: schedules data goes through Trigger.dev
@@ -190,6 +204,7 @@ function ScheduleRow({
           {isSchedulableTask(row.task) && <RunNowButton task={row.task} />}
           <TogglePauseButton id={row.id} isActive={row.active} />
           <EditScheduleButton schedule={row} />
+          <DeleteScheduleButton id={row.id} />
         </div>
       </td>
     </tr>
@@ -202,6 +217,9 @@ function isSchedulableTask(task: string): task is SchedulableTaskId {
 
 function RunNowButton({ task }: { task: SchedulableTaskId }) {
   const [error, setError] = useState<string | null>(null);
+  // Local "running" pill state that flips off on settled — no schedule
+  // cache write is needed here (run-now doesn't change the schedule
+  // shape itself; the run shows up in Runs).
   const mutation = useMutation({
     mutationFn: () => runScheduleTaskNow({ data: { task } }),
     onError: (e: Error) => setError(e.message ?? "Run failed"),
@@ -215,7 +233,7 @@ function RunNowButton({ task }: { task: SchedulableTaskId }) {
         onClick={() => mutation.mutate()}
         type="button"
       >
-        {mutation.isPending ? "Firing…" : "Run now"}
+        {mutation.isPending ? "Running…" : "Run now"}
       </button>
       {error && <span className="mt-1 text-[#B05A38] text-xs">{error}</span>}
     </div>
@@ -230,23 +248,49 @@ function TogglePauseButton({
   isActive: boolean;
 }) {
   const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: () =>
       isActive
         ? deactivateSchedule({ data: { id } })
         : activateSchedule({ data: { id } }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: schedulesQueryOptions.queryKey }),
+    // Optimistic: flip the `active` flag on the matching row in the
+    // schedules cache so the pill paints the new state instantly.
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.schedules() });
+      const prev = qc.getQueryData<ScheduleObject[]>(queryKeys.schedules());
+      if (prev) {
+        qc.setQueryData<ScheduleObject[]>(
+          queryKeys.schedules(),
+          prev.map((row) =>
+            row.id === id ? { ...row, active: !isActive } : row
+          )
+        );
+      }
+      return { prev };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(queryKeys.schedules(), ctx.prev);
+      }
+      setError(e.message ?? "Toggle failed");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
   });
   return (
-    <button
-      className="rounded-full border border-brass/30 px-3 py-1 text-brass text-xs disabled:opacity-50"
-      disabled={mutation.isPending}
-      onClick={() => mutation.mutate()}
-      type="button"
-    >
-      {togglePauseLabel(mutation.isPending, isActive)}
-    </button>
+    <div className="flex flex-col items-end">
+      <button
+        className="rounded-full border border-brass/30 px-3 py-1 text-brass text-xs disabled:opacity-50"
+        disabled={mutation.isPending}
+        onClick={() => mutation.mutate()}
+        type="button"
+      >
+        {togglePauseLabel(mutation.isPending, isActive)}
+      </button>
+      {error && <span className="mt-1 text-[#B05A38] text-xs">{error}</span>}
+    </div>
   );
 }
 
@@ -257,30 +301,121 @@ function togglePauseLabel(pending: boolean, active: boolean): string {
   return active ? "Pause" : "Resume";
 }
 
+function DeleteScheduleButton({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => deleteSchedule({ data: { id } }),
+    // Optimistic: drop the row from the cache so the table re-paints
+    // without the deleted schedule. Trigger.dev returns `{ id }` on
+    // success so there's nothing to reconcile beyond invalidation.
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.schedules() });
+      const prev = qc.getQueryData<ScheduleObject[]>(queryKeys.schedules());
+      if (prev) {
+        qc.setQueryData<ScheduleObject[]>(
+          queryKeys.schedules(),
+          prev.filter((row) => row.id !== id)
+        );
+      }
+      return { prev };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(queryKeys.schedules(), ctx.prev);
+      }
+      setError(e.message ?? "Delete failed");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
+  });
+  return (
+    <div className="flex flex-col items-end">
+      <button
+        className="rounded-full border border-[#B05A38]/40 px-3 py-1 text-[#B05A38] text-xs disabled:opacity-50"
+        disabled={mutation.isPending}
+        onClick={() => {
+          if (
+            typeof window !== "undefined" &&
+            !window.confirm("Delete this schedule?")
+          ) {
+            return;
+          }
+          mutation.mutate();
+        }}
+        type="button"
+      >
+        {mutation.isPending ? "…" : "Delete"}
+      </button>
+      {error && <span className="mt-1 text-[#B05A38] text-xs">{error}</span>}
+    </div>
+  );
+}
+
 function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
   const [open, setOpen] = useState(false);
-  const [cron, setCron] = useState(schedule.generator.expression);
-  const [timezone, setTimezone] = useState(schedule.timezone);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (values: { cron: string; timezone: string }) =>
       updateSchedule({
         data: {
           id: schedule.id,
           task: schedule.task,
-          cron,
-          timezone,
+          cron: values.cron,
+          timezone: values.timezone,
           externalId: schedule.externalId ?? undefined,
         },
       }),
+    // Optimistic: patch the cached row's cron/timezone so the table
+    // reflects the new shape before Trigger.dev's response lands.
+    onMutate: async (values) => {
+      await qc.cancelQueries({ queryKey: queryKeys.schedules() });
+      const prev = qc.getQueryData<ScheduleObject[]>(queryKeys.schedules());
+      if (prev) {
+        qc.setQueryData<ScheduleObject[]>(
+          queryKeys.schedules(),
+          prev.map((row) =>
+            row.id === schedule.id
+              ? {
+                  ...row,
+                  timezone: values.timezone,
+                  generator: { ...row.generator, expression: values.cron },
+                }
+              : row
+          )
+        );
+      }
+      return { prev };
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: schedulesQueryOptions.queryKey });
-      setError(null);
+      setSubmitError(null);
       setOpen(false);
     },
-    onError: (e: Error) => setError(e.message ?? "Update failed"),
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(queryKeys.schedules(), ctx.prev);
+      }
+      setSubmitError(e.message ?? "Update failed");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
+  });
+
+  // TanStack Form replaces the previous React-state pair. We re-key the
+  // form to the schedule's id so opening the dialog after editing a
+  // different row re-hydrates from that row's values.
+  const form = useForm({
+    defaultValues: {
+      cron: schedule.generator.expression,
+      timezone: schedule.timezone,
+    },
+    onSubmit: async ({ value }) => {
+      await mutation.mutateAsync(value);
+    },
   });
 
   return (
@@ -288,9 +423,11 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
       onOpenChange={(next) => {
         setOpen(next);
         if (next) {
-          setCron(schedule.generator.expression);
-          setTimezone(schedule.timezone);
-          setError(null);
+          form.reset({
+            cron: schedule.generator.expression,
+            timezone: schedule.timezone,
+          });
+          setSubmitError(null);
         }
       }}
       open={open}
@@ -313,51 +450,116 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
             Updates fire immediately on Trigger.dev — the next run reschedules
             to match.
           </Dialog.Description>
-          <div className="mt-4 space-y-3">
-            <label className="block">
-              <span className="block text-brass text-xs uppercase tracking-wide">
-                Cron
-              </span>
-              <input
-                className="mt-1 w-full rounded border border-brass/30 bg-ground px-3 py-2 font-mono text-ink text-sm"
-                onChange={(e) => setCron(e.target.value)}
-                value={cron}
-              />
-            </label>
-            <label className="block">
-              <span className="block text-brass text-xs uppercase tracking-wide">
-                Timezone (IANA)
-              </span>
-              <input
-                className="mt-1 w-full rounded border border-brass/30 bg-ground px-3 py-2 text-ink text-sm"
-                onChange={(e) => setTimezone(e.target.value)}
-                value={timezone}
-              />
-            </label>
-            {error && <p className="text-[#B05A38] text-sm">{error}</p>}
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Dialog.Close asChild>
-              <button
-                className="rounded-md px-4 py-2 text-ink text-sm"
-                type="button"
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              form.handleSubmit();
+            }}
+          >
+            <div className="mt-4 space-y-3">
+              <form.Field name="cron" validators={{ onChange: cronSchema }}>
+                {(field) => (
+                  <label className="block">
+                    <span className="block text-brass text-xs uppercase tracking-wide">
+                      Cron
+                    </span>
+                    <input
+                      className="mt-1 w-full rounded border border-brass/30 bg-ground px-3 py-2 font-mono text-ink text-sm"
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      type="text"
+                      value={field.state.value}
+                    />
+                    {field.state.meta.errors.length > 0 ? (
+                      <span className="mt-1 block text-[#B05A38] text-xs">
+                        {fieldErrorMessage(field.state.meta.errors)}
+                      </span>
+                    ) : null}
+                  </label>
+                )}
+              </form.Field>
+              <form.Field
+                name="timezone"
+                validators={{ onChange: timezoneSchema }}
               >
-                Cancel
-              </button>
-            </Dialog.Close>
-            <button
-              className="rounded-md bg-copper px-4 py-2 text-bone text-sm disabled:opacity-50"
-              disabled={mutation.isPending}
-              onClick={() => mutation.mutate()}
-              type="button"
-            >
-              {mutation.isPending ? "Saving…" : "Save"}
-            </button>
-          </div>
+                {(field) => (
+                  <label className="block">
+                    <span className="block text-brass text-xs uppercase tracking-wide">
+                      Timezone (IANA)
+                    </span>
+                    <input
+                      className="mt-1 w-full rounded border border-brass/30 bg-ground px-3 py-2 text-ink text-sm"
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      type="text"
+                      value={field.state.value}
+                    />
+                    {field.state.meta.errors.length > 0 ? (
+                      <span className="mt-1 block text-[#B05A38] text-xs">
+                        {fieldErrorMessage(field.state.meta.errors)}
+                      </span>
+                    ) : null}
+                  </label>
+                )}
+              </form.Field>
+              {submitError && (
+                <p className="text-[#B05A38] text-sm">{submitError}</p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Dialog.Close asChild>
+                <button
+                  className="rounded-md px-4 py-2 text-ink text-sm"
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </Dialog.Close>
+              <form.Subscribe
+                selector={(s) => [s.canSubmit, s.isSubmitting] as const}
+              >
+                {([canSubmit, isSubmitting]) => (
+                  <button
+                    className="rounded-md bg-copper px-4 py-2 text-bone text-sm disabled:opacity-50"
+                    disabled={!canSubmit || isSubmitting || mutation.isPending}
+                    type="submit"
+                  >
+                    {isSubmitting || mutation.isPending ? "Saving…" : "Save"}
+                  </button>
+                )}
+              </form.Subscribe>
+            </div>
+          </form>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+/**
+ * TanStack Form's `meta.errors` is a heterogenous array — Zod issues
+ * arrive as objects with a `message` field, custom validators may
+ * return raw strings. Normalise to a single line.
+ */
+function fieldErrorMessage(errors: readonly unknown[]): string {
+  return errors
+    .map((e) => {
+      if (typeof e === "string") {
+        return e;
+      }
+      if (
+        e &&
+        typeof e === "object" &&
+        "message" in e &&
+        typeof (e as { message: unknown }).message === "string"
+      ) {
+        return (e as { message: string }).message;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**

@@ -25,6 +25,7 @@ import {
 import { RunsTable } from "../../components/admin/runs-table";
 import { SystemStatusPill } from "../../components/admin/system-status-pill";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { queryKeys } from "../../lib/query-keys";
 import {
   adminMetrics,
   listRecentRuns,
@@ -32,19 +33,19 @@ import {
 } from "../../server/functions/admin";
 
 const metricsQueryOptions = {
-  queryKey: ["admin", "metrics"] as const,
+  queryKey: queryKeys.admin.metrics(),
   queryFn: () => adminMetrics(),
   staleTime: 30_000,
 };
 
 const recentRunsQueryOptions = (filter: RunFilter) => ({
-  queryKey: ["admin", "recent-runs", filter] as const,
+  queryKey: queryKeys.admin.recentRuns(filter),
   queryFn: () => listRecentRuns({ data: { filter, limit: 50 } }),
   staleTime: 15_000,
 });
 
 const filterCountsQueryOptions = {
-  queryKey: ["admin", "filter-counts"] as const,
+  queryKey: queryKeys.admin.filterCounts(),
   queryFn: () => runFilterCounts(),
   staleTime: 30_000,
 };
