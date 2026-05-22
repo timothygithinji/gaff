@@ -1,0 +1,29 @@
+/**
+ * "You're all caught up" empty state for the review queue.
+ *
+ * Rendered when `getNextReviewCard` returns `null` — either because the
+ * household has no active searches yet, or because every cluster has
+ * been swiped or skipped. Bone card on a ground background with a
+ * gentle nudge towards `/searches`.
+ */
+import { Link } from "@tanstack/react-router";
+
+export function ReviewEmpty() {
+  return (
+    <div className="px-5 pt-12">
+      <div className="rounded-2xl bg-bone p-8 text-center">
+        <p className="font-serif text-2xl text-ink">You're all caught up</p>
+        <p className="mt-2 text-brass text-sm">
+          0 left today. New listings will land here as the scraper sweeps your
+          watched outcodes.
+        </p>
+        <Link
+          className="mt-6 inline-block rounded-full bg-copper px-6 py-3 font-medium text-bone text-sm"
+          to="/searches"
+        >
+          Tune your searches
+        </Link>
+      </div>
+    </div>
+  );
+}
