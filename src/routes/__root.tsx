@@ -7,7 +7,10 @@ import {
 } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import type { ReactNode } from "react";
-import { HouseholdProvider } from "../lib/household-context";
+import {
+  HouseholdProvider,
+  householdQueryOptions,
+} from "../lib/household-context";
 import { getCurrentUser } from "../server/functions/session";
 import globalsCss from "../styles/globals.css?url";
 
@@ -36,8 +39,14 @@ export const Route = createRootRouteWithContext<{
     ],
     links: [{ rel: "stylesheet", href: globalsCss }],
   }),
-  beforeLoad: async () => {
+  beforeLoad: async ({ context }) => {
     const { userId } = await getCurrentUserId();
+    // Pre-fetch the household on the server so SSR paints the real
+    // shell, not the HouseholdProvider's loading skeleton. Skipped
+    // when no session — login/signup don't need it.
+    if (userId) {
+      await context.queryClient.prefetchQuery(householdQueryOptions);
+    }
     return { currentUserId: userId };
   },
   component: RootComponent,

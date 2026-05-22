@@ -1,6 +1,11 @@
 import { useForm } from "@tanstack/react-form";
-import { useMutation } from "@tanstack/react-query";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Link,
+  createFileRoute,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import { authClient } from "../lib/auth-client";
@@ -23,22 +28,34 @@ const passwordSchema = z.string().min(8, "At least 8 characters");
 
 function LoginPage() {
   const navigate = useNavigate();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { next } = Route.useSearch();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const signIn = useMutation({
-    mutationFn: async (input: { email: string; password: string }) => {
-      const res = await authClient.signIn.email({
-        email: input.email,
-        password: input.password,
-      });
-      if (res.error) {
-        throw new Error(res.error.message ?? "Sign-in failed");
-      }
-      return res.data;
-    },
-    onSuccess: () => {
-      navigate({ to: next ?? "/" });
+    // Use Better Auth's recommended { onSuccess, onError } callback shape.
+    // The session cookie is set by the time onSuccess fires; we then have
+    // to re-run __root's beforeLoad so the router context picks up the
+    // new currentUserId — otherwise the destination route's beforeLoad
+    // (and the HouseholdProvider) still see null and we end up redirected
+    // back here OR throwing "useHousehold() called outside <Provider>".
+    mutationFn: (input: { email: string; password: string }) =>
+      new Promise<void>((resolve, reject) => {
+        authClient.signIn.email(
+          { email: input.email, password: input.password },
+          {
+            onSuccess: () => resolve(),
+            onError: (ctx) => reject(new Error(ctx.error.message)),
+          }
+        );
+      }),
+    onSuccess: async () => {
+      // Drop any stale household cache from a previous session.
+      queryClient.removeQueries({ queryKey: ["household"] });
+      // Re-runs every route's beforeLoad against the fresh cookie.
+      await router.invalidate();
+      await navigate({ to: next ?? "/" });
     },
     onError: (err) => {
       setServerError(err instanceof Error ? err.message : "Sign-in failed");
@@ -68,7 +85,7 @@ function LoginPage() {
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            void form.handleSubmit();
+            form.handleSubmit();
           }}
         >
           <form.Field
