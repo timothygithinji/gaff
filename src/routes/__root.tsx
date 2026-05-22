@@ -68,7 +68,7 @@ function RootComponent() {
   useReactGrab();
   return (
     <RootDocument>
-      <HouseholdProvider currentUserId={currentUserId}>
+      <HouseholdProvider initialUserId={currentUserId}>
         <Outlet />
       </HouseholdProvider>
     </RootDocument>

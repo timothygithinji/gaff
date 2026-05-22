@@ -17,6 +17,7 @@ import {
   type HouseholdMemberRow,
   getHousehold,
 } from "../server/functions/household";
+import { useSession } from "./auth-client";
 import { queryKeys } from "./query-keys";
 
 export interface HouseholdValue {
@@ -40,19 +41,35 @@ export const householdQueryOptions = {
 };
 
 export function HouseholdProvider({
-  currentUserId,
+  initialUserId,
   children,
 }: {
   /**
-   * The signed-in user's id (read on the server in `__root.tsx`'s
-   * loader). We accept it as a prop rather than refetching the session
-   * here so the provider can compute `isOwner` / `otherMembers` on
-   * first paint instead of after a second request.
+   * SSR hydration hint — the signed-in user's id as known by the root
+   * loader (`__root.tsx`'s `beforeLoad`). Used only for the first paint
+   * so the provider can compute `isOwner` / `otherMembers` without a
+   * second round-trip. After hydration, `useSession()` is the source of
+   * truth: it survives HMR remounts that drop the TanStack Router
+   * route context, so we don't briefly collapse to "no user" and throw
+   * `useHousehold() called outside <HouseholdProvider>` in dev.
    */
-  currentUserId: string | null;
+  initialUserId: string | null;
   children: ReactNode;
 }) {
-  const { data, isLoading, isError } = useQuery(householdQueryOptions);
+  const session = useSession();
+  // While the session hook is still doing its initial fetch, fall back
+  // to `initialUserId` so a user with a valid cookie doesn't flicker
+  // through a signed-out state on first paint. Once the hook settles
+  // we trust it absolutely — including a `null` result (signed out
+  // after the SSR snapshot was taken).
+  const currentUserId = session.isPending
+    ? initialUserId
+    : (session.data?.user?.id ?? null);
+
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    ...householdQueryOptions,
+    enabled: Boolean(currentUserId),
+  });
 
   const value = useMemo<HouseholdValue | null>(() => {
     if (!(data && currentUserId)) {
@@ -69,17 +86,38 @@ export function HouseholdProvider({
     };
   }, [data, currentUserId]);
 
-  // No session yet — render children unwrapped (e.g. /invite/$token
-  // accepts before there's a household membership; /login pre-auth).
+  // Pre-auth surfaces (/login, /signup, /invite/$token) still need to
+  // render their children. We supply a null-valued context rather than
+  // bypassing the provider so `useHouseholdOptional()` works and the
+  // tree always has a context above it — no fragile branch where an
+  // accidental `useHousehold()` call collapses to "called outside
+  // <HouseholdProvider>" because the HMR-transient currentUserId was
+  // briefly missing.
   if (!currentUserId) {
-    return <>{children}</>;
+    return (
+      <HouseholdContext.Provider value={null}>
+        {children}
+      </HouseholdContext.Provider>
+    );
   }
 
   if (isLoading) {
     return <HouseholdSkeleton />;
   }
+  // Signed in but the household query failed or returned no data.
+  // Render an explicit error UI rather than children — calling
+  // useHousehold() downstream would throw and crash the route. The
+  // retry button hits the same query so transient network errors clear
+  // on click.
   if (isError || !value) {
-    return <>{children}</>;
+    return (
+      <HouseholdErrorState
+        message={error instanceof Error ? error.message : null}
+        onRetry={() => {
+          refetch();
+        }}
+      />
+    );
   }
 
   return (
@@ -97,17 +135,48 @@ function HouseholdSkeleton() {
   );
 }
 
+function HouseholdErrorState({
+  message,
+  onRetry,
+}: {
+  message: string | null;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
+      <div className="flex max-w-sm flex-col items-start gap-4 rounded-2xl border border-border bg-card p-6">
+        <p className="font-semibold text-[10px] text-primary uppercase tracking-[0.14em]">
+          Couldn't load your household
+        </p>
+        <h1 className="font-serif text-2xl">Something went sideways</h1>
+        <p className="text-muted-foreground text-sm">
+          {message ?? "We couldn't reach the household service. Try again."}
+        </p>
+        <button
+          className="rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground text-sm"
+          onClick={onRetry}
+          type="button"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Hook for consuming the household. Throws when used outside a
- * provider OR when the provider has no value yet — call sites that
- * might render pre-auth should guard with `useHouseholdOptional`.
+ * Hook for consuming the household. Throws when the provider has no
+ * value — i.e. the caller rendered on a pre-auth route (`/login`,
+ * `/signup`, `/invite/$token`) or before the session settled. Pre-auth
+ * call sites should use `useHouseholdOptional`.
  */
 export function useHousehold(): HouseholdValue {
   const value = useContext(HouseholdContext);
   if (!value) {
     throw new Error(
-      "useHousehold() called outside <HouseholdProvider>. " +
-        "Wrap your tree in <HouseholdProvider currentUserId={...}>."
+      "useHousehold() called with no household available. " +
+        "Either the user is signed out (use useHouseholdOptional on pre-auth routes) " +
+        "or the route isn't auth-gated via requireSession()."
     );
   }
   return value;
