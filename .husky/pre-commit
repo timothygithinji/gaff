@@ -1,5 +1,11 @@
 #!/usr/bin/env sh
 
+# Block commits on branches that don't match Gaff's naming convention.
+# Defense in depth: post-checkout already auto-reverts off bogus branches,
+# but this catches `git branch -m` to a bad name, or commits made before
+# the hook is installed.
+bun scripts/validation/branch-name.ts || exit 1
+
 bunx biome check --staged --no-errors-on-unmatched
 
 # Validate migration journal/snapshot integrity and auto-generate when
