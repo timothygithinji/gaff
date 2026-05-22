@@ -10,6 +10,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { BottomNav } from "../../components/layout/bottom-nav";
+import { DesktopSearches } from "../../components/searches/desktop-searches";
 import { Button } from "../../components/ui/button";
 import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
@@ -34,34 +35,38 @@ function SearchesIndexPage() {
   const { data } = useSuspenseQuery(searchesQueryOptions);
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-28">
-      <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
-          Searches
-        </h1>
-      </header>
+    <>
+      <DesktopSearches searches={data} />
 
-      <div className="flex items-center justify-between px-6 pb-3">
-        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-          {data.length === 0
-            ? "No searches yet"
-            : `${data.length} search${data.length === 1 ? "" : "es"}`}
-        </span>
-        <Button
-          className="rounded-full"
-          render={<Link to="/searches/new" />}
-          size="sm"
-        >
-          <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
-          New
-        </Button>
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 md:hidden">
+        <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
+          <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
+            Searches
+          </h1>
+        </header>
+
+        <div className="flex items-center justify-between px-6 pb-3">
+          <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+            {data.length === 0
+              ? "No searches yet"
+              : `${data.length} search${data.length === 1 ? "" : "es"}`}
+          </span>
+          <Button
+            className="rounded-full"
+            render={<Link to="/searches/new" />}
+            size="sm"
+          >
+            <HugeiconsIcon icon={PlusSignIcon} size={14} strokeWidth={2} />
+            New
+          </Button>
+        </div>
+
+        <main className="space-y-4 px-4">
+          {data.length === 0 ? <EmptyState /> : <SearchList searches={data} />}
+        </main>
+        <BottomNav />
       </div>
-
-      <main className="space-y-4 px-4">
-        {data.length === 0 ? <EmptyState /> : <SearchList searches={data} />}
-      </main>
-      <BottomNav />
-    </div>
+    </>
   );
 }
 

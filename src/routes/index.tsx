@@ -25,6 +25,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { BottomNav } from "../components/layout/bottom-nav";
 import { ActionButtons } from "../components/review/action-buttons";
+import {
+  DESKTOP_REVIEW_PLACEHOLDER,
+  DesktopReview,
+  type DesktopReviewData,
+} from "../components/review/desktop-review";
 import { ReviewCardView } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
@@ -126,7 +131,7 @@ function ReviewPage() {
   const aiRules = readAiRules({ rules: [], excludeOutcodes: [] });
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
+    <>
       {error ? (
         <div
           aria-live="polite"
@@ -136,46 +141,67 @@ function ReviewPage() {
         </div>
       ) : null}
 
-      <ReviewHeader
-        leftToday={card?.leftToday ?? 0}
-        searchPill={card?.searchPill}
-      />
+      <DesktopReview data={desktopData(card)} />
 
-      {card ? (
-        <main className="space-y-4 pb-4">
-          <ReviewCardView aiRules={aiRules} card={card} />
-          <ActionButtons
-            clusterId={card.cluster.id}
-            disabled={pending}
-            onKeep={() =>
-              swipe.mutate({
-                clusterId: card.cluster.id,
-                searchId: card.searchId,
-                outcome: "keep",
-              })
-            }
-            onShortlist={() =>
-              swipe.mutate({
-                clusterId: card.cluster.id,
-                searchId: card.searchId,
-                outcome: "shortlist",
-              })
-            }
-            onSkip={() =>
-              swipe.mutate({
-                clusterId: card.cluster.id,
-                searchId: card.searchId,
-                outcome: "skip",
-              })
-            }
-            onUndo={() => undo.mutate()}
-          />
-        </main>
-      ) : (
-        <ReviewEmpty />
-      )}
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 md:hidden">
+        <ReviewHeader
+          leftToday={card?.leftToday ?? 0}
+          searchPill={card?.searchPill}
+        />
 
-      <BottomNav />
-    </div>
+        {card ? (
+          <main className="space-y-4 pb-4">
+            <ReviewCardView aiRules={aiRules} card={card} />
+            <ActionButtons
+              clusterId={card.cluster.id}
+              disabled={pending}
+              onKeep={() =>
+                swipe.mutate({
+                  clusterId: card.cluster.id,
+                  searchId: card.searchId,
+                  outcome: "keep",
+                })
+              }
+              onShortlist={() =>
+                swipe.mutate({
+                  clusterId: card.cluster.id,
+                  searchId: card.searchId,
+                  outcome: "shortlist",
+                })
+              }
+              onSkip={() =>
+                swipe.mutate({
+                  clusterId: card.cluster.id,
+                  searchId: card.searchId,
+                  outcome: "skip",
+                })
+              }
+              onUndo={() => undo.mutate()}
+            />
+          </main>
+        ) : (
+          <ReviewEmpty />
+        )}
+
+        <BottomNav />
+      </div>
+    </>
   );
+}
+
+/**
+ * Overlay the real card's `searchPill` and `leftToday` onto the desktop
+ * placeholder so the header isn't lying. The queue / Partner-activity
+ * panels stay on the placeholder fixture until those features land
+ * (separate server functions, not in this PR).
+ */
+function desktopData(card: ReviewCard | null | undefined): DesktopReviewData {
+  if (!card) {
+    return DESKTOP_REVIEW_PLACEHOLDER;
+  }
+  return {
+    ...DESKTOP_REVIEW_PLACEHOLDER,
+    searchPill: card.searchPill,
+    leftToday: card.leftToday,
+  };
 }
