@@ -1,6 +1,11 @@
 import { useForm } from "@tanstack/react-form";
-import { useMutation } from "@tanstack/react-query";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Link,
+  createFileRoute,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import { authClient } from "../lib/auth-client";
@@ -19,26 +24,39 @@ const passwordSchema = z.string().min(8, "At least 8 characters");
 
 function SignupPage() {
   const navigate = useNavigate();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const signUp = useMutation({
-    mutationFn: async (input: {
+    // Better Auth's signUp.email auto-creates a session and sets the
+    // cookie on the response, so by the time onSuccess fires we're
+    // authenticated. Drop the stale household query, invalidate the
+    // router so __root re-runs beforeLoad against the new cookie, then
+    // navigate. Without router.invalidate() the destination route's
+    // beforeLoad still sees currentUserId: null and bounces back here.
+    mutationFn: (input: {
       name: string;
       email: string;
       password: string;
-    }) => {
-      const res = await authClient.signUp.email({
-        name: input.name,
-        email: input.email,
-        password: input.password,
-      });
-      if (res.error) {
-        throw new Error(res.error.message ?? "Sign-up failed");
-      }
-      return res.data;
-    },
-    onSuccess: () => {
-      navigate({ to: "/" });
+    }) =>
+      new Promise<void>((resolve, reject) => {
+        authClient.signUp.email(
+          {
+            name: input.name,
+            email: input.email,
+            password: input.password,
+          },
+          {
+            onSuccess: () => resolve(),
+            onError: (ctx) => reject(new Error(ctx.error.message)),
+          }
+        );
+      }),
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: ["household"] });
+      await router.invalidate();
+      await navigate({ to: "/" });
     },
     onError: (err) => {
       setServerError(err instanceof Error ? err.message : "Sign-up failed");
@@ -68,7 +86,7 @@ function SignupPage() {
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            void form.handleSubmit();
+            form.handleSubmit();
           }}
         >
           <form.Field
