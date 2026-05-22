@@ -1,8 +1,10 @@
+CREATE SCHEMA "better_auth";
+--> statement-breakpoint
 CREATE TYPE "public"."household_role" AS ENUM('owner', 'member');--> statement-breakpoint
 CREATE TYPE "public"."job_status" AS ENUM('running', 'success', 'failure');--> statement-breakpoint
 CREATE TYPE "public"."listing_status" AS ENUM('active', 'let_agreed', 'removed');--> statement-breakpoint
 CREATE TYPE "public"."swipe_outcome" AS ENUM('keep', 'skip', 'shortlist');--> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "account" (
+CREATE TABLE IF NOT EXISTS "better_auth"."account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"account_id" text NOT NULL,
 	"provider_id" text NOT NULL,
@@ -14,7 +16,7 @@ CREATE TABLE IF NOT EXISTS "account" (
 	"refresh_token_expires_at" timestamp,
 	"scope" text,
 	"password" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp NOT NULL,
 	"updated_at" timestamp NOT NULL
 );
 --> statement-breakpoint
@@ -130,11 +132,11 @@ CREATE TABLE IF NOT EXISTS "searches" (
 	"updated_at" timestamp NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "session" (
+CREATE TABLE IF NOT EXISTS "better_auth"."session" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expires_at" timestamp NOT NULL,
 	"token" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp NOT NULL,
 	"updated_at" timestamp NOT NULL,
 	"ip_address" text,
 	"user_agent" text,
@@ -151,28 +153,28 @@ CREATE TABLE IF NOT EXISTS "swipes" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "user" (
+CREATE TABLE IF NOT EXISTS "better_auth"."user" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"email" text NOT NULL,
 	"email_verified" boolean DEFAULT false NOT NULL,
 	"image" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp NOT NULL,
 	"updated_at" timestamp NOT NULL,
 	CONSTRAINT "user_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "verification" (
+CREATE TABLE IF NOT EXISTS "better_auth"."verification" (
 	"id" text PRIMARY KEY NOT NULL,
 	"identifier" text NOT NULL,
 	"value" text NOT NULL,
 	"expires_at" timestamp NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp NOT NULL,
+	"updated_at" timestamp NOT NULL
 );
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "better_auth"."account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "better_auth"."user"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -202,7 +204,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "household_members" ADD CONSTRAINT "household_members_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "household_members" ADD CONSTRAINT "household_members_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "better_auth"."user"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -238,13 +240,13 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "better_auth"."session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "better_auth"."user"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "swipes" ADD CONSTRAINT "swipes_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "swipes" ADD CONSTRAINT "swipes_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "better_auth"."user"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -261,7 +263,7 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "account_user_id_idx" ON "account" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "better_auth"."account" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "enrichments_listing_prompt_version_uniq" ON "enrichments" USING btree ("listing_id","prompt_version");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "household_members_household_user_uniq" ON "household_members" USING btree ("household_id","user_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "household_members_user_id_idx" ON "household_members" USING btree ("user_id");--> statement-breakpoint
@@ -273,11 +275,11 @@ CREATE INDEX IF NOT EXISTS "listings_search_id_idx" ON "listings" USING btree ("
 CREATE INDEX IF NOT EXISTS "listings_status_idx" ON "listings" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "property_clusters_normalised_address_uniq" ON "property_clusters" USING btree ("normalised_address");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "searches_household_id_idx" ON "searches" USING btree ("household_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "session_user_id_idx" ON "session" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "better_auth"."session" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "swipes_user_cluster_search_uniq" ON "swipes" USING btree ("user_id","cluster_id","search_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "swipes_cluster_search_idx" ON "swipes" USING btree ("cluster_id","search_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "swipes_user_id_idx" ON "swipes" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" USING btree ("identifier");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "better_auth"."verification" USING btree ("identifier");--> statement-breakpoint
 CREATE VIEW "public"."v_mutual_matches" AS (
   SELECT
     sa.cluster_id AS cluster_id,

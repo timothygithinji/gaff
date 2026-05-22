@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check",
     "lint:branch": "bun scripts/validation/branch-name.ts",
+    "auth:generate": "bun scripts/auth/generate.ts",
     "test": "vitest",
     "trigger:dev": "trigger dev",
     "codegen": "openapi-ts"
@@ -42,6 +43,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@better-auth/cli": "^1.4.21",
     "@biomejs/biome": "^1.9.4",
     "@cloudflare/workers-types": "^4.20241127.0",
     "@commitlint/cli": "^21.0.1",
