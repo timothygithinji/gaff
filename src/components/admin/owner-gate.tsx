@@ -34,9 +34,8 @@ function ForbiddenPanel({ reason }: { reason: "signin" | "not-owner" }) {
       ? "Sign in to view the admin console."
       : "Only the household owner can see this. Ask whoever set the household up.";
   return (
-    <div className="flex min-h-screen bg-background">
-      <AdminSidebar />
-      <main className="flex flex-1 items-center justify-center p-10">
+    <AdminSidebar>
+      <div className="flex flex-1 items-center justify-center p-10">
         <div className="max-w-md rounded-2xl bg-muted p-8 text-center">
           <p className="font-semibold text-[10px] text-primary uppercase tracking-[0.12em]">
             403 · Restricted
@@ -46,7 +45,7 @@ function ForbiddenPanel({ reason }: { reason: "signin" | "not-owner" }) {
           </h1>
           <p className="mt-3 text-muted-foreground text-sm">{body}</p>
         </div>
-      </main>
-    </div>
+      </div>
+    </AdminSidebar>
   );
 }

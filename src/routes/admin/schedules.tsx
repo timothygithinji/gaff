@@ -1,3 +1,15 @@
+import { useForm } from "@tanstack/react-form";
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import type { ScheduleObject } from "@trigger.dev/core/v3";
+import { useState } from "react";
+import { z } from "zod";
+import { OwnerGate } from "../../components/admin/owner-gate";
+import { AdminSidebar } from "../../components/layout/admin-sidebar";
 /**
  * `/admin/schedules` — scout-inspired schedule manager.
  *
@@ -30,18 +42,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { useForm } from "@tanstack/react-form";
-import {
-  useMutation,
-  useQueryClient,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
-import type { ScheduleObject } from "@trigger.dev/core/v3";
-import { useState } from "react";
-import { z } from "zod";
-import { OwnerGate } from "../../components/admin/owner-gate";
-import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import {
@@ -103,9 +103,8 @@ function SchedulesScreen() {
   const searchById = new Map(searches.map((s) => [s.id, s] as const));
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AdminSidebar />
-      <main className="flex-1 px-10 py-8">
+    <AdminSidebar>
+      <div className="flex-1 px-10 py-8">
         <header className="mb-8">
           <p className="font-semibold text-[11px] text-primary uppercase tracking-[0.14em]">
             System · Schedules
@@ -152,8 +151,8 @@ function SchedulesScreen() {
             </table>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AdminSidebar>
   );
 }
 
@@ -468,81 +467,81 @@ function EditScheduleButton({ schedule }: { schedule: ScheduleObject }) {
           Updates fire immediately on Trigger.dev — the next run reschedules to
           match.
         </DialogDescription>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              form.handleSubmit();
-            }}
-          >
-            <div className="mt-4 space-y-3">
-              <form.Field name="cron" validators={{ onChange: cronSchema }}>
-                {(field) => (
-                  <label className="block">
-                    <span className="block text-muted-foreground text-xs uppercase tracking-wide">
-                      Cron
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            form.handleSubmit();
+          }}
+        >
+          <div className="mt-4 space-y-3">
+            <form.Field name="cron" validators={{ onChange: cronSchema }}>
+              {(field) => (
+                <label className="block">
+                  <span className="block text-muted-foreground text-xs uppercase tracking-wide">
+                    Cron
+                  </span>
+                  <input
+                    className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-foreground text-sm"
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    type="text"
+                    value={field.state.value}
+                  />
+                  {field.state.meta.errors.length > 0 ? (
+                    <span className="mt-1 block text-[#B05A38] text-xs">
+                      {fieldErrorMessage(field.state.meta.errors)}
                     </span>
-                    <input
-                      className="mt-1 w-full rounded border border-border bg-background px-3 py-2 font-mono text-foreground text-sm"
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      type="text"
-                      value={field.state.value}
-                    />
-                    {field.state.meta.errors.length > 0 ? (
-                      <span className="mt-1 block text-[#B05A38] text-xs">
-                        {fieldErrorMessage(field.state.meta.errors)}
-                      </span>
-                    ) : null}
-                  </label>
-                )}
-              </form.Field>
-              <form.Field
-                name="timezone"
-                validators={{ onChange: timezoneSchema }}
-              >
-                {(field) => (
-                  <label className="block">
-                    <span className="block text-muted-foreground text-xs uppercase tracking-wide">
-                      Timezone (IANA)
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-foreground text-sm"
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      type="text"
-                      value={field.state.value}
-                    />
-                    {field.state.meta.errors.length > 0 ? (
-                      <span className="mt-1 block text-[#B05A38] text-xs">
-                        {fieldErrorMessage(field.state.meta.errors)}
-                      </span>
-                    ) : null}
-                  </label>
-                )}
-              </form.Field>
-              {submitError && (
-                <p className="text-[#B05A38] text-sm">{submitError}</p>
+                  ) : null}
+                </label>
               )}
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <DialogClose render={<Button variant="ghost">Cancel</Button>} />
-              <form.Subscribe
-                selector={(s) => [s.canSubmit, s.isSubmitting] as const}
-              >
-                {([canSubmit, isSubmitting]) => (
-                  <Button
-                    disabled={!canSubmit || isSubmitting || mutation.isPending}
-                    type="submit"
-                  >
-                    {isSubmitting || mutation.isPending ? "Saving…" : "Save"}
-                  </Button>
-                )}
-              </form.Subscribe>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </form.Field>
+            <form.Field
+              name="timezone"
+              validators={{ onChange: timezoneSchema }}
+            >
+              {(field) => (
+                <label className="block">
+                  <span className="block text-muted-foreground text-xs uppercase tracking-wide">
+                    Timezone (IANA)
+                  </span>
+                  <input
+                    className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-foreground text-sm"
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    type="text"
+                    value={field.state.value}
+                  />
+                  {field.state.meta.errors.length > 0 ? (
+                    <span className="mt-1 block text-[#B05A38] text-xs">
+                      {fieldErrorMessage(field.state.meta.errors)}
+                    </span>
+                  ) : null}
+                </label>
+              )}
+            </form.Field>
+            {submitError && (
+              <p className="text-[#B05A38] text-sm">{submitError}</p>
+            )}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <DialogClose render={<Button variant="ghost">Cancel</Button>} />
+            <form.Subscribe
+              selector={(s) => [s.canSubmit, s.isSubmitting] as const}
+            >
+              {([canSubmit, isSubmitting]) => (
+                <Button
+                  disabled={!canSubmit || isSubmitting || mutation.isPending}
+                  type="submit"
+                >
+                  {isSubmitting || mutation.isPending ? "Saving…" : "Save"}
+                </Button>
+              )}
+            </form.Subscribe>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

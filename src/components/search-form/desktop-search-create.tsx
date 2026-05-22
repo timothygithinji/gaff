@@ -32,18 +32,15 @@ type Props = {
 
 export function DesktopSearchCreate(props: Props) {
   return (
-    <div className="hidden min-h-screen bg-ground md:flex">
-      <AdminSidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <Breadcrumb mode={props.mode} onCancel={props.onCancel} />
-        <div className="flex min-w-0 flex-1 gap-6 px-10 py-7">
-          <div className="flex min-w-0 flex-1 justify-center">
-            <SearchForm {...props} />
-          </div>
-          <EstimateRail />
+    <AdminSidebar mode="desktop-only">
+      <Breadcrumb mode={props.mode} onCancel={props.onCancel} />
+      <div className="flex min-w-0 flex-1 gap-6 px-10 py-7">
+        <div className="flex min-w-0 flex-1 justify-center">
+          <SearchForm {...props} />
         </div>
-      </main>
-    </div>
+        <EstimateRail />
+      </div>
+    </AdminSidebar>
   );
 }
 

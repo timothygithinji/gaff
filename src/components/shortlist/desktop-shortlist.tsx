@@ -75,48 +75,45 @@ export function DesktopShortlist({
   onPlanViewing,
 }: Props) {
   return (
-    <div className="hidden min-h-screen bg-ground md:flex">
-      <AdminSidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <Header
-          onSortChange={onSortChange}
-          partnerLabel={partnerLabel}
-          sortKey={sortKey}
-        />
-        {tabs.length > 0 ? (
-          <div className="border-bone border-b px-10 pb-4">
-            <ShortlistTabs
-              activeId={activeTab}
-              onChange={onTabChange}
-              tabs={tabs}
-            />
-          </div>
-        ) : null}
-        <div className="flex min-w-0 flex-1 gap-6 px-10 py-7">
-          <div className="flex min-w-0 flex-1 flex-col gap-5">
-            {featured ? (
-              <FeaturedBanner
-                ageLabel={featuredAgeLabel ?? ""}
-                match={featured}
-                onOpen={() => onOpen(featured.clusterId)}
-                onPlanViewing={() => onPlanViewing(featured)}
-              />
-            ) : null}
-            <SectionHead label={sectionLabel} rowCount={rows.length} />
-            <CardGrid
-              memberCount={memberCount}
-              onOpen={onOpen}
-              rowAgeLabel={rowAgeLabel}
-              rows={rows}
-            />
-          </div>
-          <aside className="flex w-[300px] shrink-0 flex-col gap-3.5">
-            <SaturdayPlanCard plan={DEFAULT_PLAN} />
-            <NotesCard notes={DEFAULT_NOTES} />
-          </aside>
+    <AdminSidebar mode="desktop-only">
+      <Header
+        onSortChange={onSortChange}
+        partnerLabel={partnerLabel}
+        sortKey={sortKey}
+      />
+      {tabs.length > 0 ? (
+        <div className="border-bone border-b px-10 pb-4">
+          <ShortlistTabs
+            activeId={activeTab}
+            onChange={onTabChange}
+            tabs={tabs}
+          />
         </div>
-      </main>
-    </div>
+      ) : null}
+      <div className="flex min-w-0 flex-1 gap-6 px-10 py-7">
+        <div className="flex min-w-0 flex-1 flex-col gap-5">
+          {featured ? (
+            <FeaturedBanner
+              ageLabel={featuredAgeLabel ?? ""}
+              match={featured}
+              onOpen={() => onOpen(featured.clusterId)}
+              onPlanViewing={() => onPlanViewing(featured)}
+            />
+          ) : null}
+          <SectionHead label={sectionLabel} rowCount={rows.length} />
+          <CardGrid
+            memberCount={memberCount}
+            onOpen={onOpen}
+            rowAgeLabel={rowAgeLabel}
+            rows={rows}
+          />
+        </div>
+        <aside className="flex w-[300px] shrink-0 flex-col gap-3.5">
+          <SaturdayPlanCard plan={DEFAULT_PLAN} />
+          <NotesCard notes={DEFAULT_NOTES} />
+        </aside>
+      </div>
+    </AdminSidebar>
   );
 }
 
