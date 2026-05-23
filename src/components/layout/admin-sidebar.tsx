@@ -27,8 +27,8 @@ import {
   UserSettings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
 import {
@@ -210,7 +210,8 @@ function NavSection({ label, links }: { label: string; links: NavLink[] }) {
 
 function UserFooter() {
   const household = useHouseholdOptional();
-  const navigate = useNavigate();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { setTheme } = useTheme();
   const me = household?.members.find(
     (m) => m.userId === household.currentUserId
@@ -220,8 +221,18 @@ function UserFooter() {
   const secondary = me?.email && me.email !== displayName ? me.email : null;
 
   async function handleSignOut() {
+    // 1. Burn the server-side session + auth-client cache.
+    // 2. Drop household + auth-scoped queries so no stale data flashes
+    //    if the same browser later signs in as someone else.
+    // 3. `router.invalidate()` re-runs every route's `beforeLoad` against
+    //    the now-null `currentUserId`. The current route's
+    //    `requireSession()` throws a redirect to `/login` BEFORE the
+    //    component re-renders — without this the component would tick
+    //    once with a null household context and `useHousehold()` would
+    //    throw "called with no household available".
     await authClient.signOut();
-    await navigate({ to: "/login" });
+    queryClient.removeQueries({ queryKey: queryKeys.household() });
+    await router.invalidate();
   }
 
   return (
