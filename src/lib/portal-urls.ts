@@ -16,12 +16,29 @@
  *   - `propertyTypes` maps to portal-specific tokens (Rightmove: comma
  *     joined; Zoopla: single `property_sub_type`; OpenRent: not supported
  *     in the URL — filtered downstream by the parser).
+ *   - Silent-win defaults: Rightmove gets `includeLetAgreed=false` and
+ *     `letType=longTerm` baked in. Zoopla gets `include_let_agreed=false`.
+ *     OpenRent's existing `isLive=true` is the equivalent — leave alone.
+ *   - Bathrooms: Rightmove has no URL param — filtered parser-side in
+ *     `scrape-portal.ts`. Zoopla takes `baths_min` / `baths_max`. OpenRent
+ *     only honours `bathrooms_min`.
+ *   - Furnished: Rightmove `furnishTypes`, Zoopla `furnished_state`,
+ *     OpenRent `furnishing` (capitalised value). Omit param when `null`.
+ *   - Must-haves: Rightmove `mustHave` is a comma list of {garden,parking};
+ *     pets is not URL-supported and falls to parser-side filtering.
+ *     Zoopla has no URL equivalents — all three are parser-side.
+ *     OpenRent takes `garden=true` / `parking=true` / `pets=true` each.
  */
+
+export type Furnished = "furnished" | "unfurnished";
+export type MustHave = "garden" | "parking" | "pets";
 
 export type PortalSearchParams = {
   outcode: string;
   minBedrooms?: number | null;
   maxBedrooms?: number | null;
+  minBathrooms?: number | null;
+  maxBathrooms?: number | null;
   minPrice?: number | null;
   maxPrice?: number | null;
   /**
@@ -30,6 +47,10 @@ export type PortalSearchParams = {
    * Zoopla wants a single value so we pick the first.
    */
   propertyTypes?: string[];
+  /** `null` / undefined = no filter; otherwise lowercased portal-side. */
+  furnished?: Furnished | null;
+  /** Subset of {garden, parking, pets}; empty array = no must-have filter. */
+  mustHaves?: MustHave[];
 };
 
 // -----------------------------------------------------------------------------
@@ -43,6 +64,12 @@ export type RightmoveSearchUrlParams = Omit<PortalSearchParams, "outcode"> & {
    * `resolveRightmoveLocationIdentifier` in `rightmove-location.ts`.
    */
   locationIdentifier: string;
+  /**
+   * Caller-derived cap on listing age (in days). Driven from cadence in
+   * `scrape-portal.ts` — hourly → 1, 2/4/6h → 3, 12h/daily → 7.
+   * Omitted from the URL when `undefined`.
+   */
+  maxDaysSinceAdded?: number;
 };
 
 export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
@@ -52,6 +79,10 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
   usp.set("radius", "0.0");
   usp.set("sortType", "6"); // newest listings first
   usp.set("index", "0");
+  // Silent-win defaults — every Gaff search wants long-term lets only
+  // and never wants already-let-agreed properties clogging the queue.
+  usp.set("includeLetAgreed", "false");
+  usp.set("letType", "longTerm");
   if (typeof params.minPrice === "number") {
     usp.set("minPrice", String(params.minPrice));
   }
@@ -69,6 +100,22 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
       "propertyTypes",
       params.propertyTypes.map((t) => t.toLowerCase()).join(",")
     );
+  }
+  if (params.furnished) {
+    usp.set("furnishTypes", params.furnished);
+  }
+  if (params.mustHaves && params.mustHaves.length > 0) {
+    // RM `mustHave` is a comma list; `pets` is not URL-supported and
+    // gets filtered downstream in `scrape-portal.ts`.
+    const supported = params.mustHaves.filter(
+      (m) => m === "garden" || m === "parking"
+    );
+    if (supported.length > 0) {
+      usp.set("mustHave", supported.join(","));
+    }
+  }
+  if (typeof params.maxDaysSinceAdded === "number") {
+    usp.set("maxDaysSinceAdded", String(params.maxDaysSinceAdded));
   }
   return `https://www.rightmove.co.uk/property-to-rent/find.html?${usp.toString()}`;
 }
@@ -90,6 +137,8 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
   usp.set("results_sort", "newest_listings");
   usp.set("search_source", "to-rent");
   usp.set("pn", "1");
+  // Silent-win default — never surface already-let-agreed listings.
+  usp.set("include_let_agreed", "false");
   if (typeof params.minPrice === "number") {
     usp.set("price_min", String(params.minPrice));
   }
@@ -102,6 +151,12 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
   if (typeof params.maxBedrooms === "number") {
     usp.set("beds_max", String(params.maxBedrooms));
   }
+  if (typeof params.minBathrooms === "number") {
+    usp.set("baths_min", String(params.minBathrooms));
+  }
+  if (typeof params.maxBathrooms === "number") {
+    usp.set("baths_max", String(params.maxBathrooms));
+  }
   if (params.propertyTypes && params.propertyTypes.length > 0) {
     // Zoopla wants a single sub-type — first one wins.
     const firstType = params.propertyTypes[0]?.toLowerCase();
@@ -109,6 +164,11 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
       usp.set("property_sub_type", firstType);
     }
   }
+  if (params.furnished) {
+    usp.set("furnished_state", params.furnished);
+  }
+  // Zoopla has no URL params for garden / parking / pets — must-haves
+  // are applied parser-side in `scrape-portal.ts`.
   return `https://www.zoopla.co.uk/to-rent/property/london/${outcode}/?${usp.toString()}`;
 }
 
@@ -121,6 +181,9 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
  * applied client-side via JS we don't run. We pass the constraint along
  * anyway via `prices_*` / `bedrooms_*` and rely on the parser to drop
  * non-matching results downstream.
+ *
+ * `isLive=true` is OpenRent's equivalent of "exclude let-agreed" — kept
+ * on by default.
  */
 export function openrentSearchUrl(params: PortalSearchParams): string {
   const usp = new URLSearchParams();
@@ -138,6 +201,28 @@ export function openrentSearchUrl(params: PortalSearchParams): string {
   }
   if (typeof params.maxBedrooms === "number") {
     usp.set("bedrooms_max", String(params.maxBedrooms));
+  }
+  // OpenRent only honours bathrooms_min (no max equivalent).
+  if (typeof params.minBathrooms === "number") {
+    usp.set("bathrooms_min", String(params.minBathrooms));
+  }
+  if (params.propertyTypes && params.propertyTypes.length > 0) {
+    // OpenRent's docs are silent; smoke didn't error so we try one value
+    // (first wins). Worst case the OR parser drops anything mis-typed.
+    const firstType = params.propertyTypes[0]?.toLowerCase();
+    if (firstType) {
+      usp.set("propertyType", firstType);
+    }
+  }
+  if (params.furnished) {
+    // OpenRent expects capitalised values.
+    const v = params.furnished === "furnished" ? "Furnished" : "Unfurnished";
+    usp.set("furnishing", v);
+  }
+  if (params.mustHaves) {
+    for (const mh of params.mustHaves) {
+      usp.set(mh, "true");
+    }
   }
   return `https://www.openrent.co.uk/properties-to-rent/?${usp.toString()}`;
 }
