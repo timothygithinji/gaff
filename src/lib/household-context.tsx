@@ -49,10 +49,17 @@ const CONTEXT_KEY = "__gaff_household_context";
 type GlobalWithContext = typeof globalThis & {
   [CONTEXT_KEY]?: Context<HouseholdValue | null>;
 };
-const HouseholdContext: Context<HouseholdValue | null> =
-  (globalThis as GlobalWithContext)[CONTEXT_KEY] ??
-  ((globalThis as GlobalWithContext)[CONTEXT_KEY] =
-    createContext<HouseholdValue | null>(null));
+const HouseholdContext: Context<HouseholdValue | null> = ((
+  g: GlobalWithContext
+) => {
+  const existing = g[CONTEXT_KEY];
+  if (existing) {
+    return existing;
+  }
+  const fresh = createContext<HouseholdValue | null>(null);
+  g[CONTEXT_KEY] = fresh;
+  return fresh;
+})(globalThis as GlobalWithContext);
 
 export const householdQueryOptions = {
   queryKey: queryKeys.household(),
