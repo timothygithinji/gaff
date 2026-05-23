@@ -15,15 +15,31 @@
  *   - active item foreground = copper (via `--sidebar-accent-foreground`)
  */
 import {
+  ArrowUpDownIcon,
+  ComputerIcon,
+  House03Icon,
+  Logout03Icon,
+  Moon02Icon,
   Search01Icon,
   StarIcon,
+  Sun03Icon,
   SwipeRight03Icon,
+  UserSettings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar";
-import { ModeToggle } from "../mode-toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -39,7 +55,11 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "../../components/ui/sidebar";
+import { authClient } from "../../lib/auth-client";
 import { useHouseholdOptional } from "../../lib/household-context";
+import { queryKeys } from "../../lib/query-keys";
+import { listMyOutcomes } from "../../server/functions/shortlist";
+import { useTheme } from "../theme-provider";
 
 type IconRef = typeof SwipeRight03Icon;
 
@@ -50,11 +70,32 @@ type NavLink = {
   badge?: number;
 };
 
-const HOUSE_LINKS: NavLink[] = [
-  { to: "/", label: "Review", icon: SwipeRight03Icon },
-  { to: "/shortlist", label: "Shortlist", icon: StarIcon, badge: 3 },
-  { to: "/searches", label: "Searches", icon: Search01Icon },
-];
+/**
+ * Same key + queryFn the `/shortlist` route uses, so when the user
+ * navigates there the data is already cached — and the badge here
+ * stays in sync when a swipe on the Review screen creates a new
+ * shortlist entry. `listMyOutcomes` returns the full list; we just
+ * read `.length` for the badge.
+ */
+const shortlistMineQueryOptions = {
+  queryKey: queryKeys.shortlistMine(),
+  queryFn: () => listMyOutcomes({ data: { outcome: "keep_or_shortlist" } }),
+  staleTime: 15_000,
+};
+
+function useHouseLinks(): NavLink[] {
+  const { data } = useQuery(shortlistMineQueryOptions);
+  return [
+    { to: "/searches", label: "Searches", icon: Search01Icon },
+    { to: "/", label: "Review", icon: SwipeRight03Icon },
+    {
+      to: "/shortlist",
+      label: "Shortlist",
+      icon: StarIcon,
+      badge: data?.length,
+    },
+  ];
+}
 
 /**
  * Optional `mode="desktop-only"` hides the entire shell below `md` so
@@ -69,6 +110,7 @@ type Props = {
 
 export function AdminSidebar({ children, mode = "responsive" }: Props) {
   const desktopOnly = mode === "desktop-only";
+  const houseLinks = useHouseLinks();
   return (
     <div className={desktopOnly ? "hidden md:contents" : "contents"}>
       {/* Pin the whole shell to the viewport so the inset becomes a
@@ -82,7 +124,7 @@ export function AdminSidebar({ children, mode = "responsive" }: Props) {
         >
           <Brand />
           <SidebarContent>
-            <NavSection label="House" links={HOUSE_LINKS} />
+            <NavSection label="House" links={houseLinks} />
           </SidebarContent>
           <UserFooter />
         </Sidebar>
@@ -99,7 +141,7 @@ function Brand() {
     <SidebarHeader className="px-3 pt-4">
       <div className="flex items-center gap-2">
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <span className="font-bold font-serif text-lg leading-none">g</span>
+          <HugeiconsIcon icon={House03Icon} size={18} strokeWidth={1.8} />
         </span>
         <span className="font-serif text-foreground text-xl group-data-[collapsible=icon]:hidden">
           Gaff
@@ -146,29 +188,103 @@ function NavSection({ label, links }: { label: string; links: NavLink[] }) {
 
 function UserFooter() {
   const household = useHouseholdOptional();
+  const navigate = useNavigate();
+  const { setTheme } = useTheme();
   const me = household?.members.find(
     (m) => m.userId === household.currentUserId
   );
   const initial = (me?.name || me?.email || "?").charAt(0).toUpperCase();
   const displayName = me?.name ?? me?.email ?? "—";
+  const secondary = me?.email && me.email !== displayName ? me.email : null;
+
+  async function handleSignOut() {
+    await authClient.signOut();
+    await navigate({ to: "/login" });
+  }
+
   return (
-    <SidebarFooter className="border-sidebar-border border-t px-3 py-3">
-      <div className="flex items-center gap-3">
-        <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-primary font-medium text-primary-foreground text-sm">
-            {initial}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-          <p className="truncate font-medium text-foreground text-sm">
-            {displayName}
-          </p>
-          <p className="text-muted-foreground text-xs">via Cloudflare Access</p>
-        </div>
-        <div className="group-data-[collapsible=icon]:hidden">
-          <ModeToggle />
-        </div>
-      </div>
+    <SidebarFooter className="border-sidebar-border border-t">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <SidebarMenuButton size="lg" tooltip={displayName}>
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarFallback className="rounded-lg bg-primary font-medium text-primary-foreground text-sm">
+                      {initial}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid min-w-0 flex-1 text-left leading-tight">
+                    <span className="truncate font-medium text-sm">
+                      {displayName}
+                    </span>
+                    {secondary ? (
+                      <span className="truncate text-muted-foreground text-xs">
+                        {secondary}
+                      </span>
+                    ) : null}
+                  </div>
+                  <HugeiconsIcon
+                    className="ml-auto opacity-60"
+                    icon={ArrowUpDownIcon}
+                    size={14}
+                    strokeWidth={1.6}
+                  />
+                </SidebarMenuButton>
+              }
+            />
+            <DropdownMenuContent
+              align="end"
+              alignOffset={-4}
+              className="min-w-56"
+              side="top"
+              sideOffset={8}
+            >
+              <DropdownMenuLabel>
+                <div className="grid gap-0.5">
+                  <span className="truncate font-medium text-sm">
+                    {displayName}
+                  </span>
+                  {secondary ? (
+                    <span className="truncate text-muted-foreground text-xs">
+                      {secondary}
+                    </span>
+                  ) : null}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem render={<Link to="/settings/household" />}>
+                  <HugeiconsIcon icon={UserSettings01Icon} size={14} />
+                  Household settings
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Theme</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => setTheme("light")}>
+                  <HugeiconsIcon icon={Sun03Icon} size={14} />
+                  Light
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                  <HugeiconsIcon icon={Moon02Icon} size={14} />
+                  Dark
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("system")}>
+                  <HugeiconsIcon icon={ComputerIcon} size={14} />
+                  System
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut} variant="destructive">
+                <HugeiconsIcon icon={Logout03Icon} size={14} />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
     </SidebarFooter>
   );
 }
