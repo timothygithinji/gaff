@@ -154,36 +154,6 @@ async function findExistingIds(
   return new Set(rows.map((r) => r.portalListingId));
 }
 
-async function upsertOneListing(
-  db: ReturnType<typeof getDb>,
-  searchId: string,
-  portal: Portal,
-  summary: ListingSummary
-): Promise<void> {
-  const mutable = mutableListingFields(summary);
-  // Use ON CONFLICT to refresh mutable fields + bump last_seen_at without
-  // touching first_seen_at. The unique index
-  // `listings_search_portal_listing_id_uniq` is the conflict target.
-  await db
-    .insert(schema.listings)
-    .values({
-      id: nanoid(),
-      portal,
-      portalListingId: summary.portalListingId,
-      searchId,
-      ...mutable,
-      rawJson: summary as unknown as Record<string, unknown>,
-    })
-    .onConflictDoUpdate({
-      target: [
-        schema.listings.searchId,
-        schema.listings.portal,
-        schema.listings.portalListingId,
-      ],
-      set: { ...mutable, lastSeenAt: sql`NOW()` },
-    });
-}
-
 /**
  * Upsert one outcode's worth of listings. Returns the count of rows that
  * were INSERTed (not updated) so the caller can populate
@@ -224,8 +194,43 @@ async function upsertListings(
     if (!existingIds.has(summary.portalListingId)) {
       newCount += 1;
     }
-    await upsertOneListing(db, searchId, portal, summary);
   }
+
+  // Single bulk upsert. ON CONFLICT refreshes mutable fields + bumps
+  // last_seen_at without touching first_seen_at. The unique index
+  // `listings_search_portal_listing_id_uniq` is the conflict target.
+  const rows = summaries.map((summary) => ({
+    id: nanoid(),
+    portal,
+    portalListingId: summary.portalListingId,
+    searchId,
+    ...mutableListingFields(summary),
+    rawJson: summary as unknown as Record<string, unknown>,
+  }));
+  await db
+    .insert(schema.listings)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        schema.listings.searchId,
+        schema.listings.portal,
+        schema.listings.portalListingId,
+      ],
+      set: {
+        url: sql`excluded.url`,
+        title: sql`excluded.title`,
+        addressRaw: sql`excluded.address_raw`,
+        postcode: sql`excluded.postcode`,
+        bedrooms: sql`excluded.bedrooms`,
+        bathrooms: sql`excluded.bathrooms`,
+        priceMonthly: sql`excluded.price_monthly`,
+        propertyType: sql`excluded.property_type`,
+        lat: sql`excluded.lat`,
+        lng: sql`excluded.lng`,
+        lastSeenAt: sql`NOW()`,
+      },
+    });
+
   return {
     totalSeen: summaries.length,
     newCount,
