@@ -29,6 +29,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
+import { findCadenceByCron } from "../lib/cron-presets";
 import {
   parseOpenrentSearch,
   parseRightmoveSearch,
@@ -41,6 +42,7 @@ import {
   zooplaSearchUrl,
 } from "../lib/portal-urls";
 import { createRightmoveLocationCache } from "../lib/rightmove-location";
+import { findScheduleByExternalId } from "../lib/schedule-lookup";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { clusterTask } from "./cluster";
 import { scrapeQueue } from "./queues";
@@ -77,7 +79,8 @@ async function buildSearchUrl(
   portal: Portal,
   outcode: string,
   search: SearchFilters,
-  resolveRightmoveLocation: (outcode: string) => Promise<string>
+  resolveRightmoveLocation: (outcode: string) => Promise<string>,
+  maxDaysSinceAdded: number | undefined
 ): Promise<string> {
   if (portal === "rightmove") {
     const locationIdentifier = await resolveRightmoveLocation(outcode);
@@ -88,6 +91,7 @@ async function buildSearchUrl(
       minPrice: search.minPrice,
       maxPrice: search.maxPrice,
       propertyTypes: search.propertyTypes,
+      maxDaysSinceAdded,
     });
   }
   const params = {
@@ -377,6 +381,27 @@ export const scrapePortalTask = task({
     // outcode per task run; no-op for other portals.
     const resolveRightmoveLocation = createRightmoveLocationCache();
 
+    // Cadence-derived listing-age cap for portals that honour it
+    // (currently Rightmove only). Looked up ONCE per scrape, not per
+    // outcode, because the schedule is per-search. Failure is swallowed
+    // and logged — we'd rather scrape without the cost optimisation than
+    // fail the whole run if the Trigger API is briefly down.
+    let maxDaysSinceAdded: number | undefined;
+    try {
+      const schedule = await findScheduleByExternalId(searchId);
+      const cron = schedule?.generator?.expression ?? null;
+      maxDaysSinceAdded = findCadenceByCron(cron).maxDaysSinceAdded;
+    } catch (err) {
+      logger.warn(
+        "scrape-portal: schedule lookup failed; proceeding without maxDaysSinceAdded",
+        {
+          searchId,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      );
+      maxDaysSinceAdded = undefined;
+    }
+
     for (const outcode of search.outcodes) {
       const url = await buildSearchUrl(
         portal,
@@ -388,7 +413,8 @@ export const scrapePortalTask = task({
           maxPrice: search.maxPrice,
           propertyTypes: search.propertyTypes,
         },
-        resolveRightmoveLocation
+        resolveRightmoveLocation,
+        maxDaysSinceAdded
       );
 
       logger.log("scrape-portal: fetching", { portal, outcode, url });
