@@ -38,7 +38,7 @@ export const session = betterAuth.table(
     userAgent: text("user_agent"),
     userId: text("user_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade", onUpdate: "cascade" }),
   },
   (table) => [index("session_userId_idx").on(table.userId)]
 );
@@ -51,7 +51,7 @@ export const account = betterAuth.table(
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade", onUpdate: "cascade" }),
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),

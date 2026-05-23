@@ -93,6 +93,16 @@ const RELATIONS_IMPORT_RE =
 // db/schema.ts where they can span both auth + domain tables.
 const RELATIONS_TAIL_RE =
   /\n?export\s+const\s+\w+Relations\s*=\s*relations\([\s\S]*$/;
+// Match `.references(() => …, { … })` option bags. We inject
+// `onUpdate: "cascade"` so the auth-schema FKs match the domain schema's
+// hygiene (see db/schema.ts) — primary keys don't change in practice,
+// but declaring it makes intent explicit and the generated migrations
+// consistent. `[^{}]*` keeps us out of nested braces; the CLI's option
+// bags are always flat.
+const REFERENCES_OPTS_RE =
+  /\.references\(\s*\(\)\s*=>\s*[^,]+,\s*\{([^{}]*)\}\s*\)/gs;
+const HAS_ON_UPDATE_RE = /onUpdate\s*:/;
+const TRAILING_COMMA_RE = /,\s*$/;
 
 function rewriteToSchema(raw: string): string {
   if (!PG_TABLE_CALL_RE.test(raw)) {
@@ -130,6 +140,16 @@ function rewriteToSchema(raw: string): string {
   rewritten = rewritten.replace(PG_TABLE_CALL_RE, "betterAuth.table(");
   rewritten = rewritten.replace(RELATIONS_TAIL_RE, "");
   rewritten = rewritten.replace(RELATIONS_IMPORT_RE, "");
+  // Inject `onUpdate: "cascade"` into every `.references(...)` option bag
+  // that doesn't already specify it. Mirrors the domain schema in
+  // db/schema.ts so the auth-schema FKs declare full intent.
+  rewritten = rewritten.replace(REFERENCES_OPTS_RE, (match, body) => {
+    if (HAS_ON_UPDATE_RE.test(body)) {
+      return match;
+    }
+    const trimmed = body.replace(TRAILING_COMMA_RE, "").trim();
+    return match.replace(`{${body}}`, `{ ${trimmed}, onUpdate: "cascade" }`);
+  });
   // Collapse the gaps left by stripped imports / relations blocks.
   rewritten = rewritten.replace(/\n{3,}/g, "\n\n");
 
