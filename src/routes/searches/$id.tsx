@@ -300,7 +300,7 @@ function toFormValues(
   const bedsId =
     search.minBedrooms === null
       ? DEFAULT_FORM_VALUES.bedsId
-      : pickBedsId(search.minBedrooms, search.maxBedrooms);
+      : pickBedsId(search.minBedrooms);
   const bathsId = pickBathsId(
     DEFAULT_FORM_VALUES.bathsId,
     search.commuteTargets
@@ -324,11 +324,10 @@ function toFormValues(
   };
 }
 
-function pickBedsId(min: number, max: number | null): string {
-  // Beds are min-only now (1+, 2+, 3+, 4+). `max` is preserved here only
-  // for backwards-compat with rows written under the old explicit
-  // (min, max) encoding.
-  void max;
+function pickBedsId(min: number): string {
+  // Beds are min-only now (1+, 2+, 3+, 4+). Rows written under the old
+  // explicit `(min, max)` encoding still hydrate cleanly — we just snap
+  // to the closest "N+" pill and drop `max` on read.
   const clamped = Math.max(1, Math.min(min, 4));
   return `${clamped}+`;
 }
