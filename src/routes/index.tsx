@@ -20,6 +20,7 @@
  * member-count-aware UX (Matches tab visibility) — the Review screen
  * itself doesn't care how many members the household has.
  */
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -34,6 +35,8 @@ import {
 import { ReviewCardView } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
+import { Skeleton } from "../components/ui/skeleton";
+import { useIsMobile } from "../hooks/use-mobile";
 import { requireSession } from "../lib/auth-guard";
 import { queryKeys } from "../lib/query-keys";
 import {
@@ -49,10 +52,13 @@ import {
 } from "../server/functions/review";
 import { listSearches, readAiRules } from "../server/functions/searches";
 
-// `searchId` filter, kept in the URL so refresh + back-button preserve
-// the selection and the filter is shareable. The empty string and the
-// omitted form both collapse to `null` so the queue isn't accidentally
-// scoped to a stale id.
+type SwipeOutcome = "keep" | "skip" | "shortlist";
+type PendingAction = SwipeOutcome | "undo" | null;
+
+// `searchId` filter and the explicit `clusterId` selection both live
+// in the URL so refresh + back-button preserve them and the filter is
+// shareable. Empty / omitted both collapse to `null` so the queue
+// isn't accidentally scoped to a stale id.
 const reviewSearchSchema = z.object({
   searchId: z
     .string()
@@ -60,13 +66,37 @@ const reviewSearchSchema = z.object({
     .min(1)
     .nullish()
     .transform((v) => v ?? null),
+  /**
+   * When set, the hero/center column is pinned to this cluster instead
+   * of the top of the queue. Cleared automatically on swipe/undo so the
+   * next card surfaces.
+   */
+  clusterId: z
+    .string()
+    .trim()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
 });
 
-const reviewCardQueryOptions = (searchId: string | null) =>
+const reviewCardQueryOptions = (
+  searchId: string | null,
+  clusterId: string | null
+) =>
   ({
-    queryKey: queryKeys.reviewNext(searchId),
-    queryFn: () =>
-      getNextReviewCard(searchId ? { data: { searchId } } : undefined),
+    queryKey: queryKeys.reviewNext(searchId, clusterId),
+    queryFn: () => {
+      const input =
+        searchId || clusterId
+          ? {
+              data: {
+                ...(searchId ? { searchId } : {}),
+                ...(clusterId ? { clusterId } : {}),
+              },
+            }
+          : undefined;
+      return getNextReviewCard(input);
+    },
     // Always re-fetch on focus — a household member swiping on another
     // device can change what's at the top of our queue.
     staleTime: 0,
@@ -95,15 +125,23 @@ const reviewSearchesQueryOptions = {
 };
 
 export const Route = createFileRoute("/")({
+  head: () => ({ meta: [{ title: "Review · Gaff" }] }),
   validateSearch: reviewSearchSchema,
   beforeLoad: ({ context }) => {
     requireSession(context as { currentUserId: string | null }, "/");
   },
-  loaderDeps: ({ search }) => ({ searchId: search.searchId }),
+  loaderDeps: ({ search }) => ({
+    searchId: search.searchId,
+    clusterId: search.clusterId,
+  }),
   loader: ({ context, deps }) =>
     Promise.all([
-      context.queryClient.ensureQueryData(reviewCardQueryOptions(deps.searchId)),
-      context.queryClient.ensureQueryData(reviewQueueQueryOptions(deps.searchId)),
+      context.queryClient.ensureQueryData(
+        reviewCardQueryOptions(deps.searchId, deps.clusterId)
+      ),
+      context.queryClient.ensureQueryData(
+        reviewQueueQueryOptions(deps.searchId)
+      ),
       context.queryClient.ensureQueryData(
         reviewTodayStatsQueryOptions(deps.searchId)
       ),
@@ -115,8 +153,8 @@ export const Route = createFileRoute("/")({
 function ReviewPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { searchId } = Route.useSearch();
-  const cardOpts = reviewCardQueryOptions(searchId);
+  const { searchId, clusterId } = Route.useSearch();
+  const cardOpts = reviewCardQueryOptions(searchId, clusterId);
   const queueOpts = reviewQueueQueryOptions(searchId);
   const todayOpts = reviewTodayStatsQueryOptions(searchId);
   const cardQuery = useQuery(cardOpts);
@@ -128,6 +166,7 @@ function ReviewPage() {
   const todayStats = todayStatsQuery.data;
   const searchesList = searchesQuery.data ?? [];
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   // Surface the first query error we see so silent failures stop
   // masquerading as "empty queue" via the placeholder fallback.
   const queryError =
@@ -136,27 +175,98 @@ function ReviewPage() {
     todayStatsQuery.error?.message ??
     null;
 
+  // Prefetch the next card so swipes feel instant. After the current
+  // card + queue settle, prefetch the queue's next item's ReviewCard
+  // and stash it on its clusterId-pinned key — `onMutate` looks for it
+  // there and plugs it into the active query key to skip the network.
+  useEffect(() => {
+    if (!card || !queue) {
+      return;
+    }
+    const idx = queue.items.findIndex((i) => i.clusterId === card.cluster.id);
+    const nextItem =
+      idx >= 0
+        ? queue.items[idx + 1]
+        : queue.items.find((i) => i.clusterId !== card.cluster.id);
+    if (!nextItem) {
+      return;
+    }
+    qc.prefetchQuery(reviewCardQueryOptions(searchId, nextItem.clusterId));
+  }, [card, queue, searchId, qc]);
+
   const swipe = useMutation({
     mutationFn: (args: {
       clusterId: string;
       searchId: string;
-      outcome: "keep" | "skip" | "shortlist";
+      outcome: SwipeOutcome;
     }) => recordSwipe({ data: args }),
-    // Optimistic: snapshot the current card, blank the cache so the
-    // skeleton paints, then invalidate to fetch the next one.
-    onMutate: async () => {
-      await qc.cancelQueries({ queryKey: cardOpts.queryKey });
-      const previous = qc.getQueryData<ReviewCard | null>(cardOpts.queryKey);
-      qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, null);
-      return { previous };
+    // Optimistic swipe:
+    //   - Drop the swiped cluster out of the queue rail.
+    //   - Bump today's stats counter so the header strip moves.
+    //   - If we've already prefetched the next card, swap to it now so
+    //     the hero updates without a network round-trip. If not, keep
+    //     the current card visible while the mutation lands — better
+    //     than flashing the "all caught up" empty state mid-swipe.
+    onMutate: async (args) => {
+      setPendingAction(args.outcome);
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ["review", "next"] }),
+        qc.cancelQueries({ queryKey: ["review", "queue"] }),
+        qc.cancelQueries({ queryKey: ["review", "today-stats"] }),
+      ]);
+
+      const previousCard = qc.getQueryData<ReviewCard | null>(
+        cardOpts.queryKey
+      );
+      const previousQueue = qc.getQueryData<ReviewQueue | null>(
+        queueOpts.queryKey
+      );
+      const previousStats = qc.getQueryData<TodayReviewStats | null>(
+        todayOpts.queryKey
+      );
+
+      const nextItem = applyOptimisticQueueDrop(
+        qc,
+        queueOpts.queryKey,
+        previousQueue,
+        args.clusterId
+      );
+      applyOptimisticStatsBump(
+        qc,
+        todayOpts.queryKey,
+        previousStats,
+        args.outcome
+      );
+      applyOptimisticCardSwap(
+        qc,
+        cardOpts.queryKey,
+        searchId,
+        nextItem,
+        previousQueue
+      );
+
+      return { previousCard, previousQueue, previousStats };
     },
     onError: (e: Error, _vars, ctx) => {
-      if (ctx?.previous !== undefined) {
-        qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, ctx.previous);
+      if (ctx?.previousCard !== undefined) {
+        qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, ctx.previousCard);
+      }
+      if (ctx?.previousQueue !== undefined) {
+        qc.setQueryData<ReviewQueue | null>(
+          queueOpts.queryKey,
+          ctx.previousQueue
+        );
+      }
+      if (ctx?.previousStats !== undefined) {
+        qc.setQueryData<TodayReviewStats | null>(
+          todayOpts.queryKey,
+          ctx.previousStats
+        );
       }
       setError(e.message ?? "Couldn't record swipe");
     },
     onSettled: () => {
+      setPendingAction(null);
       // Invalidate every variant of the review queries (every searchId
       // bucket) so the next-card pointer and queue refresh regardless
       // of which filter is active — a swipe inside one search shifts
@@ -164,33 +274,38 @@ function ReviewPage() {
       qc.invalidateQueries({ queryKey: ["review", "next"] });
       qc.invalidateQueries({ queryKey: ["review", "queue"] });
       qc.invalidateQueries({ queryKey: ["review", "today-stats"] });
+      // Drop the pinned-cluster selection so the next top-of-queue
+      // card surfaces — the swiped one is gone from the queue.
+      if (clusterId) {
+        navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: null }) });
+      }
     },
   });
 
   const undo = useMutation({
     mutationFn: () => undoLastSwipe(),
     onMutate: async () => {
-      await qc.cancelQueries({ queryKey: cardOpts.queryKey });
-      const previous = qc.getQueryData<ReviewCard | null>(cardOpts.queryKey);
-      // Force a refetch on the next tick so the un-swiped card comes
-      // back to the top of the queue.
-      qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, null);
-      return { previous };
+      setPendingAction("undo");
+      await qc.cancelQueries({ queryKey: ["review"] });
+      // We don't know which cluster the server will restore until the
+      // mutation returns, so we don't touch the card cache — the
+      // current card stays visible until the refetch swaps it.
     },
-    onError: (e: Error, _vars, ctx) => {
-      if (ctx?.previous !== undefined) {
-        qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, ctx.previous);
-      }
+    onError: (e: Error) => {
       setError(e.message ?? "Couldn't undo");
     },
     onSettled: () => {
+      setPendingAction(null);
       qc.invalidateQueries({ queryKey: ["review", "next"] });
       qc.invalidateQueries({ queryKey: ["review", "queue"] });
       qc.invalidateQueries({ queryKey: ["review", "today-stats"] });
+      if (clusterId) {
+        navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: null }) });
+      }
     },
   });
 
-  const pending = swipe.isPending || undo.isPending;
+  const pending = pendingAction !== null;
 
   // The aiRules on the card's search are read by the FeaturePills
   // filter. We don't fetch the full search server-side — we just send
@@ -249,62 +364,42 @@ function ReviewPage() {
     });
   }, [card, navigate]);
 
-  // Keyboard shortcuts mirroring the on-screen hints:
-  //   ← Skip   → Keep   S Shortlist   Z Undo   I Details
-  // Skip the listener when the user is typing into a field.
-  useEffect(() => {
-    function isTextEntry(target: EventTarget | null): boolean {
-      if (!(target instanceof HTMLElement)) {
-        return false;
-      }
-      const tag = target.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        return true;
-      }
-      return target.isContentEditable;
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTextEntry(e.target)) {
-        return;
-      }
-      switch (e.key) {
-        case "ArrowLeft": {
-          e.preventDefault();
-          doSkip();
-          break;
-        }
-        case "ArrowRight": {
-          e.preventDefault();
-          doKeep();
-          break;
-        }
-        case "s":
-        case "S": {
-          e.preventDefault();
-          doShortlist();
-          break;
-        }
-        case "z":
-        case "Z": {
-          e.preventDefault();
-          doUndo();
-          break;
-        }
-        case "i":
-        case "I": {
-          e.preventDefault();
-          doOpenDetail();
-          break;
-        }
-        default:
-          break;
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [doSkip, doKeep, doShortlist, doUndo, doOpenDetail]);
+  // Review-screen shortcuts: S Skip · K Keep · L Shortlist (Like) · Z Undo · I Details.
+  // Disabled while the photo lightbox owns the keyboard (so its ArrowLeft/Right
+  // only scroll photos), and disabled on mobile (no physical keyboard).
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const reviewKeysEnabled = !lightboxOpen && !isMobile;
+  useHotkey("S", doSkip, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Skip listing" },
+  });
+  useHotkey("K", doKeep, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Keep listing" },
+  });
+  useHotkey("L", doShortlist, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Shortlist listing" },
+  });
+  useHotkey("Z", doUndo, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Undo last swipe" },
+  });
+  useHotkey("I", doOpenDetail, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Open listing details" },
+  });
 
   const banner = error ?? queryError;
+  // Three rendering states for the hero column:
+  //   - `card` present     → real review card (covers in-flight swipes
+  //     too: `onMutate` keeps the previous card or swaps to the
+  //     prefetched next one, never sets `null`).
+  //   - card is loading    → skeleton placeholder (initial cold render
+  //     or a filter switch with no cached card yet).
+  //   - card resolved null → empty state.
+  const isCardLoading = cardQuery.isPending && card === undefined;
   return (
     <>
       {banner ? (
@@ -316,33 +411,24 @@ function ReviewPage() {
         </div>
       ) : null}
 
-      {card ? (
-        <DesktopReview
-          data={desktopData(card, queue, todayStats, {
-            searchesList,
-            selectedSearchId: searchId,
-          })}
-          disabled={pending}
-          onKeep={doKeep}
-          onOpenDetail={doOpenDetail}
-          onSelectSearch={(nextSearchId) => {
-            navigate({
-              to: "/",
-              search: { searchId: nextSearchId ?? null },
-            });
-          }}
-          onShortlist={doShortlist}
-          onSkip={doSkip}
-          onUndo={doUndo}
-        />
-      ) : (
-        <DesktopReviewEmpty
-          activeSearchId={searchId}
-          hasQueryError={Boolean(queryError)}
-          onClearFilter={() => navigate({ to: "/", search: { searchId: null } })}
-          searchesList={searchesList}
-        />
-      )}
+      {renderDesktopHero({
+        card,
+        isCardLoading,
+        queue,
+        todayStats,
+        searchesList,
+        searchId,
+        pending,
+        pendingAction,
+        queryError,
+        doKeep,
+        doSkip,
+        doShortlist,
+        doUndo,
+        doOpenDetail,
+        setLightboxOpen,
+        navigate,
+      })}
 
       <div className="mx-auto min-h-screen max-w-md bg-background pb-24 md:hidden">
         <ReviewHeader
@@ -350,26 +436,211 @@ function ReviewPage() {
           searchPill={card?.searchPill}
         />
 
-        {card ? (
-          <main className="space-y-4 pb-4">
-            <ReviewCardView aiRules={aiRules} card={card} />
-            <ActionButtons
-              clusterId={card.cluster.id}
-              disabled={pending}
-              onKeep={doKeep}
-              onShortlist={doShortlist}
-              onSkip={doSkip}
-              onUndo={doUndo}
-            />
-          </main>
-        ) : (
-          <ReviewEmpty />
-        )}
+        {renderMobileHero({
+          card,
+          isCardLoading,
+          pending,
+          pendingAction,
+          aiRules,
+          doKeep,
+          doSkip,
+          doShortlist,
+          doUndo,
+        })}
 
         <BottomNav />
       </div>
     </>
   );
+}
+
+type Navigate = ReturnType<typeof useNavigate>;
+type QueryClient = ReturnType<typeof useQueryClient>;
+
+/**
+ * Drop the swiped cluster out of the queue rail's cache and return
+ * whichever item would naturally come next — the immediate successor
+ * if we can find it, otherwise the new head of the queue.
+ */
+function applyOptimisticQueueDrop(
+  qc: QueryClient,
+  key: readonly unknown[],
+  previousQueue: ReviewQueue | null | undefined,
+  swipedClusterId: string
+): ReviewQueueItem | undefined {
+  if (!previousQueue) {
+    return;
+  }
+  const newItems = previousQueue.items.filter(
+    (i) => i.clusterId !== swipedClusterId
+  );
+  qc.setQueryData<ReviewQueue>(key, {
+    items: newItems,
+    remaining: newItems.length,
+  });
+  const idx = previousQueue.items.findIndex(
+    (i) => i.clusterId === swipedClusterId
+  );
+  return (idx >= 0 ? previousQueue.items[idx + 1] : undefined) ?? newItems[0];
+}
+
+/**
+ * Bump today's stats counter — the header strip animates from the
+ * cached snapshot to a number one higher in the matching bucket. The
+ * server's authoritative count lands on the next refetch.
+ */
+function applyOptimisticStatsBump(
+  qc: QueryClient,
+  key: readonly unknown[],
+  previousStats: TodayReviewStats | null | undefined,
+  outcome: SwipeOutcome
+) {
+  if (!previousStats) {
+    return;
+  }
+  qc.setQueryData<TodayReviewStats>(key, {
+    reviewed: previousStats.reviewed + 1,
+    kept: previousStats.kept + (outcome === "keep" ? 1 : 0),
+    skipped: previousStats.skipped + (outcome === "skip" ? 1 : 0),
+    shortlisted: previousStats.shortlisted + (outcome === "shortlist" ? 1 : 0),
+  });
+}
+
+/**
+ * Try to plug the prefetched next-card into the active query key so
+ * the hero updates without waiting for the network. When we have
+ * nothing prefetched, leave the current card on screen (the disabled
+ * action buttons prevent a double-swipe) — far better than flashing
+ * the empty state. When the swiped card was the last in the queue, we
+ * intentionally do clear so the empty state can paint.
+ */
+function applyOptimisticCardSwap(
+  qc: QueryClient,
+  key: readonly unknown[],
+  searchId: string | null,
+  nextItem: ReviewQueueItem | undefined,
+  previousQueue: ReviewQueue | null | undefined
+) {
+  if (nextItem) {
+    const prefetched = qc.getQueryData<ReviewCard | null>(
+      queryKeys.reviewNext(searchId, nextItem.clusterId)
+    );
+    if (prefetched) {
+      qc.setQueryData<ReviewCard>(key, {
+        ...prefetched,
+        leftToday: Math.max(prefetched.leftToday - 1, 0),
+      });
+    }
+    return;
+  }
+  if (previousQueue && previousQueue.items.length <= 1) {
+    qc.setQueryData<ReviewCard | null>(key, null);
+  }
+}
+
+/**
+ * Three-state render for the desktop hero — present card / loading
+ * skeleton / empty. Pulled out of the JSX to keep the conditional flat
+ * (no nested ternaries) and to let the lint cap on cognitive complexity
+ * land cleanly.
+ */
+function renderDesktopHero(args: {
+  card: ReviewCard | null | undefined;
+  isCardLoading: boolean;
+  queue: ReviewQueue | null | undefined;
+  todayStats: TodayReviewStats | null | undefined;
+  searchesList: Array<{ id: string; name: string }>;
+  searchId: string | null;
+  pending: boolean;
+  pendingAction: PendingAction;
+  queryError: string | null;
+  doKeep: () => void;
+  doSkip: () => void;
+  doShortlist: () => void;
+  doUndo: () => void;
+  doOpenDetail: () => void;
+  setLightboxOpen: (open: boolean) => void;
+  navigate: Navigate;
+}) {
+  if (args.card) {
+    return (
+      <DesktopReview
+        data={desktopData(args.card, args.queue, args.todayStats, {
+          searchesList: args.searchesList,
+          selectedSearchId: args.searchId,
+        })}
+        disabled={args.pending}
+        onKeep={args.doKeep}
+        onLightboxOpenChange={args.setLightboxOpen}
+        onOpenDetail={args.doOpenDetail}
+        onSelectCluster={(nextClusterId) => {
+          args.navigate({
+            to: "/",
+            search: (prev) => ({
+              ...prev,
+              clusterId: nextClusterId ?? null,
+            }),
+          });
+        }}
+        onSelectSearch={(nextSearchId) => {
+          args.navigate({
+            to: "/",
+            search: { searchId: nextSearchId ?? null, clusterId: null },
+          });
+        }}
+        onShortlist={args.doShortlist}
+        onSkip={args.doSkip}
+        onUndo={args.doUndo}
+        pendingAction={args.pendingAction}
+      />
+    );
+  }
+  if (args.isCardLoading) {
+    return <DesktopReviewSkeleton />;
+  }
+  return (
+    <DesktopReviewEmpty
+      activeSearchId={args.searchId}
+      hasQueryError={Boolean(args.queryError)}
+      onClearFilter={() =>
+        args.navigate({ to: "/", search: { searchId: null } })
+      }
+      searchesList={args.searchesList}
+    />
+  );
+}
+
+function renderMobileHero(args: {
+  card: ReviewCard | null | undefined;
+  isCardLoading: boolean;
+  pending: boolean;
+  pendingAction: PendingAction;
+  aiRules: ReturnType<typeof readAiRules>;
+  doKeep: () => void;
+  doSkip: () => void;
+  doShortlist: () => void;
+  doUndo: () => void;
+}) {
+  if (args.card) {
+    return (
+      <main className="space-y-4 pb-4">
+        <ReviewCardView aiRules={args.aiRules} card={args.card} />
+        <ActionButtons
+          clusterId={args.card.cluster.id}
+          disabled={args.pending}
+          onKeep={args.doKeep}
+          onShortlist={args.doShortlist}
+          onSkip={args.doSkip}
+          onUndo={args.doUndo}
+          pendingAction={args.pendingAction}
+        />
+      </main>
+    );
+  }
+  if (args.isCardLoading) {
+    return <MobileReviewSkeleton />;
+  }
+  return <ReviewEmpty />;
 }
 
 /**
@@ -420,8 +691,18 @@ function DesktopReviewEmpty({
   onClearFilter: () => void;
 }) {
   const filteredSearchName = activeSearchId
-    ? searchesList.find((s) => s.id === activeSearchId)?.name ?? null
+    ? (searchesList.find((s) => s.id === activeSearchId)?.name ?? null)
     : null;
+  let body: string;
+  if (hasQueryError) {
+    body =
+      "Check the banner top-right for the underlying error. Refresh once it's resolved.";
+  } else if (filteredSearchName) {
+    body = `Nothing left to swipe in "${filteredSearchName}". Switch to all searches to see the rest of the queue.`;
+  } else {
+    body =
+      "Nothing left to swipe right now. New listings will land here as your searches keep scraping.";
+  }
   return (
     <AdminSidebar mode="desktop-only">
       <div className="flex flex-1 items-center justify-center p-10">
@@ -432,13 +713,7 @@ function DesktopReviewEmpty({
           <h1 className="mt-2 font-serif text-2xl text-foreground">
             {hasQueryError ? "Something went sideways" : "All caught up"}
           </h1>
-          <p className="mt-3 text-muted-foreground text-sm">
-            {hasQueryError
-              ? "Check the banner top-right for the underlying error. Refresh once it's resolved."
-              : filteredSearchName
-                ? `Nothing left to swipe in "${filteredSearchName}". Switch to all searches to see the rest of the queue.`
-                : "Nothing left to swipe right now. New listings will land here as your searches keep scraping."}
-          </p>
+          <p className="mt-3 text-muted-foreground text-sm">{body}</p>
           {filteredSearchName ? (
             <button
               className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground text-sm"
@@ -451,6 +726,110 @@ function DesktopReviewEmpty({
         </div>
       </div>
     </AdminSidebar>
+  );
+}
+
+// Stable id arrays for the skeletons — keep them outside the
+// component so React keys don't churn between re-renders.
+const SKELETON_QUEUE_ROWS = ["q0", "q1", "q2", "q3", "q4", "q5"];
+const SKELETON_SPEC_CELLS = ["s0", "s1", "s2", "s3", "s4"];
+const SKELETON_VERDICT_CHIPS = ["v0", "v1", "v2", "v3"];
+const SKELETON_MOBILE_STATS = ["m0", "m1", "m2"];
+
+/**
+ * Skeleton shell painted while the first card + queue load (initial
+ * cold render, or a filter switch where the new search has no cached
+ * card yet). Shape mirrors {@link DesktopReview} — queue rail on the
+ * left, hero card on the right — so the layout doesn't reflow when the
+ * real content lands.
+ */
+function DesktopReviewSkeleton() {
+  return (
+    <AdminSidebar mode="desktop-only">
+      <header className="flex items-end justify-between px-10 pt-9 pb-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-10 w-36" />
+          <Skeleton className="h-6 w-44 rounded-full" />
+        </div>
+        <div className="flex flex-col items-end gap-1.5">
+          <Skeleton className="h-7 w-24" />
+          <Skeleton className="h-3 w-40" />
+        </div>
+      </header>
+      <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
+        <aside className="flex min-h-0 w-[260px] shrink-0 flex-col gap-2 rounded-2xl border border-border bg-card p-3">
+          {SKELETON_QUEUE_ROWS.map((id) => (
+            <div className="flex items-center gap-3" key={id}>
+              <Skeleton className="size-11 rounded-lg" />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </aside>
+        <section className="flex min-h-0 w-[540px] flex-1 shrink-0 flex-col gap-3.5">
+          <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+            <Skeleton className="min-h-[280px] flex-1 rounded-none" />
+            <div className="flex shrink-0 flex-col gap-4 px-7 pt-6 pb-6">
+              <div className="flex items-end justify-between">
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-10 w-40" />
+                  <Skeleton className="h-5 w-56" />
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-5 w-20" />
+                </div>
+              </div>
+              <div className="flex items-stretch gap-4 border-bone border-y py-3.5">
+                {SKELETON_SPEC_CELLS.map((id) => (
+                  <div className="flex flex-1 flex-col gap-1.5" key={id}>
+                    <Skeleton className="h-3 w-12" />
+                    <Skeleton className="h-6 w-10" />
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {SKELETON_VERDICT_CHIPS.map((id) => (
+                  <Skeleton className="h-7 w-32 rounded-full" key={id} />
+                ))}
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
+    </AdminSidebar>
+  );
+}
+
+/**
+ * Mobile counterpart of {@link DesktopReviewSkeleton}. Shown inside the
+ * existing `md:hidden` shell so the bottom nav stays anchored.
+ */
+function MobileReviewSkeleton() {
+  return (
+    <main className="space-y-4 pb-4">
+      <div className="mx-4 overflow-hidden rounded-2xl bg-card">
+        <Skeleton className="aspect-[4/5] w-full rounded-none" />
+        <div className="space-y-4 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-20" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-2/3" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+          <div className="flex gap-4">
+            {SKELETON_MOBILE_STATS.map((id) => (
+              <Skeleton className="h-12 flex-1 rounded-lg" key={id} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
 
@@ -503,11 +882,15 @@ function formatAlsoOn(portalsAlsoOn: ReviewCard["portalsAlsoOn"]): string {
 
 function formatSubtitle(outcode: string, firstSeenAt: Date): string {
   const outcodePart = outcode || "—";
-  const listedPart = `Listed ${relativeListedAt(firstSeenAt)}`;
-  return `${outcodePart} · ${listedPart}`;
+  // `firstSeenAt` is when our scraper first saw the listing, NOT when
+  // the portal listed it. The portals don't expose a reliable
+  // listed-on date in their public payload, so the copy is honest
+  // about what we actually know.
+  const seenPart = `First seen ${relativeFirstSeen(firstSeenAt)}`;
+  return `${outcodePart} · ${seenPart}`;
 }
 
-function relativeListedAt(firstSeenAt: Date): string {
+function relativeFirstSeen(firstSeenAt: Date): string {
   const date =
     firstSeenAt instanceof Date
       ? firstSeenAt
@@ -620,18 +1003,19 @@ function buildQueueData(
   card: ReviewCard,
   queue: ReviewQueue | null | undefined
 ): DesktopReviewData["queue"] {
-  const current = queueItemFromCard(card);
   if (!queue) {
+    // Fallback when the queue query is still loading — at least render
+    // the currently-shown card so the rail isn't empty.
     return {
-      current,
-      upcoming: [],
-      remaining: card.leftToday,
+      items: [queueItemFromCard(card)],
+      remaining: Math.max(card.leftToday, 1),
+      selectedClusterId: card.cluster.id,
     };
   }
   return {
-    current,
-    upcoming: queue.upcoming.map(queueItemFromReviewQueueItem),
+    items: queue.items.map(queueItemFromReviewQueueItem),
     remaining: queue.remaining,
+    selectedClusterId: card.cluster.id,
   };
 }
 
@@ -655,9 +1039,9 @@ function queueItemFromReviewQueueItem(item: ReviewQueueItem) {
     beds: item.bedrooms ?? 0,
     price: formatPrice(item.priceMonthly),
     photo: item.photo ?? FALLBACK_PHOTO,
-    // No `peareaceFlag` — blind review means we don't surface peer
-    // outcomes until there's a mutual match. `suffix` shows "·N" when
-    // the cluster appears on more than one portal.
+    // `suffix` shows "·N" when the cluster appears on more than one
+    // portal. Blind-review rule means we don't surface peer outcomes
+    // until there's a mutual match, so no `peareaceFlag`.
     suffix: item.portalCount > 1 ? `·${item.portalCount}` : undefined,
   };
 }

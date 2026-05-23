@@ -12,6 +12,7 @@ import { queryKeys } from "../../lib/query-keys";
 import { acceptInvite } from "../../server/functions/household";
 
 export const Route = createFileRoute("/invite/$token")({
+  head: () => ({ meta: [{ title: "Accept invite · Gaff" }] }),
   beforeLoad: ({ context, params }) => {
     // Send unauth users to /login with the invite URL preserved so they
     // land back here once signed in.
@@ -30,29 +31,20 @@ function InvitePage() {
 
   const accept = useMutation({
     mutationFn: () => acceptInvite({ data: { token } }),
-    // Optimistic UX: the page already renders "Joining household…" so
-    // the visual side is implicit. We snapshot any existing cached
-    // household payload before we wipe it; on error the screen flips to
-    // the error message and we restore the previous cache so a parent
-    // route doesn't blank out behind the modal-style invite screen.
+    // The page already renders "Joining household…" so the user has
+    // visible feedback that something is happening. We deliberately do
+    // NOT wipe the household cache here — the previous Review's empty-
+    // state-flash lesson applies. Cancel any in-flight read so it
+    // doesn't race with the join, then let `onSettled` invalidate to
+    // pull the freshly-joined membership in one go.
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: queryKeys.household() });
-      const prev = queryClient.getQueryData(queryKeys.household());
-      // Wipe the cache so the next read after acceptInvite resolves
-      // pulls the freshly-joined membership rather than the stale one.
-      queryClient.setQueryData(queryKeys.household(), undefined);
-      return { prev };
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.household(),
       });
       navigate({ to: "/" });
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev !== undefined) {
-        queryClient.setQueryData(queryKeys.household(), ctx.prev);
-      }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.household() });

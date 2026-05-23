@@ -6,12 +6,12 @@
  * and the schedule's cron (looked up by externalId, falling back to
  * "off" if no schedule exists).
  *
- * Three mutations live here — `updateSearch`, `archiveSearch`, and
- * `deleteSearch`. All three are optimistic against the `["searches"]`
- * list cache; update + archive also patch the single-search cache.
- * Pattern matches `src/routes/index.tsx` (the gold-standard swipe
- * mutation): cancel → snapshot → patch → onError restore → onSettled
- * invalidate.
+ * Two mutations live here — `updateSearch` and `archiveSearch`. Both
+ * are optimistic against the `["searches"]` list cache and patch the
+ * single-search cache. Pattern matches `src/routes/index.tsx` (the
+ * gold-standard swipe mutation): cancel → snapshot → patch → onError
+ * restore → onSettled invalidate. Hard deletes are intentionally not
+ * exposed — archiving (pausing) is the only destructive option.
  */
 import {
   useMutation,
@@ -28,6 +28,7 @@ import {
   bathOptionFor,
   bedOptionFor,
 } from "../../components/search-form/search-form";
+import { Button } from "../../components/ui/button";
 import { requireSession } from "../../lib/auth-guard";
 import { findCadenceByCron, findCadenceById } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
@@ -35,13 +36,24 @@ import { listSchedules } from "../../server/functions/schedules";
 import {
   type SearchRow,
   archiveSearch,
-  deleteSearch,
   getSearch,
   readAiRules,
   updateSearch,
 } from "../../server/functions/searches";
 
 export const Route = createFileRoute("/searches/$id")({
+  head: (ctx) => {
+    const data = ctx.loaderData as { search: SearchRow } | undefined;
+    return {
+      meta: [
+        {
+          title: data?.search.name
+            ? `${data.search.name} · Gaff`
+            : "Search · Gaff",
+        },
+      ],
+    };
+  },
   beforeLoad: ({ context, params }) => {
     requireSession(
       context as { currentUserId: string | null },
@@ -188,53 +200,14 @@ function EditSearchPage() {
     },
   });
 
-  const remove = useMutation({
-    mutationFn: () => deleteSearch({ data: { id: params.id } }),
-    onMutate: async () => {
-      await qc.cancelQueries({ queryKey: queryKeys.searches() });
-      const prevList = qc.getQueryData<SearchRow[]>(queryKeys.searches());
-      if (prevList) {
-        qc.setQueryData<SearchRow[]>(
-          queryKeys.searches(),
-          prevList.filter((row) => row.id !== params.id)
-        );
-      }
-      return { prevList };
-    },
-    onSuccess: () => {
-      navigate({ to: "/searches" });
-    },
-    onError: (e: Error, _vars, ctx) => {
-      if (ctx?.prevList !== undefined) {
-        qc.setQueryData(queryKeys.searches(), ctx.prevList);
-      }
-      setError(e.message ?? "Couldn't delete");
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.searches() });
-      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
-    },
-  });
-
-  const pending = update.isPending || archive.isPending || remove.isPending;
+  const pending = update.isPending || archive.isPending;
 
   const pauseAction = {
     label: search.active ? "Pause search" : "Paused",
     disabled: pending || !search.active,
     onClick: () => archive.mutate(),
-  };
-  const deleteAction = {
-    label: "Delete search",
-    disabled: pending,
-    onClick: () => {
-      if (
-        typeof window !== "undefined" &&
-        !window.confirm("Delete this search? This can't be undone.")
-      ) {
-        return;
-      }
-      remove.mutate();
-    },
+    pending: archive.isPending,
+    pendingLabel: "Pausing…",
   };
 
   return (
@@ -248,7 +221,6 @@ function EditSearchPage() {
         </div>
       )}
       <DesktopSearchCreate
-        deleteAction={deleteAction}
         initial={initial}
         mode="edit"
         onCancel={() => navigate({ to: "/searches" })}
@@ -264,23 +236,18 @@ function EditSearchPage() {
           onSubmit={(v) => update.mutate(v)}
           pending={pending}
         />
-        <div className="mx-auto flex max-w-md justify-between gap-2 border-border border-t bg-card px-5 py-3">
-          <button
-            className="rounded-md border border-border px-4 py-2 text-muted-foreground text-xs"
+        <div className="mx-auto flex max-w-md justify-end border-border border-t bg-card px-5 py-3">
+          <Button
             disabled={pauseAction.disabled}
+            loading={archive.isPending}
+            loadingText="Pausing…"
             onClick={pauseAction.onClick}
+            size="sm"
             type="button"
+            variant="outline"
           >
             {pauseAction.label}
-          </button>
-          <button
-            className="rounded-md bg-[#B05A38]/10 px-4 py-2 text-[#B05A38] text-xs"
-            disabled={deleteAction.disabled}
-            onClick={deleteAction.onClick}
-            type="button"
-          >
-            {deleteAction.label}
-          </button>
+          </Button>
         </div>
       </div>
     </>
@@ -358,10 +325,12 @@ function toFormValues(
 }
 
 function pickBedsId(min: number, max: number | null): string {
-  if (min >= 4) {
-    return "4+";
-  }
-  return String(Math.max(1, Math.min(min, max ?? min)));
+  // Beds are min-only now (1+, 2+, 3+, 4+). `max` is preserved here only
+  // for backwards-compat with rows written under the old explicit
+  // (min, max) encoding.
+  void max;
+  const clamped = Math.max(1, Math.min(min, 4));
+  return `${clamped}+`;
 }
 
 /**

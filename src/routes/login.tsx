@@ -17,6 +17,7 @@ const SearchSchema = z.object({
 });
 
 export const Route = createFileRoute("/login")({
+  head: () => ({ meta: [{ title: "Sign in · Gaff" }] }),
   validateSearch: SearchSchema,
   beforeLoad: ({ context }) => {
     redirectIfSignedIn(context as { currentUserId: string | null });
@@ -160,11 +161,12 @@ function LoginPage() {
 
           <Button
             className="w-full rounded-full"
-            disabled={signIn.isPending}
+            loading={signIn.isPending}
+            loadingText="Signing in…"
             size="lg"
             type="submit"
           >
-            {signIn.isPending ? "Signing in…" : "Sign in"}
+            Sign in
           </Button>
         </form>
 

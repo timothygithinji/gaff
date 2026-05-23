@@ -26,11 +26,14 @@
 import {
   Cancel01Icon,
   FavouriteIcon,
+  Loading03Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "../../components/ui/button";
 import type { ListingDetailPartnerSwipe } from "../../server/functions/listing-detail";
+
+export type DetailCtaPendingAction = "keep" | "skip" | "shortlist" | null;
 
 type Props = {
   memberCount: number;
@@ -38,6 +41,8 @@ type Props = {
   partnerSwipes: ListingDetailPartnerSwipe[];
   /** Disabled while a swipe mutation is in flight. */
   disabled?: boolean;
+  /** Which swipe is currently mid-flight, if any. */
+  pendingAction?: DetailCtaPendingAction;
   onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
@@ -115,6 +120,7 @@ export function DetailCta({
   mySwipe,
   partnerSwipes,
   disabled,
+  pendingAction = null,
   onKeep,
   onSkip,
   onShortlist,
@@ -125,6 +131,7 @@ export function DetailCta({
   return (
     <div className="fixed right-0 bottom-0 left-0 z-30 mx-auto flex max-w-md items-center gap-2.5 border-border border-t bg-background/95 px-5 pt-3.5 pb-7 backdrop-blur">
       <Button
+        aria-busy={pendingAction === "skip" || undefined}
         aria-label="Skip"
         className="size-13 shrink-0 rounded-full border-border bg-card text-foreground hover:bg-muted"
         disabled={disabled}
@@ -133,21 +140,33 @@ export function DetailCta({
         type="button"
         variant="outline"
       >
-        <HugeiconsIcon icon={Cancel01Icon} size={20} strokeWidth={2.2} />
+        <HugeiconsIcon
+          className={pendingAction === "skip" ? "animate-spin" : undefined}
+          icon={pendingAction === "skip" ? Loading03Icon : Cancel01Icon}
+          size={20}
+          strokeWidth={2.2}
+        />
       </Button>
 
       <Button
+        aria-busy={pendingAction === "keep" || undefined}
         aria-pressed={iKept}
         className="h-13 grow basis-0 rounded-full font-semibold text-[15px] tracking-[-0.01em]"
         disabled={disabled}
         onClick={onKeep}
         type="button"
       >
-        <HugeiconsIcon icon={FavouriteIcon} size={18} strokeWidth={2.2} />
+        <HugeiconsIcon
+          className={pendingAction === "keep" ? "animate-spin" : undefined}
+          icon={pendingAction === "keep" ? Loading03Icon : FavouriteIcon}
+          size={18}
+          strokeWidth={2.2}
+        />
         {label}
       </Button>
 
       <Button
+        aria-busy={pendingAction === "shortlist" || undefined}
         aria-label="Shortlist"
         aria-pressed={mySwipe === "shortlist"}
         className={`size-13 shrink-0 rounded-full border-border bg-card hover:bg-muted ${
@@ -159,7 +178,12 @@ export function DetailCta({
         type="button"
         variant="outline"
       >
-        <HugeiconsIcon icon={StarIcon} size={20} strokeWidth={2} />
+        <HugeiconsIcon
+          className={pendingAction === "shortlist" ? "animate-spin" : undefined}
+          icon={pendingAction === "shortlist" ? Loading03Icon : StarIcon}
+          size={20}
+          strokeWidth={2}
+        />
       </Button>
     </div>
   );

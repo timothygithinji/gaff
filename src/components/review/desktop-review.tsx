@@ -5,7 +5,7 @@
  *   - LEFT  : "Up next" queue with mini thumbnails (NOW + 5 upcoming).
  *   - CENTER: Hero card — photo with overlays, big price, address, spec
  *             strip, AI floor-plan verdict chips, action row with
- *             keyboard hints (Z · ← · I · → · S).
+ *             keyboard hints (Z · S · I · L · K).
  *   - RIGHT : Peareace activity feed, today's decision progress, tip.
  *
  * This file is intentionally presentational — it accepts mock fixtures via
@@ -32,21 +32,18 @@ import {
   Cancel01Icon,
   FavouriteIcon,
   InformationCircleIcon,
+  Loading03Icon,
   StarIcon,
   Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useHotkey } from "@tanstack/react-hotkeys";
 import { Link } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-} from "../ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +51,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { Kbd } from "../ui/kbd";
 
 /* ---------------- Types ---------------- */
 
@@ -88,9 +86,14 @@ export type DesktopReviewData = {
   skippedToday: number;
   leftToday: number;
   queue: {
-    current: QueueItem;
-    upcoming: QueueItem[];
+    /**
+     * Every cluster still in the ranked queue, in order. The hero is
+     * pinned to whichever item's id matches `selectedClusterId`; the
+     * matching row gets the bigger thumbnail and the copper "NOW" mark.
+     */
+    items: QueueItem[];
     remaining: number;
+    selectedClusterId: string | null;
   };
   hero: {
     photos: string[];
@@ -107,6 +110,18 @@ export type DesktopReviewData = {
 
 /* ---------------- Component ---------------- */
 
+/**
+ * Which action is currently mid-flight. Drives the per-button spinner
+ * in {@link HeroActions} so the user sees feedback the moment they
+ * trigger keep/skip/shortlist/undo. `null` means nothing is pending.
+ */
+export type DesktopReviewPendingAction =
+  | "keep"
+  | "skip"
+  | "shortlist"
+  | "undo"
+  | null;
+
 type Props = {
   data?: DesktopReviewData;
   onKeep?: () => void;
@@ -120,7 +135,20 @@ type Props = {
    * URL param so the selection survives refresh.
    */
   onSelectSearch?: (searchId: string | null) => void;
+  /**
+   * Fired when a row in the queue rail is clicked. Wire to the route's
+   * `clusterId` URL param so the hero re-points without leaving the
+   * review screen. `null` means "back to top of queue".
+   */
+  onSelectCluster?: (clusterId: string | null) => void;
+  /**
+   * Fired whenever the photo lightbox opens or closes. The page (route)
+   * uses this to disable its keep/skip/shortlist/undo hotkeys while the
+   * lightbox owns the keyboard.
+   */
+  onLightboxOpenChange?: (open: boolean) => void;
   disabled?: boolean;
+  pendingAction?: DesktopReviewPendingAction;
 };
 
 export function DesktopReview({
@@ -131,25 +159,30 @@ export function DesktopReview({
   onUndo,
   onOpenDetail,
   onSelectSearch,
+  onSelectCluster,
+  onLightboxOpenChange,
   disabled,
+  pendingAction = null,
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
       <DesktopReviewHeader data={data} onSelectSearch={onSelectSearch} />
       <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
         <QueueRail
-          current={data.queue.current}
-          remaining={data.queue.remaining}
-          upcoming={data.queue.upcoming}
+          items={data.queue.items}
+          onSelectCluster={onSelectCluster}
+          selectedClusterId={data.queue.selectedClusterId}
         />
         <HeroColumn
           disabled={disabled}
           hero={data.hero}
           onKeep={onKeep}
+          onLightboxOpenChange={onLightboxOpenChange}
           onOpenDetail={onOpenDetail}
           onShortlist={onShortlist}
           onSkip={onSkip}
           onUndo={onUndo}
+          pendingAction={pendingAction}
         />
       </div>
     </AdminSidebar>
@@ -171,10 +204,13 @@ function DesktopReviewHeader({
   const pillLabel = selectedSearch ? selectedSearch.name : "All searches";
   return (
     <header className="flex items-end justify-between px-10 pt-9 pb-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-serif text-[36px] text-foreground leading-none tracking-tight">
-          Reviewing
-        </h1>
+      <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-1">
+          <Eyebrow>Your queue</Eyebrow>
+          <h1 className="font-serif text-[40px] text-foreground leading-[44px] tracking-tight">
+            Review
+          </h1>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -207,9 +243,7 @@ function DesktopReviewHeader({
             >
               All searches
             </DropdownMenuItem>
-            {data.searchOptions.length > 0 ? (
-              <DropdownMenuSeparator />
-            ) : null}
+            {data.searchOptions.length > 0 ? <DropdownMenuSeparator /> : null}
             {data.searchOptions.map((s) => (
               <DropdownMenuItem
                 key={s.id}
@@ -230,10 +264,7 @@ function DesktopReviewHeader({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               render={
-                <Link
-                  className="block text-muted-foreground"
-                  to="/searches"
-                />
+                <Link className="block text-muted-foreground" to="/searches" />
               }
             >
               Manage searches…
@@ -262,37 +293,38 @@ function DesktopReviewHeader({
 /* ---------------- Queue rail (left) ---------------- */
 
 function QueueRail({
-  current,
-  upcoming,
-  remaining,
+  items,
+  selectedClusterId,
+  onSelectCluster,
 }: {
-  current: QueueItem;
-  upcoming: QueueItem[];
-  remaining: number;
+  items: QueueItem[];
+  selectedClusterId: string | null;
+  onSelectCluster?: (clusterId: string | null) => void;
 }) {
   return (
-    <aside className="flex min-h-0 w-[260px] shrink-0 flex-col gap-3">
-      <div className="flex shrink-0 items-baseline justify-between px-1">
-        <div className="flex items-center gap-2">
+    <aside className="flex min-h-0 w-[260px] shrink-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="flex shrink-0 items-baseline justify-between border-bone border-b px-4 py-3">
           <Eyebrow>Up next</Eyebrow>
-          <span className="text-[11px] text-muted-foreground">
-            {remaining} in queue
-          </span>
         </div>
-      </div>
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
-        <ul className="flex w-full flex-col overflow-y-auto">
-          <li>
-            <QueueRow isCurrent item={current} />
-          </li>
-          {upcoming.map((item, i) => (
-            <li
-              className={cn(i < upcoming.length - 1 && "border-bone border-b")}
-              key={item.id}
-            >
-              <QueueRow item={item} />
-            </li>
-          ))}
+        <ul className="flex flex-1 flex-col overflow-y-auto">
+          {items.map((item, i) => {
+            const isCurrent = item.id === selectedClusterId;
+            return (
+              <li
+                className={cn(i < items.length - 1 && "border-bone border-b")}
+                key={item.id}
+              >
+                <QueueRow
+                  isCurrent={isCurrent}
+                  item={item}
+                  onSelect={
+                    onSelectCluster ? () => onSelectCluster(item.id) : undefined
+                  }
+                />
+              </li>
+            );
+          })}
         </ul>
       </div>
     </aside>
@@ -302,18 +334,22 @@ function QueueRail({
 function QueueRow({
   item,
   isCurrent = false,
+  onSelect,
 }: {
   item: QueueItem;
   isCurrent?: boolean;
+  onSelect?: () => void;
 }) {
   return (
-    <Link
+    // biome-ignore lint/nursery/useAriaPropsSupportedByRole: aria-current is a global ARIA attribute and is valid on buttons used as queue items.
+    <button
+      aria-current={isCurrent ? "true" : undefined}
       className={cn(
         "flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-ground",
         isCurrent && "bg-ground"
       )}
-      params={{ clusterId: item.id }}
-      to="/listings/$clusterId"
+      onClick={onSelect}
+      type="button"
     >
       <span
         aria-hidden="true"
@@ -347,7 +383,7 @@ function QueueRow({
         </div>
       </div>
       <QueueRowTrailing item={item} isCurrent={isCurrent} />
-    </Link>
+    </button>
   );
 }
 
@@ -391,7 +427,9 @@ function HeroColumn({
   onShortlist,
   onUndo,
   onOpenDetail,
+  onLightboxOpenChange,
   disabled,
+  pendingAction,
 }: {
   hero: DesktopReviewData["hero"];
   onKeep?: () => void;
@@ -399,12 +437,17 @@ function HeroColumn({
   onShortlist?: () => void;
   onUndo?: () => void;
   onOpenDetail?: () => void;
+  onLightboxOpenChange?: (open: boolean) => void;
   disabled?: boolean;
+  pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <section className="flex min-h-0 w-[540px] shrink-0 flex-1 flex-col gap-3.5">
+    <section className="flex min-h-0 w-[540px] flex-1 shrink-0 flex-col gap-3.5">
       <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-        <HeroPhoto alsoOn={hero.alsoOn} photos={hero.photos} />
+        <HeroPhoto
+          onLightboxOpenChange={onLightboxOpenChange}
+          photos={hero.photos}
+        />
         <div className="flex shrink-0 flex-col gap-4 px-7 pt-6">
           <HeroPriceRow
             cheapestPortal={hero.cheapestPortal}
@@ -423,6 +466,7 @@ function HeroColumn({
           onShortlist={onShortlist}
           onSkip={onSkip}
           onUndo={onUndo}
+          pendingAction={pendingAction}
         />
       </article>
     </section>
@@ -431,10 +475,10 @@ function HeroColumn({
 
 function HeroPhoto({
   photos,
-  alsoOn,
+  onLightboxOpenChange,
 }: {
   photos: string[];
-  alsoOn: string;
+  onLightboxOpenChange?: (open: boolean) => void;
 }) {
   const photoCount = photos.length;
   const canPaginate = photoCount > 1;
@@ -462,7 +506,10 @@ function HeroPhoto({
     };
   }, [emblaApi]);
 
-  // New card → snap back to the first photo without animation.
+  // New card → snap back to the first photo without animation. `photos`
+  // is the trigger: when a new card arrives, the array identity changes
+  // and we re-snap to slide 0. It isn't referenced inside the body.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: photos is the intentional re-run trigger.
   useEffect(() => {
     if (!emblaApi) {
       return;
@@ -472,9 +519,20 @@ function HeroPhoto({
 
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+  const scrollTo = useCallback(
+    (i: number) => emblaApi?.scrollTo(i),
+    [emblaApi]
+  );
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const openLightbox = useCallback(() => setLightboxOpen(true), []);
+
+  // Mirror the lightbox state up so the route can disable its page-level
+  // keep/skip/shortlist/undo hotkeys while the lightbox is steering the
+  // keyboard (otherwise ArrowRight would advance the photo AND keep the card).
+  useEffect(() => {
+    onLightboxOpenChange?.(lightboxOpen);
+  }, [lightboxOpen, onLightboxOpenChange]);
 
   if (photoCount === 0) {
     return (
@@ -485,22 +543,25 @@ function HeroPhoto({
   }
 
   return (
-    <div className="relative min-h-[280px] w-full flex-1 select-none">
+    <div className="group relative min-h-[280px] w-full flex-1 select-none">
       <div className="h-full w-full overflow-hidden" ref={emblaRef}>
         <div className="flex h-full touch-pan-y">
           {photos.map((src, i) => (
-            <div
-              className="relative h-full min-w-0 flex-[0_0_100%]"
+            <button
+              aria-label={`Open photo ${i + 1} in fullscreen`}
+              className="relative h-full min-w-0 flex-[0_0_100%] cursor-zoom-in"
               key={`slide-${src}-${i}`}
+              onClick={openLightbox}
+              type="button"
             >
               {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
               <img
-                alt={`Listing photo ${i + 1}`}
+                alt={`Listing view ${i + 1}`}
                 className="h-full w-full object-cover"
                 draggable={false}
                 src={src}
               />
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -508,26 +569,24 @@ function HeroPhoto({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/45 to-transparent"
       />
-      <button
-        aria-label="Open full-size photo"
-        className="absolute inset-y-0 left-1/4 right-1/4 cursor-zoom-in"
-        onClick={openLightbox}
-        type="button"
-      />
       {canPaginate ? (
         <>
           <button
             aria-label="Previous photo"
-            className="absolute inset-y-0 left-0 w-1/4 cursor-w-resize"
+            className="-translate-y-1/2 absolute top-1/2 left-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
             onClick={scrollPrev}
             type="button"
-          />
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={2} />
+          </button>
           <button
             aria-label="Next photo"
-            className="absolute inset-y-0 right-0 w-1/4 cursor-e-resize"
+            className="-translate-y-1/2 absolute top-1/2 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
             onClick={scrollNext}
             type="button"
-          />
+          >
+            <HugeiconsIcon icon={ArrowRight01Icon} size={16} strokeWidth={2} />
+          </button>
         </>
       ) : null}
       <PhotoLightbox
@@ -536,26 +595,27 @@ function HeroPhoto({
         photos={photos}
         startIndex={index}
       />
-      <span className="pointer-events-none absolute top-3.5 left-3.5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#E2B584]" />
-        <span className="font-semibold text-[10px] text-white uppercase tracking-wider">
-          {alsoOn}
-        </span>
-      </span>
       <span className="pointer-events-none absolute top-3.5 right-3.5 rounded-full bg-black/55 px-2.5 py-1 font-semibold text-[11px] text-white">
         {index + 1} / {photoCount}
       </span>
-      <div className="pointer-events-none absolute right-4 bottom-3.5 left-4 flex gap-1">
-        {photos.map((src, i) => (
-          <span
-            className={cn(
-              "h-[3px] flex-1 rounded-sm transition-colors",
-              i <= index ? "bg-white" : "bg-white/35"
-            )}
-            key={`progress-${src}-${i}`}
-          />
-        ))}
-      </div>
+      {canPaginate ? (
+        <div className="absolute right-0 bottom-3.5 left-0 flex items-center justify-center gap-1.5">
+          {photos.map((src, i) => (
+            <button
+              aria-label={`Go to photo ${i + 1}`}
+              className={cn(
+                "h-1.5 rounded-full transition-all",
+                i === index
+                  ? "w-5 bg-white"
+                  : "w-1.5 bg-white/45 hover:bg-white/70"
+              )}
+              key={`dot-${src}-${i}`}
+              onClick={() => scrollTo(i)}
+              type="button"
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -605,42 +665,18 @@ function PhotoLightbox({
     }
   }, [open, emblaApi, startIndex]);
 
-  // Keyboard handling while the lightbox is open. Runs in the capture
-  // phase and calls `stopImmediatePropagation` so the page-level
-  // keep/skip/shortlist/undo shortcuts in `routes/index.tsx` don't also
-  // fire — e.g. ArrowRight inside the lightbox should only advance the
-  // photo, never `keep` the card. Esc is handled by base-ui Dialog.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const swallow = new Set([
-      "ArrowLeft",
-      "ArrowRight",
-      "s",
-      "S",
-      "z",
-      "Z",
-      "i",
-      "I",
-    ]);
-    const onKey = (e: KeyboardEvent) => {
-      if (!swallow.has(e.key)) {
-        return;
-      }
-      e.stopImmediatePropagation();
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        emblaApi?.scrollPrev();
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        emblaApi?.scrollNext();
-      }
-    };
-    window.addEventListener("keydown", onKey, { capture: true });
-    return () =>
-      window.removeEventListener("keydown", onKey, { capture: true });
-  }, [open, emblaApi]);
+  // ArrowLeft / ArrowRight scroll the embla carousel while the lightbox
+  // is open. The page-level Review shortcuts use letter keys (not arrows),
+  // so there's no longer any cross-handler conflict to defend against;
+  // we just gate on `open`. Esc is handled by base-ui Dialog.
+  useHotkey("ArrowLeft", () => emblaApi?.scrollPrev(), {
+    enabled: open,
+    meta: { category: "Lightbox", description: "Previous photo" },
+  });
+  useHotkey("ArrowRight", () => emblaApi?.scrollNext(), {
+    enabled: open,
+    meta: { category: "Lightbox", description: "Next photo" },
+  });
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -659,7 +695,7 @@ function PhotoLightbox({
                 >
                   {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
                   <img
-                    alt={`Listing photo ${i + 1}`}
+                    alt={`Listing view ${i + 1}`}
                     className="max-h-full max-w-full object-contain"
                     draggable={false}
                     src={src}
@@ -672,7 +708,7 @@ function PhotoLightbox({
             <>
               <button
                 aria-label="Previous photo"
-                className="absolute top-1/2 left-4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                className="-translate-y-1/2 absolute top-1/2 left-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
                 onClick={() => emblaApi?.scrollPrev()}
                 type="button"
               >
@@ -684,7 +720,7 @@ function PhotoLightbox({
               </button>
               <button
                 aria-label="Next photo"
-                className="absolute top-1/2 right-4 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                className="-translate-y-1/2 absolute top-1/2 right-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
                 onClick={() => emblaApi?.scrollNext()}
                 type="button"
               >
@@ -696,7 +732,7 @@ function PhotoLightbox({
               </button>
             </>
           ) : null}
-          <span className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white text-xs backdrop-blur">
+          <span className="-translate-x-1/2 pointer-events-none absolute top-4 left-1/2 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white text-xs backdrop-blur">
             {index + 1} / {photoCount}
           </span>
           <DialogClose
@@ -814,10 +850,14 @@ function Verdict({
   children: ReactNode;
 }) {
   const icon = tone === "positive" ? Tick01Icon : Alert01Icon;
+  // Tints derived from each tone's accent colour so the pill keeps its
+  // hue distinction in light mode AND stays legible in dark mode — the
+  // 15% alpha means the same class reads as a subtle warm wash over
+  // either page background, and `text-foreground` always inverts.
   const palette =
     tone === "positive"
-      ? "bg-[#F0E6D2] text-foreground"
-      : "bg-[#FBEDDC] text-foreground";
+      ? "bg-[#5D7A4A]/15 text-foreground"
+      : "bg-[#B26B3F]/15 text-foreground";
   const iconColor = tone === "positive" ? "text-[#5D7A4A]" : "text-[#B26B3F]";
   return (
     <span
@@ -844,6 +884,7 @@ function HeroActions({
   onUndo,
   onOpenDetail,
   disabled,
+  pendingAction,
 }: {
   onKeep?: () => void;
   onSkip?: () => void;
@@ -851,118 +892,109 @@ function HeroActions({
   onUndo?: () => void;
   onOpenDetail?: () => void;
   disabled?: boolean;
+  pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <div className="mt-4 flex items-center justify-between border-bone border-t px-7 pt-4 pb-6">
-      <div className="flex items-center gap-3.5">
-        <ActionPad
+    <div className="mt-4 flex shrink-0 items-center justify-between gap-3 border-bone border-t px-7 pt-4 pb-6">
+      <div className="flex items-center gap-2">
+        <ActionButton
           disabled={disabled}
-          hint="Z · Undo"
+          hint="Z"
           icon={ArrowReloadHorizontalIcon}
-          label="Undo last swipe"
+          label="Undo"
+          loading={pendingAction === "undo"}
           onClick={onUndo}
-          size="sm"
         />
-        <ActionPad
+        <ActionButton
           disabled={disabled}
-          hint="← Skip"
+          hint="S"
           icon={Cancel01Icon}
           label="Skip"
+          loading={pendingAction === "skip"}
           onClick={onSkip}
-          size="md"
         />
-        <ActionPad
+        <ActionButton
           disabled={disabled}
-          hint="I · Detail"
+          hint="I"
           icon={InformationCircleIcon}
           label="Details"
           onClick={onOpenDetail}
-          size="sm"
         />
       </div>
-      <div className="flex items-center gap-3.5">
-        <ActionPad
+      <div className="flex items-center gap-2">
+        <ActionButton
           disabled={disabled}
-          hint="→ Keep"
-          icon={FavouriteIcon}
-          label="Keep"
-          onClick={onKeep}
-          size="md"
-          variant="primary"
-        />
-        <ActionPad
-          disabled={disabled}
-          hint="S · Star"
+          hint="L"
           icon={StarIcon}
           label="Shortlist"
+          loading={pendingAction === "shortlist"}
           onClick={onShortlist}
-          size="sm"
+        />
+        <ActionButton
+          disabled={disabled}
+          hint="K"
+          icon={FavouriteIcon}
+          label="Keep"
+          loading={pendingAction === "keep"}
+          onClick={onKeep}
+          variant="primary"
         />
       </div>
     </div>
   );
 }
 
-function ActionPad({
+function ActionButton({
   icon,
   label,
   hint,
-  size,
   variant = "ghost",
   onClick,
   disabled,
+  loading = false,
 }: {
   icon: typeof FavouriteIcon;
   label: string;
   hint: string;
-  size: "sm" | "md";
   variant?: "ghost" | "primary";
   onClick?: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <button
-        aria-label={label}
+    <button
+      aria-busy={loading || undefined}
+      aria-label={label}
+      className={cn(
+        "inline-flex h-10 items-center gap-2 rounded-full pr-2 pl-3.5 font-medium text-sm transition-opacity",
+        variant === "primary"
+          ? "bg-primary text-primary-foreground shadow-[0_6px_18px_rgba(155,90,62,0.28)]"
+          : "border border-border bg-card text-foreground",
+        (!onClick || disabled) && "cursor-not-allowed opacity-40",
+        onClick && !disabled && "hover:opacity-90 active:scale-[0.98]"
+      )}
+      disabled={!onClick || disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <HugeiconsIcon
+        className={loading ? "animate-spin" : undefined}
+        icon={loading ? Loading03Icon : icon}
+        size={16}
+        strokeWidth={1.8}
+      />
+      <span>{label}</span>
+      <Kbd
         className={cn(
-          "flex items-center justify-center rounded-full transition-opacity",
-          size === "sm" ? "h-11 w-11" : "h-16 w-16",
-          variant === "primary"
-            ? "bg-primary text-primary-foreground shadow-[0_6px_18px_rgba(155,90,62,0.28)]"
-            : "border border-border bg-card text-foreground",
-          (!onClick || disabled) && "cursor-not-allowed opacity-40",
-          onClick && !disabled && "hover:opacity-90 active:scale-[0.97]"
-        )}
-        disabled={!onClick || disabled}
-        onClick={onClick}
-        type="button"
-      >
-        <HugeiconsIcon
-          icon={icon}
-          size={actionIconSize(size, variant)}
-          strokeWidth={1.8}
-        />
-      </button>
-      <span
-        className={cn(
-          "font-semibold text-[10px] uppercase tracking-wider",
-          variant === "primary" ? "text-primary" : "text-muted-foreground"
+          "ml-1 h-6 min-w-6 rounded-md px-1.5 font-mono font-semibold text-[10px] uppercase",
+          variant === "primary" &&
+            "bg-primary-foreground/15 text-primary-foreground"
         )}
       >
         {hint}
-      </span>
-    </div>
+      </Kbd>
+    </button>
   );
-}
-
-function actionIconSize(
-  size: "sm" | "md",
-  variant: "ghost" | "primary"
-): number {
-  if (size === "sm") {
-    return 18;
-  }
-  return variant === "primary" ? 26 : 22;
 }
 
 /* ---------------- Atoms ---------------- */
@@ -1007,16 +1039,17 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
   skippedToday: 4,
   leftToday: 18,
   queue: {
-    remaining: 22,
-    current: {
-      id: "belsize",
-      title: "Belsize Park Mews",
-      outcode: "NW3",
-      beds: 2,
-      price: "£2,450",
-      photo: PHOTO_HERO,
-    },
-    upcoming: [
+    remaining: 6,
+    selectedClusterId: "belsize",
+    items: [
+      {
+        id: "belsize",
+        title: "Belsize Park Mews",
+        outcode: "NW3",
+        beds: 2,
+        price: "£2,450",
+        photo: PHOTO_HERO,
+      },
       {
         id: "camden",
         title: "Camden Lock Mews",
