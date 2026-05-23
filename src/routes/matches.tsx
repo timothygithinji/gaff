@@ -34,6 +34,7 @@ const mutualQueryOptions = {
 };
 
 export const Route = createFileRoute("/matches")({
+  head: () => ({ meta: [{ title: "Matches · Gaff" }] }),
   beforeLoad: ({ context }) => {
     requireSession(context as { currentUserId: string | null }, "/matches");
   },

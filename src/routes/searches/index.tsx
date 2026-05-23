@@ -43,6 +43,7 @@ const schedulesQueryOptions = {
 };
 
 export const Route = createFileRoute("/searches/")({
+  head: () => ({ meta: [{ title: "Searches · Gaff" }] }),
   beforeLoad: ({ context }) => {
     requireSession(context as { currentUserId: string | null }, "/searches");
   },
