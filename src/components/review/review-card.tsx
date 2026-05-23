@@ -9,7 +9,7 @@
  *   - "CHEAPEST ON <portal>" right-aligned, copper.
  *   - Address: title + outcode/age sub.
  *   - Beds · Bath · Sqft three-column row.
- *   - Feature pills row (filtered by `aiRules`).
+ *   - Feature pills row.
  *   - Commute · Walk · EPC · Fibre four-column row.
  *
  * The component is presentational — swipe actions live on the parent
@@ -19,14 +19,12 @@ import { FloorPlanIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { Features } from "../../lib/ai/prompt";
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
-import type { StoredAiRules } from "../../server/functions/searches";
 import { FeaturePills } from "./feature-pills";
 import { InfoRow } from "./info-row";
 import { KeyStatsRow } from "./key-stats-row";
 
 type Props = {
   card: ReviewCardData;
-  aiRules: StoredAiRules;
 };
 
 /**
@@ -68,7 +66,7 @@ function portalLabel(portal: string): string {
   return portal;
 }
 
-export function ReviewCardView({ card, aiRules }: Props) {
+export function ReviewCardView({ card }: Props) {
   const { headlineListing: hl, portalsAlsoOn, features, epcRating } = card;
   const heroPhoto = hl.photos[0];
   const photoCount = Math.max(hl.photos.length, 1);
@@ -151,7 +149,7 @@ export function ReviewCardView({ card, aiRules }: Props) {
           sqft={sqft}
         />
 
-        <FeaturePills aiRules={aiRules} features={features} />
+        <FeaturePills features={features} />
 
         <InfoRow
           broadbandMbps={broadbandMbps}

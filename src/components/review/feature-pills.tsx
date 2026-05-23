@@ -7,20 +7,17 @@
  *     AI extraction (`features.smallPrint[severity = "caution" | "problem"]`).
  *   - "+ FLOOR PLAN READ" eyebrow heading above the pills.
  *
- * Display filtering: the search's `aiRules` are DISPLAY filters, not
- * prompt scopes — enrichments always carry the full feature payload, we
- * just hide pills the user has explicitly disabled from this search.
- * That keeps re-enabling a rule a render-time toggle rather than a
- * re-run of the enrichment task.
+ * No per-search filtering — every extracted positive surfaces. The
+ * previous `aiRules`-driven hide list went away when the rules editor
+ * was removed; if we want display filters again they can come back as
+ * an explicit `enabledKeys` prop rather than a stored toggle list.
  */
 import { Alert01Icon, Tick01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { Features } from "../../lib/ai/prompt";
-import type { StoredAiRules } from "../../server/functions/searches";
 
 type Props = {
   features?: Features;
-  aiRules: StoredAiRules;
 };
 
 type PillItem = {
@@ -38,7 +35,6 @@ type PillItem = {
 const POSITIVE_LABELS: Array<{
   key: keyof Features;
   label: string;
-  rule?: string;
 }> = [
   { key: "hasGarden", label: "Garden" },
   { key: "hasParking", label: "Parking" },
@@ -47,31 +43,17 @@ const POSITIVE_LABELS: Array<{
   { key: "isFurnished", label: "Furnished" },
 ];
 
-/**
- * Returns the set of rule ids the user has DISABLED for this search.
- * Filtering is "show by default, hide if disabled" — so a brand-new
- * enrichment row with no rules on the search will surface every
- * positive pill.
- */
-function disabledRuleIds(aiRules: StoredAiRules): Set<string> {
-  return new Set(aiRules.rules.filter((r) => !r.enabled).map((r) => r.id));
-}
-
-export function FeaturePills({ features, aiRules }: Props) {
+export function FeaturePills({ features }: Props) {
   if (!features) {
     return null;
   }
 
-  const disabled = disabledRuleIds(aiRules);
   const pills: PillItem[] = [];
 
   // Positive matches — only `true` boolean values surface as pills.
   // `false` / `null` (unknown) stay quiet so we don't litter the card
   // with "no garden", "no parking".
   for (const entry of POSITIVE_LABELS) {
-    if (disabled.has(entry.key)) {
-      continue;
-    }
     const value = features[entry.key];
     if (value === true) {
       pills.push({

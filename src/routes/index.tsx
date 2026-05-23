@@ -50,7 +50,7 @@ import {
   recordSwipe,
   undoLastSwipe,
 } from "../server/functions/review";
-import { listSearches, readAiRules } from "../server/functions/searches";
+import { listSearches } from "../server/functions/searches";
 
 type SwipeOutcome = "keep" | "skip" | "shortlist";
 type PendingAction = SwipeOutcome | "undo" | null;
@@ -307,13 +307,6 @@ function ReviewPage() {
 
   const pending = pendingAction !== null;
 
-  // The aiRules on the card's search are read by the FeaturePills
-  // filter. We don't fetch the full search server-side — we just send
-  // the relevant pill keys with the card payload. Until that wire
-  // change lands, fall back to "show all" by passing an empty rules
-  // list.
-  const aiRules = readAiRules({ rules: [], excludeOutcodes: [] });
-
   const doKeep = useCallback(() => {
     if (!card || pending) {
       return;
@@ -486,7 +479,6 @@ function ReviewPage() {
           isCardLoading,
           pending,
           pendingAction,
-          aiRules,
           doKeep,
           doSkip,
           doShortlist,
@@ -660,7 +652,6 @@ function renderMobileHero(args: {
   isCardLoading: boolean;
   pending: boolean;
   pendingAction: PendingAction;
-  aiRules: ReturnType<typeof readAiRules>;
   doKeep: () => void;
   doSkip: () => void;
   doShortlist: () => void;
@@ -669,7 +660,7 @@ function renderMobileHero(args: {
   if (args.card) {
     return (
       <main className="space-y-4 pb-4">
-        <ReviewCardView aiRules={args.aiRules} card={args.card} />
+        <ReviewCardView card={args.card} />
         <ActionButtons
           clusterId={args.card.cluster.id}
           disabled={args.pending}
@@ -1003,11 +994,6 @@ function specValue(value: number | null): string {
  * positive, `caution`/`problem` both fold into `caution`. Floorplan
  * room sizes are not shown on this surface — too dense for the hero —
  * they live in the listing-detail page.
- *
- * Important: aiRules are NOT applied here. Mobile gates pills by the
- * search's enabled rules; the desktop hero shows whatever the AI
- * extracted so the reviewer always sees the same signal regardless of
- * which filters are on. Adjust if that turns out to be wrong.
  */
 function buildVerdicts(
   features: ReviewCard["features"]
