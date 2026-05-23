@@ -5,8 +5,8 @@
  * search's `id` is stored as the schedule's `externalId`, which lets us
  * round-trip from a `Search` row to its `ScheduleObject`. Cron string,
  * timezone, and active state are all read from the SDK; we never cache
- * them locally so the dashboard, our admin UI, and the search edit
- * screen all stay in sync.
+ * them locally so the dashboard and the search edit screen all stay
+ * in sync.
  *
  * Modelled on scout's `server/functions/schedules.ts` — same shape, same
  * paging-discard pattern, same task whitelist gate on "Run now". The

@@ -32,13 +32,4 @@ export const queryKeys = {
   shortlistMember: (userId: string) => ["shortlist", "member", userId] as const,
   matches: () => ["matches", "list"] as const,
   listingDetail: (clusterId: string) => ["listings", clusterId] as const,
-  admin: {
-    metrics: () => ["admin", "metrics"] as const,
-    runs: (filter: string) => ["admin", "runs", filter] as const,
-    recentRuns: (filter: string) => ["admin", "recent-runs", filter] as const,
-    filterCounts: () => ["admin", "filterCounts"] as const,
-    schedules: () => ["admin", "schedules"] as const,
-    systemStatus: () => ["admin", "systemStatus"] as const,
-    spend: () => ["admin", "spend"] as const,
-  },
 } as const;

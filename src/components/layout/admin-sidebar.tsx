@@ -15,9 +15,6 @@
  *   - active item foreground = copper (via `--sidebar-accent-foreground`)
  */
 import {
-  Calendar03Icon,
-  CoinsDollarIcon,
-  Database01Icon,
   Search01Icon,
   StarIcon,
   SwipeRight03Icon,
@@ -59,19 +56,11 @@ const HOUSE_LINKS: NavLink[] = [
   { to: "/searches", label: "Searches", icon: Search01Icon },
 ];
 
-const SYSTEM_LINKS: NavLink[] = [
-  { to: "/admin", label: "Dashboard", icon: Database01Icon },
-  { to: "/admin/runs", label: "Runs", icon: Database01Icon },
-  { to: "/admin/spend", label: "Spend", icon: CoinsDollarIcon },
-  { to: "/admin/schedules", label: "Schedules", icon: Calendar03Icon },
-];
-
 /**
  * Optional `mode="desktop-only"` hides the entire shell below `md` so
  * the existing mobile flow can render alongside it (the same pattern
  * the desktop layouts used pre-migration). Default `mode="responsive"`
- * keeps the shell visible everywhere — used by `/admin/*` routes that
- * never had a mobile variant.
+ * keeps the shell visible everywhere.
  */
 type Props = {
   children?: ReactNode;
@@ -94,7 +83,6 @@ export function AdminSidebar({ children, mode = "responsive" }: Props) {
           <Brand />
           <SidebarContent>
             <NavSection label="House" links={HOUSE_LINKS} />
-            <NavSection label="System" links={SYSTEM_LINKS} />
           </SidebarContent>
           <UserFooter />
         </Sidebar>
@@ -186,6 +174,5 @@ function UserFooter() {
 }
 
 function isActive(pathname: string, to: string): boolean {
-  const exactMatch = to === "/" || to === "/admin";
-  return exactMatch ? pathname === to : pathname.startsWith(to);
+  return to === "/" ? pathname === to : pathname.startsWith(to);
 }
