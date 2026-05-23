@@ -24,6 +24,7 @@ import {
   StarIcon,
   Sun03Icon,
   SwipeRight03Icon,
+  Tick01Icon,
   UserSettings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -212,7 +213,7 @@ function UserFooter() {
   const household = useHouseholdOptional();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const me = household?.members.find(
     (m) => m.userId === household.currentUserId
   );
@@ -296,20 +297,26 @@ function UserFooter() {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuGroup>
+              <DropdownMenuGroup className="space-y-0.5">
                 <DropdownMenuLabel>Theme</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => setTheme("light")}>
-                  <HugeiconsIcon icon={Sun03Icon} size={14} />
-                  Light
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("dark")}>
-                  <HugeiconsIcon icon={Moon02Icon} size={14} />
-                  Dark
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("system")}>
-                  <HugeiconsIcon icon={ComputerIcon} size={14} />
-                  System
-                </DropdownMenuItem>
+                <ThemeItem
+                  active={theme === "light"}
+                  icon={Sun03Icon}
+                  label="Light"
+                  onSelect={() => setTheme("light")}
+                />
+                <ThemeItem
+                  active={theme === "dark"}
+                  icon={Moon02Icon}
+                  label="Dark"
+                  onSelect={() => setTheme("dark")}
+                />
+                <ThemeItem
+                  active={theme === "system"}
+                  icon={ComputerIcon}
+                  label="System"
+                  onSelect={() => setTheme("system")}
+                />
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} variant="destructive">
@@ -321,6 +328,36 @@ function UserFooter() {
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarFooter>
+  );
+}
+
+function ThemeItem({
+  active,
+  icon,
+  label,
+  onSelect,
+}: {
+  active: boolean;
+  icon: IconRef;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      className={active ? "bg-accent text-accent-foreground" : undefined}
+      onClick={onSelect}
+    >
+      <HugeiconsIcon icon={icon} size={14} />
+      {label}
+      {active ? (
+        <HugeiconsIcon
+          className="ml-auto"
+          icon={Tick01Icon}
+          size={14}
+          strokeWidth={2}
+        />
+      ) : null}
+    </DropdownMenuItem>
   );
 }
 
