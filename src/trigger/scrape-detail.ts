@@ -33,11 +33,10 @@
  * R2 upload can run independently of any further detail logic.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { env } from "../lib/env";
 import {
@@ -61,11 +60,6 @@ export type ScrapeDetailOutput = {
   photoCount: number;
   costUsd: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 function getZyteKey(): string {
   return env().ZYTE_API_KEY;

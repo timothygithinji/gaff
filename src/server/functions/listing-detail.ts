@@ -20,7 +20,6 @@
  * available; the rest render as "pending" placeholders until we land a
  * dedicated client for them (deferred to v1.1).
  */
-import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -38,7 +37,6 @@ import type { Features } from "../../lib/ai/prompt";
 import { createPostcodesClient } from "../../lib/api-clients/postcodes-io";
 import { lookupPostcode } from "../../lib/api-clients/postcodes-io/generated";
 import { env as parsedEnv } from "../../lib/env";
-import type { Env } from "../../server";
 import { getCurrentUser } from "./session";
 
 // -----------------------------------------------------------------------------
@@ -245,7 +243,7 @@ async function requireHouseholdScope(): Promise<{
   if (!session) {
     throw new Error("unauthorized");
   }
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
   const myMembership = await db.query.householdMembers.findFirst({
     where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
   });
@@ -353,7 +351,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<ListingDetailPayload> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdScope();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     // Step 1: pull the household's active searches; we only ever
     // surface listings tied to one of these. (An inactive search's

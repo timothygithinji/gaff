@@ -29,11 +29,10 @@
  * external request per new cluster.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { PROMPT_VERSION } from "../lib/ai/config";
 import {
@@ -53,11 +52,6 @@ export type EnrichEpcOutput = {
   certificateFound: boolean;
   listingsTouched: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 /**
  * Convert a possibly-null `numeric` column value to a number, or null.

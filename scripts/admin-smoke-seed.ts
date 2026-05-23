@@ -15,19 +15,12 @@
  *   DELETE FROM scrape_runs WHERE id LIKE 'smoke-%';
  *   DELETE FROM ai_runs     WHERE id LIKE 'smoke-%';
  */
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
-import { nanoid } from "nanoid";
 import { sql as drizzleSql } from "drizzle-orm";
+import { nanoid } from "nanoid";
+import { getDb } from "../db";
 import * as schema from "../db/schema";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error("DATABASE_URL not set");
-  process.exit(1);
-}
-const sqlClient = neon(DATABASE_URL);
-const db = drizzle(sqlClient, { schema });
+const db = getDb();
 
 async function main() {
   let search = await db.query.searches.findFirst();

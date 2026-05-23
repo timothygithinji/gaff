@@ -24,11 +24,10 @@
  * is search-page-only.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import {
   parseOpenrentSearch,
@@ -57,14 +56,6 @@ export type ScrapePortalOutput = {
   listingsFound: number;
   newListings: number;
 };
-
-function getDb() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL not set in the Trigger.dev worker env");
-  }
-  return drizzle(neon(url), { schema });
-}
 
 function getZyteKey(): string {
   const key = process.env.ZYTE_API_KEY;

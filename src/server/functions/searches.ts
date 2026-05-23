@@ -40,7 +40,6 @@ import {
   searches,
   swipes,
 } from "../../../db/schema";
-import type { Env } from "../../server";
 import {
   createSchedule,
   deactivateSchedule,
@@ -62,7 +61,7 @@ async function requireHouseholdId(): Promise<string> {
   if (!session) {
     throw new Error("unauthorized");
   }
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
   const membership = await db.query.householdMembers.findFirst({
     where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
   });
@@ -237,7 +236,7 @@ function toSearchRow(row: Search): SearchRow {
 export const listSearches = createServerFn({ method: "GET" }).handler(
   async (): Promise<SearchRow[]> => {
     const householdId = await requireHouseholdId();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
     const rows = await db
       .select()
       .from(searches)
@@ -251,7 +250,7 @@ export const getSearch = createServerFn({ method: "GET" })
   .inputValidator(idSchema)
   .handler(async ({ data }): Promise<SearchRow> => {
     const householdId = await requireHouseholdId();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
     const row = await db.query.searches.findFirst({
       where: (s, { eq: eqOp, and: andOp }) =>
         andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
@@ -275,7 +274,7 @@ export const createSearch = createServerFn({ method: "POST" })
   .inputValidator(createSearchSchema)
   .handler(async ({ data }): Promise<CreateSearchResult> => {
     const householdId = await requireHouseholdId();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const id = nanoid();
     const outcodes = data.outcodes.map((o) => o.trim().toUpperCase());
@@ -339,7 +338,7 @@ export const updateSearch = createServerFn({ method: "POST" })
   .inputValidator(updateSearchSchema)
   .handler(async ({ data }): Promise<UpdateSearchResult> => {
     const householdId = await requireHouseholdId();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     // Confirm the row belongs to the caller's household before touching it.
     const existing = await db.query.searches.findFirst({
@@ -436,7 +435,7 @@ export const archiveSearch = createServerFn({ method: "POST" })
   .inputValidator(idSchema)
   .handler(async ({ data }): Promise<{ ok: true }> => {
     const householdId = await requireHouseholdId();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
     const existing = await db.query.searches.findFirst({
       where: (s, { eq: eqOp, and: andOp }) =>
         andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
@@ -509,7 +508,7 @@ async function requireHouseholdMembersForPortfolio(): Promise<{
   if (!session) {
     throw new Error("unauthorized");
   }
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
   const myMembership = await db.query.householdMembers.findFirst({
     where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
   });
@@ -531,7 +530,7 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
   async (): Promise<SearchesPortfolio> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdMembersForPortfolio();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const searchRows = await db
       .select()

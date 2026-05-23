@@ -25,7 +25,6 @@
  *   markMatchesSeen     — upserts the caller's `last_seen_matches`
  *     timestamp; clears the badge.
  */
-import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -39,7 +38,6 @@ import {
   userState,
   vMutualMatches,
 } from "../../../db/schema";
-import type { Env } from "../../server";
 import { getCurrentUser } from "./session";
 
 const outcomeFilterSchema = z.enum(["keep", "shortlist", "keep_or_shortlist"]);
@@ -257,7 +255,7 @@ async function requireHouseholdScope(): Promise<{
   if (!session) {
     throw new Error("unauthorized");
   }
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
   const myMembership = await db.query.householdMembers.findFirst({
     where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
   });
@@ -282,7 +280,7 @@ async function requireHouseholdScope(): Promise<{
 export const listMutualMatches = createServerFn({ method: "GET" }).handler(
   async (): Promise<MutualMatch[]> => {
     const { householdId, memberUserIds } = await requireHouseholdScope();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const rows = await db
       .select({
@@ -346,7 +344,7 @@ async function listOutcomesFor(
   outcome: z.infer<typeof outcomeFilterSchema>,
   householdMemberUserIds: string[]
 ): Promise<MutualMatch[]> {
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
 
   const outcomeFilter: Array<"keep" | "shortlist"> =
     outcome === "keep_or_shortlist" ? ["keep", "shortlist"] : [outcome];
@@ -387,7 +385,7 @@ async function listOutcomesFor(
 export const unreadMatchCount = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ count: number }> => {
     const { householdId, currentUserId } = await requireHouseholdScope();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const stateRow = await db
       .select({ lastSeen: userState.lastSeenMatches })
@@ -427,7 +425,7 @@ export const unreadMatchCount = createServerFn({ method: "GET" }).handler(
 export const markMatchesSeen = createServerFn({ method: "POST" }).handler(
   async (): Promise<{ ok: true }> => {
     const { currentUserId } = await requireHouseholdScope();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const now = new Date();
     await db

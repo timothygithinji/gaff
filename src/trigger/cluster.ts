@@ -24,16 +24,14 @@
  * because its inputs are listing-scoped — see `enrich-ai.ts`.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import {
   findOrCreateCluster,
   linkListingToCluster,
 } from "../lib/cluster/match";
-import { env } from "../lib/env";
 import { enrichAmenitiesTask } from "./enrich-amenities";
 import { enrichBroadbandTask } from "./enrich-broadband";
 import { enrichCommuteTask } from "./enrich-commute";
@@ -65,11 +63,6 @@ export type ClusterOutput = {
    */
   detailListingIds: string[];
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 export const clusterTask = task({
   id: "cluster",
