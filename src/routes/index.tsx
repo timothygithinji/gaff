@@ -361,6 +361,7 @@ function ReviewPage() {
     navigate({
       to: "/listings/$clusterId",
       params: { clusterId: card.cluster.id },
+      search: { from: "review" },
     });
   }, [card, navigate]);
 

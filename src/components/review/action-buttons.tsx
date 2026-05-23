@@ -97,7 +97,13 @@ export function ActionButtons({
         aria-label="More info"
         className="size-11 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
-        render={<Link params={{ clusterId }} to="/listings/$clusterId" />}
+        render={
+          <Link
+            params={{ clusterId }}
+            search={{ from: "review" }}
+            to="/listings/$clusterId"
+          />
+        }
         size="icon"
         variant="outline"
       >

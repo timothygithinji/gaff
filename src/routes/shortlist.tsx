@@ -200,6 +200,7 @@ function ShortlistPage() {
     navigate({
       to: "/listings/$clusterId",
       params: { clusterId },
+      search: { from: "shortlist" },
     });
   }
 
