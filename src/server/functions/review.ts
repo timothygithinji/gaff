@@ -27,7 +27,7 @@
  * listing is the cheapest, the others surface in the "ALSO ON" badge.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../../db";
@@ -262,34 +262,29 @@ async function loadRankedQueueClusterIds(
   }
   const activeSearchIds = activeSearches.map((s) => s.id);
 
-  // Raw SQL for the GROUP BY — Drizzle's relational builder doesn't
-  // expose `MIN(first_seen_at)` cleanly in this shape, and pulling the
-  // full listings table to group in JS would be wrong.
-  type RankedClusterRow = {
-    clusterId: string;
-    newestFirstSeenAt: Date;
-    cheapestPrice: number | null;
-  };
-  const rankedRows = await db.execute(sql<RankedClusterRow>`
-    SELECT
-      ${listings.clusterId} AS "clusterId",
-      MAX(${listings.firstSeenAt}) AS "newestFirstSeenAt",
-      MIN(${listings.priceMonthly}) AS "cheapestPrice"
-    FROM ${listings}
-    WHERE ${listings.clusterId} IS NOT NULL
-      AND ${inArray(listings.searchId, activeSearchIds)}
-    GROUP BY ${listings.clusterId}
-    ORDER BY MAX(${listings.firstSeenAt}) DESC,
-             MIN(${listings.priceMonthly}) ASC NULLS LAST
-  `);
-  // drizzle-orm's `db.execute()` on neon-http returns the bare row
-  // array under `.rows`, mirroring pg's result shape.
-  const candidates = (
-    rankedRows as unknown as { rows: RankedClusterRow[] }
-  ).rows
-    .filter((r): r is RankedClusterRow & { clusterId: string } =>
-      Boolean(r.clusterId)
+  const candidatesRows = await db
+    .select({
+      clusterId: listings.clusterId,
+      newestFirstSeenAt: sql<Date>`MAX(${listings.firstSeenAt})`.as("newest"),
+      cheapestPrice: sql<number | null>`MIN(${listings.priceMonthly})`.as(
+        "cheapest"
+      ),
+    })
+    .from(listings)
+    .where(
+      and(
+        isNotNull(listings.clusterId),
+        inArray(listings.searchId, activeSearchIds)
+      )
     )
+    .groupBy(listings.clusterId)
+    .orderBy(
+      desc(sql`MAX(${listings.firstSeenAt})`),
+      sql`MIN(${listings.priceMonthly}) ASC NULLS LAST`
+    );
+
+  const candidates = candidatesRows
+    .filter((r): r is typeof r & { clusterId: string } => Boolean(r.clusterId))
     .map((r) => r.clusterId);
   if (candidates.length === 0) {
     return { clusterIds: [], activeSearches };
