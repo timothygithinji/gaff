@@ -1,8 +1,23 @@
 {
   "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
   "entry": [
-    "src/index.{ts,tsx,js,jsx}",
-    "src/main.{ts,tsx,js,jsx}"
+    // TanStack Start finds these automatically, but list them so fallow
+    // doesn't mistake them for unused files when its built-in plugin runs.
+    "src/router.tsx",
+    "src/routes/**/*.tsx",
+    // Trigger.dev loads task files from `./src/trigger` per
+    // `trigger.config.ts`'s `dirs` setting — fallow can't see that.
+    "src/trigger/**/*.ts",
+    // CLI scripts run directly via `bun scripts/<name>.ts`.
+    "scripts/**/*.ts",
+    // Vitest discovers these via `*.test.ts` glob.
+    "tests/**/*.{ts,tsx}",
+    // Single-file configs loaded by their respective CLIs.
+    "openapi-ts.config.ts",
+    "t-stack.config.ts",
+    "trigger.config.ts",
+    // Loaded by `@better-auth/cli generate`, not imported anywhere.
+    "src/lib/auth.config.ts"
   ],
   "duplicates": {
     // Hide pair-only clones; focus on widespread copy-paste
@@ -19,6 +34,27 @@
     "@better-auth/cli", // invoked by `bun run auth:generate` via bunx
     "ultracite" // biome.json `extends` preset
   ],
+  // shadcn/ui primitives ship a full subcomponent set per file; we use a
+  // subset, but the rest stays so re-running `bunx shadcn add <name>`
+  // doesn't keep adding components we already have. `cva` variant
+  // exports (button, badge) are part of the primitive contract too.
+  // Generated openapi-ts clients have the same shape — keep them whole.
+  "ignoreExports": [
+    {
+      "file": "src/components/ui/**",
+      "exports": ["*"]
+    },
+    {
+      "file": "src/lib/api-clients/**/generated/**",
+      "exports": ["*"]
+    }
+  ],
+  // Default modules export their full helper surface even when only one
+  // consumer happens to be inside the same file (defaults, internal-use
+  // constants, type aliases referenced by the same module's signatures).
+  // Knip's same behavior; keeps the findings list focused on truly
+  // cross-file dead code.
+  "ignoreExportsUsedInFile": true,
   "rules": {
     "unused-dependencies": "warn"
   }
