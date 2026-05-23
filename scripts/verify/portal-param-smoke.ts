@@ -13,6 +13,11 @@
  * cut the result set" — we just need a directional signal, not a
  * precise count.
  */
+import {
+  parseOpenrentSearch,
+  parseRightmoveSearch,
+  parseZooplaSearch,
+} from "../../src/lib/parsers";
 import { zyteFetch } from "./lib/zyte";
 
 const apiKey = process.env.ZYTE_API_KEY;
@@ -149,20 +154,29 @@ const CASES: TestCase[] = [
   },
 ];
 
+/**
+ * Parser-aware listing count. We run the HTML through the same parsers
+ * the scrape pipeline uses, so the count is exactly what would have
+ * been INSERTed — no false positives from pagination links, related
+ * searches, or page-size caps clobbering the regex.
+ *
+ * Parsers throw when the page shape is unrecognised (e.g. a 405 / 5xx
+ * served as HTML instead of JSON, a captcha intercept page). We swallow
+ * that and return 0 — the SUMMARY's [EMPTY] verdict surfaces the
+ * malformed-URL case.
+ */
 function countListings(html: string, portal: Portal): number {
-  if (portal === "rm") {
-    // RM embeds propertyUrl per result inside __NEXT_DATA__
-    return (html.match(/"propertyUrl":"\/properties\/\d+/g) ?? []).length;
+  try {
+    if (portal === "rm") {
+      return parseRightmoveSearch(html).length;
+    }
+    if (portal === "zp") {
+      return parseZooplaSearch(html).length;
+    }
+    return parseOpenrentSearch(html).length;
+  } catch {
+    return 0;
   }
-  if (portal === "zp") {
-    return (html.match(/\/to-rent\/details\/\d+/g) ?? []).length;
-  }
-  // OpenRent
-  return new Set(
-    [
-      ...html.matchAll(/href="(\/property-to-rent\/[^"]+\/(\d+))"/g),
-    ].map((m) => m[2])
-  ).size;
 }
 
 async function runCase(c: TestCase) {
@@ -190,6 +204,26 @@ for (const c of CASES) {
   results.push(await runCase(c));
 }
 
+function verdictFor(
+  baseCount: number,
+  r: { ok: boolean; count: number }
+): string {
+  if (!r.ok) {
+    return "FAIL";
+  }
+  if (r.count === 0 && baseCount > 0) {
+    return "EMPTY (param may be malformed)";
+  }
+  const delta = r.count - baseCount;
+  if (delta < 0) {
+    return `RESTRICTIVE (-${-delta})`;
+  }
+  if (delta > 0) {
+    return `LOOSER (+${delta})`;
+  }
+  return "NO EFFECT (silently ignored OR same set)";
+}
+
 // Summary table per portal
 console.log("\n\n=== SUMMARY ===");
 for (const portal of ["rm", "zp", "or"] as const) {
@@ -199,18 +233,10 @@ for (const portal of ["rm", "zp", "or"] as const) {
   const portalName = { rm: "Rightmove", zp: "Zoopla", or: "OpenRent" }[portal];
   console.log(`\n--- ${portalName} (baseline = ${baseCount} listings) ---`);
   for (const r of portalResults) {
-    if (r.label === "baseline") continue;
-    const delta = r.count - baseCount;
-    const verdict =
-      !r.ok
-        ? "FAIL"
-        : r.count === 0 && baseCount > 0
-          ? "EMPTY (param may be malformed)"
-          : delta < 0
-            ? `RESTRICTIVE (-${-delta})`
-            : delta === 0
-              ? "NO EFFECT (silently ignored OR same set)"
-              : `LOOSER (+${delta})`;
+    if (r.label === "baseline") {
+      continue;
+    }
+    const verdict = verdictFor(baseCount, r);
     console.log(
       `  ${r.label.padEnd(35)} → ${String(r.count).padStart(3)} listings   [${verdict}]`
     );
