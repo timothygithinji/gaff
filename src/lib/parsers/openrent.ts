@@ -13,7 +13,12 @@
 
 import { type HTMLElement, parse } from "node-html-parser";
 import { decodeEntities, extractPostcode, toNumber } from "./common";
-import type { Furnished, ListingDetail, ListingSummary } from "./types";
+import type {
+  Furnished,
+  ListingDetail,
+  ListingSummary,
+  TenantPreferences,
+} from "./types";
 
 const LISTING_URL_RE = /^\/property-to-rent\/[^"']+?\/(\d+)$/;
 const SLUG_TYPE_RE = /\/\d+-bed-([a-z]+)/i;
@@ -246,6 +251,176 @@ const LAT_RE = /data-lat=["'](-?\d+\.\d+)["']/;
 const LNG_RE = /data-lng=["'](-?\d+\.\d+)["']/;
 const ID_FROM_URL_RE = /\/property-to-rent\/[^/]+\/[^/]+\/(\d+)/;
 
+/**
+ * OpenRent renders structured facts as 2-column tables:
+ *   <tr>
+ *     <td class="fw-medium">Pets Allowed</td>
+ *     <td>...check / cross SVG (text-success / text-danger)
+ *         OR plain text like "17 July, 2026" / "6 Months" / "C"...</td>
+ *   </tr>
+ *
+ * `extractFactTable` walks every such row in the document and returns a
+ * Map<labelLowerCase, value> where value is either the cell's text or
+ * "yes" / "no" derived from the success/danger SVG colour. Empty cells
+ * are skipped so callers see "label absent" as `undefined` rather than
+ * an empty string.
+ */
+/**
+ * Pull the label text out of a `<td>` while skipping popover content.
+ * The OpenRent fact tables embed Bootstrap popovers like
+ *   <td>Preferred Minimum Tenancy <a data-bs-toggle="popover">…</a>
+ *       <div class="d-none">This is the landlord's preference …</div></td>
+ * The default `.text` getter concatenates *every* descendant text node,
+ * which would smuggle the popover paragraph into our label key. We walk
+ * direct child nodes and skip any element with `[data-bs-toggle]`,
+ * `[role="button"]`, or class `d-none`.
+ */
+function extractCleanLabel(td: HTMLElement): string {
+  const childNodes =
+    (td as unknown as { childNodes?: { nodeType: number; rawText?: string; text?: string; classNames?: string[]; getAttribute?: (k: string) => string | null }[] })
+      .childNodes ?? [];
+  const parts: string[] = [];
+  for (const node of childNodes) {
+    if (node.nodeType === 3) {
+      // text node
+      parts.push(node.rawText ?? "");
+      continue;
+    }
+    if (node.nodeType !== 1) {
+      continue;
+    }
+    const el = node as unknown as HTMLElement;
+    const cls = el.getAttribute?.("class") ?? "";
+    const role = el.getAttribute?.("role") ?? "";
+    const popover = el.getAttribute?.("data-bs-toggle") ?? "";
+    if (
+      cls.includes("d-none") ||
+      role === "button" ||
+      popover === "popover" ||
+      el.tagName?.toLowerCase() === "a" ||
+      el.tagName?.toLowerCase() === "svg"
+    ) {
+      continue;
+    }
+    // Some labels nest the text inside an inner span. Fall back to the
+    // descendant text for those.
+    parts.push(el.text ?? "");
+  }
+  return decodeEntities(parts.join(" "))
+    .replace(WHITESPACE_RE, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function extractFactTable(root: HTMLElement): Map<string, string> {
+  const out = new Map<string, string>();
+  const rows = root.querySelectorAll("tr");
+  for (const tr of rows) {
+    const tds = tr.querySelectorAll("td");
+    if (tds.length < 2) {
+      continue;
+    }
+    const labelEl = tds[0];
+    const valueEl = tds[1];
+    if (!(labelEl && valueEl)) {
+      continue;
+    }
+    // OpenRent labels embed Bootstrap popovers (`<a data-bs-toggle="popover">`
+    // …`<div class="d-none">tooltip text</div>`) whose descendant text bleeds
+    // into the label otherwise. `extractCleanLabel` skips those subtrees so
+    // "Preferred Minimum Tenancy" doesn't become a paragraph.
+    const label = extractCleanLabel(labelEl);
+    if (!label) {
+      continue;
+    }
+    const svg = valueEl.querySelector("svg");
+    let value: string;
+    if (svg) {
+      const cls = svg.getAttribute("class") ?? "";
+      if (cls.includes("text-success")) {
+        value = "yes";
+      } else if (cls.includes("text-danger")) {
+        value = "no";
+      } else {
+        value = decodeEntities(valueEl.text ?? "").trim();
+      }
+    } else {
+      value = decodeEntities(valueEl.text ?? "")
+        .replace(WHITESPACE_RE, " ")
+        .trim();
+    }
+    if (value.length > 0) {
+      out.set(label, value);
+    }
+  }
+  return out;
+}
+
+function ynToBool(v: string | undefined): boolean | undefined {
+  if (!v) {
+    return undefined;
+  }
+  const t = v.toLowerCase();
+  if (t === "yes") {
+    return true;
+  }
+  if (t === "no") {
+    return false;
+  }
+  return undefined;
+}
+
+function openrentTenantPreferences(
+  facts: Map<string, string>
+): TenantPreferences | undefined {
+  const out: TenantPreferences = {};
+  const set = (
+    key: keyof TenantPreferences,
+    raw: string | undefined
+  ): void => {
+    const v = ynToBool(raw);
+    if (v !== undefined) {
+      out[key] = v;
+    }
+  };
+  set("studentsAccepted", facts.get("student friendly") ?? facts.get("students"));
+  set("familiesAccepted", facts.get("families allowed") ?? facts.get("families"));
+  set("petsAccepted", facts.get("pets allowed") ?? facts.get("pets"));
+  set("smokersAccepted", facts.get("smokers allowed") ?? facts.get("smokers"));
+  set(
+    "dssAccepted",
+    facts.get("dss/lha covers rent") ??
+      facts.get("dss/lha") ??
+      facts.get("dss")
+  );
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+const MIN_TERM_MONTHS_RE = /(\d+)\s*(?:month|m\b)/i;
+const MIN_TERM_YEARS_RE = /(\d+)\s*(?:year|y\b)/i;
+
+function openrentMinimumTermMonths(
+  facts: Map<string, string>
+): number | undefined {
+  const raw =
+    facts.get("preferred minimum tenancy") ??
+    facts.get("minimum tenancy") ??
+    facts.get("minimum term");
+  if (!raw) {
+    return undefined;
+  }
+  const months = raw.match(MIN_TERM_MONTHS_RE)?.[1];
+  if (months) {
+    return toNumber(months);
+  }
+  const years = raw.match(MIN_TERM_YEARS_RE)?.[1];
+  if (years) {
+    const n = toNumber(years);
+    return n === undefined ? undefined : n * 12;
+  }
+  return undefined;
+}
+
 function openrentFurnished(text: string): Furnished | undefined {
   const m = text.match(FURNISHED_RE);
   if (!m) {
@@ -313,14 +488,51 @@ export function parseOpenrentDetail(html: string): ListingDetail {
       ?.getAttribute("content") ?? ""
   );
 
-  // Photos: OpenRent CDN URLs scoped to /listings/<id>/.
-  const photos = collectOpenrentPhotos(root, id);
+  // Hero photo: meta[name=twitter:image] is the listing's first photo
+  // (https://imagescdn.openrent.co.uk/...), while og:image is OpenRent's
+  // fallback share-graphic logo. Surface the better one as photos[0].
+  const twitterImage = root
+    .querySelector('meta[name="twitter:image"]')
+    ?.getAttribute("content");
+  const heroPhoto =
+    twitterImage && OPENRENT_CDN_RE.test(twitterImage)
+      ? twitterImage
+      : undefined;
+
+  // Photos: OpenRent CDN URLs scoped to /listings/<id>/. Splice the
+  // twitter:image hero in front when we have one and the lower-resolution
+  // gallery doesn't already include it.
+  const collected = collectOpenrentPhotos(root, id);
+  const photos =
+    heroPhoto && !collected.includes(heroPhoto)
+      ? [heroPhoto, ...collected]
+      : collected;
   const floorplanUrl = photos.find((u) => FLOORPLAN_FILENAME_RE.test(u));
 
   const bodyText = decodeEntities(root.text.replace(WHITESPACE_RE, " "));
   const epcMatch = bodyText.match(EPC_RE);
   const depositMatch = bodyText.match(DEPOSIT_RE);
   const availableMatch = bodyText.match(AVAILABLE_FROM_RE);
+
+  // Pull every <tr>/<td> fact pair so we can read structured values
+  // without relying on free-text regex.
+  const facts = extractFactTable(root);
+  const tenantPreferences = openrentTenantPreferences(facts);
+  const minimumTermMonths = openrentMinimumTermMonths(facts);
+  const billsIncluded = ynToBool(
+    facts.get("bills included") ?? facts.get("bills")
+  );
+  const factCouncilTax = facts.get("council tax band");
+  const factParking = ynToBool(facts.get("parking"));
+  const factGarden = ynToBool(facts.get("garden"));
+  const factEpc = facts.get("epc rating");
+  const factAvailableFrom = facts.get("available from");
+  // Prefer the structured Furnishing cell over the bodyText regex —
+  // less brittle when the description mentions "Unfurnished" mid-paragraph.
+  const factFurnishing = facts.get("furnishing");
+  const furnishedFromFacts = factFurnishing
+    ? openrentFurnished(factFurnishing)
+    : undefined;
 
   const streetWithPostcode = postcode ? `${street}, ${postcode}` : street;
   const addressRaw = street ? (streetWithPostcode ?? "") : ogTitle;
@@ -356,16 +568,41 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     lat,
     lng,
     description: ogDescription.length > 0 ? ogDescription : undefined,
-    availableFrom: availableMatch ? availableMatch[1] : undefined,
-    furnished: openrentFurnished(bodyText),
+    availableFrom: factAvailableFrom ?? (availableMatch ? availableMatch[1] : undefined),
+    furnished: furnishedFromFacts ?? openrentFurnished(bodyText),
     deposit: depositMatch ? toNumber(depositMatch[1]) : undefined,
     photos,
     floorplanUrl,
     agentName: "OpenRent",
     agentPhone: undefined,
     keyFeatures: undefined,
-    epcRating: epcMatch ? (epcMatch[1] ?? "").toUpperCase() : undefined,
+    epcRating:
+      (factEpc ?? "").toUpperCase().match(/^[A-G]$/)?.[0] ??
+      (epcMatch ? (epcMatch[1] ?? "").toUpperCase() : undefined),
     nearestStations: undefined,
+    sizeSqFt: undefined,
+    councilTaxBand: factCouncilTax
+      ? factCouncilTax.trim().toUpperCase().match(/^[A-H]/)?.[0]
+      : undefined,
+    publishedAt: undefined,
+    minimumTermMonths,
+    letType: undefined,
+    serviceChargeAnnual: undefined,
+    groundRentAnnual: undefined,
+    videos: undefined,
+    virtualTourUrl: undefined,
+    agentCompany: "OpenRent",
+    agentBranchUrl: undefined,
+    feesText: undefined,
+    tags:
+      factParking === true || factGarden === true
+        ? [
+            ...(factGarden === true ? ["Garden"] : []),
+            ...(factParking === true ? ["Parking"] : []),
+          ]
+        : undefined,
+    tenantPreferences,
+    billsIncluded,
   };
 }
 

@@ -25,7 +25,12 @@ import {
   parseFlight,
   resolveFlightRef,
 } from "./rsc-flight";
-import type { Furnished, ListingDetail, ListingSummary } from "./types";
+import type {
+  Furnished,
+  ListingDetail,
+  ListingSummary,
+  TenantPreferences,
+} from "./types";
 
 const ZOOPLA_IMG_BASE = "https://lid.zoocdn.com/645/430";
 const ZOOPLA_PRICE_NUM_RE = /£?\s*([\d,]+)/;
@@ -308,6 +313,204 @@ function zooplaDetailEpc(o: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+/**
+ * Zoopla's NTS ("National Trading Standards") block holds Material
+ * Information — the fields agents are legally required to disclose.
+ * Two arrays expose it: `ntsInfo` (high-priority) and `additionalNtsInfo`
+ * (overflow). Both share `{ title, key, value, description }`. We flatten
+ * them so callers can lookup by either `key` or `title`.
+ */
+type NtsRow = {
+  key?: string;
+  title?: string;
+  value?: string;
+  description?: string;
+};
+
+function collectNtsInfo(o: Record<string, unknown>): Map<string, string> {
+  const out = new Map<string, string>();
+  const seed = (arr: unknown): void => {
+    if (!Array.isArray(arr)) {
+      return;
+    }
+    for (const row of arr) {
+      if (!row || typeof row !== "object") {
+        continue;
+      }
+      const r = row as NtsRow;
+      const value = toStringSafe(r.value);
+      if (!value) {
+        continue;
+      }
+      const key = toStringSafe(r.key)?.toLowerCase();
+      const title = toStringSafe(r.title)?.toLowerCase();
+      if (key) {
+        out.set(key, value);
+      }
+      if (title) {
+        out.set(title, value);
+      }
+    }
+  };
+  seed(o.ntsInfo);
+  seed(o.additionalNtsInfo);
+  return out;
+}
+
+function zooplaCouncilTaxBand(
+  nts: Map<string, string>
+): string | undefined {
+  const raw =
+    nts.get("council_tax_band") ??
+    nts.get("counciltaxband") ??
+    nts.get("council tax band");
+  if (!raw) {
+    return undefined;
+  }
+  const letter = raw.trim().toUpperCase().match(/^[A-H]/);
+  return letter ? letter[0] : raw;
+}
+
+function zooplaPublishedAt(o: Record<string, unknown>): string | undefined {
+  const raw = toStringSafe(o.publishedOn);
+  if (!raw) {
+    return undefined;
+  }
+  // Zoopla emits e.g. "2026-05-23T18:25:59" without a TZ; treat it as UTC
+  // for storage consistency. Bad strings drop through to `undefined`.
+  const iso = raw.includes("T") ? `${raw}Z`.replace(/ZZ$/, "Z") : raw;
+  return Number.isNaN(new Date(iso).getTime()) ? undefined : iso;
+}
+
+function zooplaSizeSqFt(o: Record<string, unknown>): number | undefined {
+  const floorArea = o.floorArea as
+    | { value?: unknown; unitsLabel?: unknown }
+    | undefined;
+  if (floorArea) {
+    const v = toNumber(floorArea.value);
+    const unit = toStringSafe(floorArea.unitsLabel)?.toLowerCase();
+    if (v !== undefined) {
+      if (!unit || unit.includes("ft")) {
+        return Math.round(v);
+      }
+      if (unit.includes("m")) {
+        return Math.round(v * 10.7639);
+      }
+    }
+  }
+  const ingested = o.ingested as { sizeSqft?: unknown } | undefined;
+  const fromIngested = toNumber(ingested?.sizeSqft);
+  if (fromIngested !== undefined) {
+    return Math.round(fromIngested);
+  }
+  return undefined;
+}
+
+function zooplaTags(o: Record<string, unknown>): string[] | undefined {
+  const out: string[] = [];
+  const tagsV2 = o.tagsV2;
+  if (Array.isArray(tagsV2)) {
+    for (const t of tagsV2) {
+      if (t && typeof t === "object") {
+        const label = toStringSafe((t as Record<string, unknown>).label);
+        if (label) {
+          out.push(label);
+        }
+      } else {
+        const s = toStringSafe(t);
+        if (s) {
+          out.push(s);
+        }
+      }
+    }
+  }
+  const status = o.statusSummary as { label?: unknown } | undefined;
+  const statusLabel = toStringSafe(status?.label);
+  if (statusLabel && !out.includes(statusLabel)) {
+    out.push(statusLabel);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function zooplaVideos(o: Record<string, unknown>): string[] | undefined {
+  const embed = o.embeddedContent as { videos?: unknown } | undefined;
+  if (!Array.isArray(embed?.videos)) {
+    return undefined;
+  }
+  const out: string[] = [];
+  for (const v of embed.videos) {
+    if (typeof v === "string") {
+      out.push(v);
+      continue;
+    }
+    if (v && typeof v === "object") {
+      const url = toStringSafe((v as Record<string, unknown>).url);
+      if (url) {
+        out.push(url);
+      }
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function zooplaVirtualTour(o: Record<string, unknown>): string | undefined {
+  const embed = o.embeddedContent as { tours?: unknown } | undefined;
+  if (!Array.isArray(embed?.tours) || embed.tours.length === 0) {
+    return undefined;
+  }
+  const first = embed.tours[0];
+  if (typeof first === "string") {
+    return first;
+  }
+  if (first && typeof first === "object") {
+    return toStringSafe((first as Record<string, unknown>).url);
+  }
+  return undefined;
+}
+
+function zooplaAgentBranchUrl(
+  branch: Record<string, unknown> | undefined
+): string | undefined {
+  const uri = toStringSafe(branch?.branchDetailsUri);
+  if (!uri) {
+    return undefined;
+  }
+  return uri.startsWith("http") ? uri : `https://www.zoopla.co.uk${uri}`;
+}
+
+function zooplaTenantPreferences(
+  o: Record<string, unknown>
+): TenantPreferences | undefined {
+  const desc = toStringSafe(o.detailedDescription);
+  const bullets = Array.isArray(
+    (o.features as { bullets?: unknown[] } | undefined)?.bullets
+  )
+    ? (o.features as { bullets: unknown[] }).bullets
+        .map((b) => toStringSafe(b) ?? "")
+        .join(" ")
+    : "";
+  const blob = `${desc ?? ""} ${bullets}`.toLowerCase();
+  if (blob.trim().length === 0) {
+    return undefined;
+  }
+  const out: TenantPreferences = {};
+  if (/pets\s+(allowed|welcome|considered)/.test(blob)) {
+    out.petsAccepted = true;
+  } else if (/no\s+pets|pets\s+not\s+allowed/.test(blob)) {
+    out.petsAccepted = false;
+  }
+  if (/students?\s+(welcome|considered|friendly|accepted)/.test(blob)) {
+    out.studentsAccepted = true;
+  }
+  if (/dss\s+(welcome|considered|accepted)/.test(blob)) {
+    out.dssAccepted = true;
+  }
+  if (/families/.test(blob)) {
+    out.familiesAccepted = true;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function zooplaPropertyType(o: Record<string, unknown>): string | undefined {
   return (
     toStringSafe(o.propertyType) ??
@@ -393,6 +596,33 @@ export function parseZooplaDetail(html: string): ListingDetail {
         .filter((f): f is string => Boolean(f))
     : undefined;
 
+  const nts = collectNtsInfo(c);
+  // Zoopla puts deposit in `additionalNtsInfo` more often than on `c.deposit`.
+  const ntsDeposit = nts.get("deposit") ?? nts.get("holding_deposit");
+  const ntsBillsIncluded = (() => {
+    const raw = nts.get("bills_included") ?? nts.get("bills included");
+    if (!raw) {
+      return undefined;
+    }
+    const v = raw.trim().toLowerCase();
+    if (v === "yes" || v === "true" || v === "all included") {
+      return true;
+    }
+    if (v === "no" || v === "false") {
+      return false;
+    }
+    return undefined;
+  })();
+  const ntsMinTerm = (() => {
+    const raw =
+      nts.get("minimum_term_months") ??
+      nts.get("minimum_tenancy") ??
+      nts.get("minimum term");
+    const months = toNumber(raw);
+    return months;
+  })();
+  const ntsLetType = nts.get("let_type") ?? nts.get("letting_type");
+
   return {
     portal: "zoopla",
     portalListingId: id,
@@ -409,7 +639,7 @@ export function parseZooplaDetail(html: string): ListingDetail {
     description,
     availableFrom: toStringSafe(c.availableFrom),
     furnished: zooplaFurnished(toStringSafe(c.furnishedState)),
-    deposit: toNumber(c.deposit),
+    deposit: toNumber(c.deposit) ?? toNumber(ntsDeposit),
     photos,
     floorplanUrl: zooplaDetailFloorplan(c),
     agentName: toStringSafe(branch?.branchName) ?? toStringSafe(branch?.name),
@@ -421,5 +651,16 @@ export function parseZooplaDetail(html: string): ListingDetail {
       keyFeatures && keyFeatures.length > 0 ? keyFeatures : undefined,
     epcRating: zooplaDetailEpc(c),
     nearestStations: undefined,
+    sizeSqFt: zooplaSizeSqFt(c),
+    councilTaxBand: zooplaCouncilTaxBand(nts),
+    publishedAt: zooplaPublishedAt(c),
+    minimumTermMonths: ntsMinTerm,
+    letType: ntsLetType,
+    videos: zooplaVideos(c),
+    virtualTourUrl: zooplaVirtualTour(c),
+    agentBranchUrl: zooplaAgentBranchUrl(branch),
+    tags: zooplaTags(c),
+    tenantPreferences: zooplaTenantPreferences(c),
+    billsIncluded: ntsBillsIncluded,
   };
 }

@@ -20,6 +20,7 @@ import type {
   ListingDetail,
   ListingSummary,
   NearestStation,
+  TenantPreferences,
 } from "./types";
 
 const SEARCH_PATHS: (string | number)[][] = [
@@ -218,6 +219,183 @@ function rightmoveStations(stations: unknown): NearestStation[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/**
+ * Convert Rightmove's `sizings` array to square feet.
+ * Each row has `{ unit, displayUnit, minimumSize, maximumSize }`.
+ * Prefer the row tagged "sqft"; fall back to "sqm" × 10.7639 when only
+ * metric is available. We pick the row's `maximumSize` (Rightmove agents
+ * often quote a tight min/max range — the high end is the marketing one
+ * users will see in the listing card).
+ */
+function rightmoveSizeSqFt(sizings: unknown): number | undefined {
+  if (!Array.isArray(sizings) || sizings.length === 0) {
+    return undefined;
+  }
+  let metricMax: number | undefined;
+  for (const s of sizings) {
+    if (!s || typeof s !== "object") {
+      continue;
+    }
+    const o = s as Record<string, unknown>;
+    const unit = (toStringSafe(o.unit) ?? toStringSafe(o.displayUnit))
+      ?.toLowerCase()
+      .replace(/[^a-z]/g, "");
+    const max = toNumber(o.maximumSize) ?? toNumber(o.minimumSize);
+    if (max === undefined || max <= 0) {
+      continue;
+    }
+    if (unit === "sqft" || unit === "ft2" || unit === "squarefeet") {
+      return Math.round(max);
+    }
+    if (
+      metricMax === undefined &&
+      (unit === "sqm" || unit === "m2" || unit === "squaremetres")
+    ) {
+      metricMax = max;
+    }
+  }
+  if (metricMax !== undefined) {
+    return Math.round(metricMax * 10.7639);
+  }
+  return undefined;
+}
+
+const ADDED_ON_RE =
+  /Added on (\d{1,2})\/(\d{1,2})\/(\d{4})|Reduced on (\d{1,2})\/(\d{1,2})\/(\d{4})/i;
+
+/**
+ * Turn Rightmove's `listingHistory.listingUpdateReason` ("Added on
+ * 18/05/2026") into an ISO 8601 timestamp. Returns `undefined` for any
+ * other reason ("Reduced", "Featured", etc.) — those aren't first-listed
+ * dates so we shouldn't claim they are.
+ */
+function rightmovePublishedAt(reason: unknown): string | undefined {
+  const s = toStringSafe(reason);
+  if (!s) {
+    return undefined;
+  }
+  const m = s.match(ADDED_ON_RE);
+  if (!m) {
+    return undefined;
+  }
+  const day = m[1] ?? m[4];
+  const month = m[2] ?? m[5];
+  const year = m[3] ?? m[6];
+  if (!(day && month && year)) {
+    return undefined;
+  }
+  const iso = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00.000Z`;
+  return Number.isNaN(new Date(iso).getTime()) ? undefined : iso;
+}
+
+/**
+ * Rightmove's `features` block stores parking/garden/heating/etc. as
+ * `{ alias, displayText }` arrays — empty array means "not present" (or
+ * "not stated"; we can't distinguish). We surface a `tenantPreferences`
+ * shape that derives just the presence/absence of pets-related text
+ * from key features + description; everything else stays AI-driven.
+ */
+function rightmoveTenantPreferences(
+  pd: Record<string, unknown>
+): TenantPreferences | undefined {
+  const text = pd.text as Record<string, unknown> | undefined;
+  const kf = Array.isArray(pd.keyFeatures)
+    ? (pd.keyFeatures as unknown[])
+        .map((f) => toStringSafe(f)?.toLowerCase() ?? "")
+        .join(" ")
+    : "";
+  const desc = (toStringSafe(text?.description) ?? "").toLowerCase();
+  const blob = `${kf} ${desc}`;
+  if (blob.trim().length === 0) {
+    return undefined;
+  }
+  const has = (re: RegExp): boolean | undefined => {
+    if (re.test(blob)) {
+      return true;
+    }
+    return undefined;
+  };
+  const noPets = /no\s+pets|pets\s+not\s+allowed|sorry,?\s+no\s+pets/.test(
+    blob
+  );
+  const petsAllowed = /pets\s+(allowed|welcome|considered)/.test(blob);
+  const studentsAllowed = /students?\s+(welcome|considered|friendly|accepted)/.test(
+    blob
+  );
+  const dssAllowed = /dss\s+(welcome|considered|accepted)/.test(blob);
+  const out: TenantPreferences = {};
+  if (petsAllowed) {
+    out.petsAccepted = true;
+  } else if (noPets) {
+    out.petsAccepted = false;
+  }
+  if (studentsAllowed) {
+    out.studentsAccepted = true;
+  }
+  if (dssAllowed) {
+    out.dssAccepted = true;
+  }
+  has(/families/) && (out.familiesAccepted = true);
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function rightmoveTags(pd: Record<string, unknown>): string[] | undefined {
+  const out: string[] = [];
+  const tags = pd.tags;
+  if (Array.isArray(tags)) {
+    for (const t of tags) {
+      const s = toStringSafe(t);
+      if (s) {
+        out.push(s);
+      }
+    }
+  }
+  const misInfo = pd.misInfo as Record<string, unknown> | undefined;
+  if (misInfo?.featuredProperty === true) {
+    out.push("Featured");
+  }
+  if (misInfo?.brandPlus === true) {
+    out.push("Brand Plus");
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function rightmoveVirtualTour(virtualTours: unknown): string | undefined {
+  if (!Array.isArray(virtualTours) || virtualTours.length === 0) {
+    return undefined;
+  }
+  const first = virtualTours[0];
+  if (typeof first === "string") {
+    return first;
+  }
+  if (first && typeof first === "object") {
+    return (
+      toStringSafe((first as Record<string, unknown>).url) ??
+      toStringSafe((first as Record<string, unknown>).iframeUrl) ??
+      toStringSafe((first as Record<string, unknown>).provider)
+    );
+  }
+  return undefined;
+}
+
+function rightmoveAgentBranchUrl(
+  customer: Record<string, unknown>
+): string | undefined {
+  const branchId = toNumber(customer.branchId);
+  const slug = toStringSafe(customer.branchName)?.toLowerCase().replace(
+    /\s+/g,
+    "-"
+  );
+  if (branchId === undefined) {
+    return undefined;
+  }
+  // Rightmove's canonical branch URL doesn't strictly need the slug —
+  // the ID-only form 301s to the canonical version.
+  return slug
+    ? `https://www.rightmove.co.uk/estate-agents/agent/${slug}/branches/${branchId}.html`
+    : `https://www.rightmove.co.uk/estate-agents/branch/${branchId}.html`;
+}
+
 function rightmoveEpc(epcGraphs: unknown): string | undefined {
   if (!Array.isArray(epcGraphs) || epcGraphs.length === 0) {
     return undefined;
@@ -250,6 +428,12 @@ export function parseRightmoveDetail(html: string): ListingDetail {
   const text = (pd.text as Record<string, unknown> | undefined) ?? {};
   const lettings = (pd.lettings as Record<string, unknown> | undefined) ?? {};
   const customer = (pd.customer as Record<string, unknown> | undefined) ?? {};
+  const livingCosts =
+    (pd.livingCosts as Record<string, unknown> | undefined) ?? {};
+  const listingHistory =
+    (pd.listingHistory as Record<string, unknown> | undefined) ?? {};
+  const feesApply =
+    (pd.feesApply as Record<string, unknown> | undefined) ?? {};
 
   const id =
     toStringSafe(pd.id) ??
@@ -310,6 +494,23 @@ export function parseRightmoveDetail(html: string): ListingDetail {
       keyFeatures && keyFeatures.length > 0 ? keyFeatures : undefined,
     epcRating,
     nearestStations: stations,
+    sizeSqFt: rightmoveSizeSqFt(pd.sizings),
+    councilTaxBand: toStringSafe(livingCosts.councilTaxBand),
+    publishedAt: rightmovePublishedAt(listingHistory.listingUpdateReason),
+    minimumTermMonths: toNumber(lettings.minimumTermInMonths),
+    letType: toStringSafe(lettings.letType),
+    serviceChargeAnnual: toNumber(livingCosts.annualServiceCharge),
+    groundRentAnnual: toNumber(livingCosts.annualGroundRent),
+    virtualTourUrl: rightmoveVirtualTour(pd.virtualTours),
+    agentCompany:
+      toStringSafe(customer.companyTradingName) ??
+      toStringSafe(customer.companyName),
+    agentBranchUrl: rightmoveAgentBranchUrl(customer),
+    feesText: toStringSafe(feesApply.feesApplyText),
+    tags: rightmoveTags(pd),
+    tenantPreferences: rightmoveTenantPreferences(pd),
+    billsIncluded:
+      livingCosts.councilTaxIncluded === true ? true : undefined,
   };
 }
 

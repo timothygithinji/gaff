@@ -113,6 +113,37 @@ describe("parseRightmoveDetail", () => {
     expect(detail.deposit).toBeGreaterThan(0);
   });
 
+  it("captures councilTaxBand letter (A–H)", () => {
+    expect(detail.councilTaxBand).toBeDefined();
+    expect(detail.councilTaxBand).toMatch(/^[A-H]$/);
+  });
+
+  it("captures letType and minimumTermMonths when present", () => {
+    expect(detail.letType).toBeDefined();
+    expect(detail.letType?.length ?? 0).toBeGreaterThan(0);
+    // minimumTermInMonths is `null` in the fixture — undefined is correct.
+    expect(
+      detail.minimumTermMonths === undefined ||
+        typeof detail.minimumTermMonths === "number"
+    ).toBe(true);
+  });
+
+  it("captures publishedAt as ISO timestamp when listingHistory has 'Added on'", () => {
+    expect(detail.publishedAt).toBeDefined();
+    expect(detail.publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("captures agentCompany and agentBranchUrl", () => {
+    expect(detail.agentCompany?.length ?? 0).toBeGreaterThan(0);
+    expect(detail.agentBranchUrl).toMatch(
+      /^https:\/\/www\.rightmove\.co\.uk\/estate-agents\//
+    );
+  });
+
+  it("captures feesText covering tenancy fees", () => {
+    expect(detail.feesText?.length ?? 0).toBeGreaterThan(0);
+  });
+
   it("throws when __PAGE_MODEL is absent", () => {
     expect(() =>
       parseRightmoveDetail("<html><body>nope</body></html>")
