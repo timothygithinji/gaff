@@ -9,8 +9,8 @@
  * `null` numbers render as "—" so the row still aligns.
  */
 import {
-  BedIcon,
   Bathtub02Icon,
+  BedIcon,
   Maximize02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";

@@ -365,6 +365,7 @@ function PhotoStrip({
         {photos.map((p, i) => {
           const active = i === activeIndex;
           return (
+            // biome-ignore lint/nursery/useAriaPropsSupportedByRole: aria-current is a global ARIA attribute and is valid on buttons used as photo-strip items.
             <button
               aria-current={active ? "true" : undefined}
               aria-label={`Show photo ${i + 1}`}

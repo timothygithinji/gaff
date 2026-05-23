@@ -476,8 +476,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       searchId: headline.searchId,
       searchPill,
     };
-  }
-);
+  });
 
 /**
  * Lightweight queue row for the desktop Review screen's "Up next" rail.
@@ -540,8 +539,7 @@ export const getReviewQueue = createServerFn({ method: "GET" })
       activeSearches.map((s) => s.id)
     );
     return { items, remaining };
-  }
-);
+  });
 
 /**
  * Lightweight per-cluster hydration for the queue rail. Pulls listings
@@ -734,8 +732,7 @@ export const getTodayReviewStats = createServerFn({ method: "GET" })
       }
     }
     return stats;
-  }
-);
+  });
 
 /**
  * The current user's most recent swipes today, newest-first, with each
