@@ -56,7 +56,7 @@ function Breadcrumb({
   pauseAction?: ActionState;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between border-bone border-b bg-ground px-10 py-5">
+    <header className="sticky top-0 z-30 flex items-center justify-between border-bone border-b bg-ground/85 px-10 py-5 backdrop-blur">
       <div className="flex items-center gap-3.5">
         <button
           aria-label="Close"

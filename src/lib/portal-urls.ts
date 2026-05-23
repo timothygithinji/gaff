@@ -22,16 +22,25 @@
  *   - Bathrooms: Rightmove has no URL param — filtered parser-side in
  *     `scrape-portal.ts`. Zoopla takes `baths_min` / `baths_max`. OpenRent
  *     only honours `bathrooms_min`.
- *   - Furnished: Rightmove `furnishTypes`, Zoopla `furnished_state`,
- *     OpenRent `furnishing` (capitalised value). Omit param when `null`.
- *   - Must-haves: Rightmove `mustHave` is a comma list of {garden,parking};
- *     pets is not URL-supported and falls to parser-side filtering.
- *     Zoopla has no URL equivalents — all three are parser-side.
- *     OpenRent takes `garden=true` / `parking=true` / `pets=true` each.
+ *   - Furnished: Rightmove `furnishTypes=<value>`, Zoopla
+ *     `furnished_state=<value>`, OpenRent `furnishedType=<1|2>`
+ *     (integer code). Omit param when `null`.
+ *   - Must-haves: Rightmove `mustHave=garden,parking` (comma list; pets
+ *     falls to parser-side). Zoopla `feature=has_garden` repeated, plus
+ *     `pets_allowed=true` as its own param. OpenRent `hasGarden=true`
+ *     / `hasParking=true` / `acceptPets=true` each as its own param.
+ *   - Exclusions: Rightmove `dontShow=student,retirement,houseShare`
+ *     comma list. Zoopla uses path selection (default `/property/` path
+ *     already hides student-accommodation and retirement-homes which
+ *     have their own paths) plus explicit `is_shared_accommodation=false`
+ *     for house-share. OpenRent only supports `acceptStudents=false`;
+ *     it has no retirement-homes or house-share categories at all, so
+ *     those exclusions are no-ops on OR (nothing to hide).
  */
 
 export type Furnished = "furnished" | "unfurnished";
 export type MustHave = "garden" | "parking" | "pets";
+export type Exclusion = "student" | "retirement" | "house_share";
 
 export type PortalSearchParams = {
   outcode: string;
@@ -51,6 +60,25 @@ export type PortalSearchParams = {
   furnished?: Furnished | null;
   /** Subset of {garden, parking, pets}; empty array = no must-have filter. */
   mustHaves?: MustHave[];
+  /**
+   * Listing categories to hide. Per-portal:
+   *   - Rightmove: `dontShow=studentLet,retirement,houseShare`
+   *   - Zoopla: `include_student_accommodation=false` etc per category
+   *   - OpenRent: not URL-supported — parser-side filter
+   */
+  exclusions?: Exclusion[];
+};
+
+/**
+ * Rightmove's `dontShow` vocab. The student-let token is just
+ * `student` (NOT `studentLet` — that one returns an empty page on the
+ * rental search). Tokens cross-checked against a live Rightmove URL
+ * with the corresponding UI checkbox toggled.
+ */
+const RM_EXCLUSION_MAP: Record<Exclusion, string> = {
+  student: "student",
+  retirement: "retirement",
+  house_share: "houseShare",
 };
 
 // -----------------------------------------------------------------------------
@@ -117,6 +145,12 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
   if (typeof params.maxDaysSinceAdded === "number") {
     usp.set("maxDaysSinceAdded", String(params.maxDaysSinceAdded));
   }
+  if (params.exclusions && params.exclusions.length > 0) {
+    usp.set(
+      "dontShow",
+      params.exclusions.map((e) => RM_EXCLUSION_MAP[e]).join(",")
+    );
+  }
   return `https://www.rightmove.co.uk/property-to-rent/find.html?${usp.toString()}`;
 }
 
@@ -126,9 +160,19 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
 
 /**
  * Zoopla's to-rent search URL embeds the outcode as a path segment
- * under `/to-rent/property/london/<outcode>/`. The "london" segment is
- * Zoopla's way of disambiguating outcodes across the country — for now
- * we hardcode it; PR 9.5 + onwards can revisit when we widen geo.
+ * under `/to-rent/<category>/london/<outcode>/`. We always use the
+ * `property` category — student-accommodation and retirement-homes
+ * have their own paths, so "exclude student/retirement" is implicit
+ * via path selection (no URL param needed).
+ *
+ * Must-haves use the `feature=<key>` pattern, REPEATED (not comma-
+ * joined) for multiple features. `pets_allowed=true` is its own
+ * top-level param, not under `feature=`. House-share is filtered via
+ * `is_shared_accommodation=false` (default behaviour already excludes
+ * shared, but we set explicitly when the user toggles "hide").
+ *
+ * The "london" segment is hard-coded — until we add a city resolver,
+ * Zoopla searches outside London will misroute.
  */
 export function zooplaSearchUrl(params: PortalSearchParams): string {
   const outcode = params.outcode.toLowerCase();
@@ -167,8 +211,28 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
   if (params.furnished) {
     usp.set("furnished_state", params.furnished);
   }
-  // Zoopla has no URL params for garden / parking / pets — must-haves
-  // are applied parser-side in `scrape-portal.ts`.
+  if (params.mustHaves) {
+    for (const mh of params.mustHaves) {
+      if (mh === "garden") {
+        usp.append("feature", "has_garden");
+      } else if (mh === "parking") {
+        usp.append("feature", "has_parking_garage");
+      } else if (mh === "pets") {
+        usp.set("pets_allowed", "true");
+      }
+    }
+  }
+  // Exclusions:
+  //   - student / retirement: handled by the `/property/` path —
+  //     they live under `/student-accommodation/` and `/retirement-
+  //     homes/` respectively, so the default path already hides them.
+  //   - house_share: shared accommodation is hidden by default, but
+  //     we set explicitly when the user enables the toggle so the
+  //     intent is visible in the URL and resilient if Zoopla's
+  //     default changes.
+  if (params.exclusions?.includes("house_share")) {
+    usp.set("is_shared_accommodation", "false");
+  }
   return `https://www.zoopla.co.uk/to-rent/property/london/${outcode}/?${usp.toString()}`;
 }
 
@@ -177,13 +241,25 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
 // -----------------------------------------------------------------------------
 
 /**
- * OpenRent's search URL doesn't take property type — the filter is
- * applied client-side via JS we don't run. We pass the constraint along
- * anyway via `prices_*` / `bedrooms_*` and rely on the parser to drop
- * non-matching results downstream.
+ * OpenRent's search URL params (verified against a real OR URL with
+ * the corresponding UI toggles enabled):
  *
- * `isLive=true` is OpenRent's equivalent of "exclude let-agreed" — kept
- * on by default.
+ *   - Furnished: `furnishedType` is an INTEGER code, not a string:
+ *     1 = Furnished, 2 = Unfurnished, 3 = Either (omit for "any").
+ *   - Must-haves: `hasGarden=true`, `hasParking=true`,
+ *     `acceptPets=true`. NB the param names differ from RM/ZP and
+ *     OpenRent's own "acceptPets" is in the same group as the "accept
+ *     X tenant" filters, not its own group.
+ *   - Exclusions: only `student` has a URL handle
+ *     (`acceptStudents=false`). OpenRent has no retirement-homes or
+ *     house-share categories at all, so those exclusions are no-ops
+ *     on OR — nothing to hide.
+ *
+ * `isLive=true` is OpenRent's equivalent of "exclude let-agreed".
+ * `within=1` caps the radius around the term at 1 mile.
+ *
+ * OpenRent's own URL doesn't include `propertyType` — left out here
+ * to keep the URL clean. Property-type filtering on OR is parser-side.
  */
 export function openrentSearchUrl(params: PortalSearchParams): string {
   const usp = new URLSearchParams();
@@ -206,23 +282,26 @@ export function openrentSearchUrl(params: PortalSearchParams): string {
   if (typeof params.minBathrooms === "number") {
     usp.set("bathrooms_min", String(params.minBathrooms));
   }
-  if (params.propertyTypes && params.propertyTypes.length > 0) {
-    // OpenRent's docs are silent; smoke didn't error so we try one value
-    // (first wins). Worst case the OR parser drops anything mis-typed.
-    const firstType = params.propertyTypes[0]?.toLowerCase();
-    if (firstType) {
-      usp.set("propertyType", firstType);
-    }
-  }
   if (params.furnished) {
-    // OpenRent expects capitalised values.
-    const v = params.furnished === "furnished" ? "Furnished" : "Unfurnished";
-    usp.set("furnishing", v);
+    // Numeric code: 1 = Furnished, 2 = Unfurnished.
+    usp.set("furnishedType", params.furnished === "furnished" ? "1" : "2");
   }
   if (params.mustHaves) {
     for (const mh of params.mustHaves) {
-      usp.set(mh, "true");
+      if (mh === "garden") {
+        usp.set("hasGarden", "true");
+      } else if (mh === "parking") {
+        usp.set("hasParking", "true");
+      } else if (mh === "pets") {
+        usp.set("acceptPets", "true");
+      }
     }
+  }
+  if (params.exclusions?.includes("student")) {
+    // `acceptStudents=false` hides listings marketed to students.
+    // `retirement` and `house_share` no-op on OR — those categories
+    // don't exist on the platform.
+    usp.set("acceptStudents", "false");
   }
   return `https://www.openrent.co.uk/properties-to-rent/?${usp.toString()}`;
 }

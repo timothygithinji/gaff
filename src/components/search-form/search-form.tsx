@@ -17,7 +17,7 @@
  * `onChange` — `form.Field` adapts cleanly to that shape so we don't
  * need a `Controller` indirection on the way down.
  */
-import { Cancel01Icon, MapPinIcon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect } from "react";
@@ -35,6 +35,7 @@ import { CadencePicker } from "./cadence-picker";
 import type { CommuteTarget } from "./commute-target-row";
 import { CommuteTargetsList } from "./commute-targets-list";
 import { CostEstimate } from "./cost-estimate";
+import { type ExclusionValue, ExclusionsToggles } from "./exclusions-toggles";
 import { FurnishedPicker, type FurnishedValue } from "./furnished-picker";
 import { type MustHaveValue, MustHavesToggles } from "./must-haves-toggles";
 import { OutcodeChips } from "./outcode-chips";
@@ -57,6 +58,7 @@ export type SearchFormValues = {
   propertyTypes: string[];
   furnished: FurnishedValue;
   mustHaves: MustHaveValue[];
+  exclusions: ExclusionValue[];
   commuteTargets: CommuteTarget[];
   transportTargets: TransportTarget[];
   portals: Portal[];
@@ -67,13 +69,14 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   name: "A flat in North London",
   outcodesInclude: [],
   outcodesExclude: [],
-  minPrice: 2000,
+  minPrice: 0,
   maxPrice: 2800,
   bedsId: "2+",
   bathsId: "1+",
   propertyTypes: [],
   furnished: null,
   mustHaves: [],
+  exclusions: [],
   commuteTargets: [],
   transportTargets: [],
   portals: ["rightmove", "zoopla", "openrent"],
@@ -209,19 +212,7 @@ export function SearchForm({
 
   const postcodesSection = (
     <section className="space-y-4">
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-serif text-2xl text-foreground">Postcodes</h2>
-        <button
-          className="inline-flex items-center gap-1 text-primary text-xs"
-          onClick={() => {
-            /* Map view deferred — PR 8 / 9.5 territory. */
-          }}
-          type="button"
-        >
-          <HugeiconsIcon icon={MapPinIcon} size={12} strokeWidth={2} />
-          Map
-        </button>
-      </div>
+      <h2 className="font-serif text-2xl text-foreground">Postcodes</h2>
       <p className="-mt-3 text-muted-foreground text-sm">
         Include what you want, kill what you don't.
       </p>
@@ -352,6 +343,23 @@ export function SearchForm({
     </section>
   );
 
+  const exclusionsSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Hide</h2>
+      <p className="-mt-1 text-muted-foreground text-sm">
+        Listing types to skip entirely.
+      </p>
+      <form.Field name="exclusions">
+        {(field) => (
+          <ExclusionsToggles
+            onChange={(next) => field.handleChange(next)}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
   const commuteSection = (
     <section className="space-y-3">
       <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
@@ -454,25 +462,29 @@ export function SearchForm({
               + the map affordance). The right column carries price, the
               two location-targeting sections (commute + transport), then
               portals and cadence. */}
-          {/* Two-column field grid. Postcodes own the wider left column
-              (heavy chip rows + the map affordance) alongside the
-              must-haves toggles which read as a similar "shaping" input.
-              The right column carries price, the property-shape filters,
-              the two location-targeting sections, then portals/cadence. */}
-          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[1.4fr_1fr]">
+          {/* Criteria grid — two balanced columns grouped by intent.
+              Left = "where & how you get places" (geography + access).
+              Right = "what the place is" (price + shape + dealbreakers).
+              Portals + cadence are operational concerns and live below
+              the criteria in their own full-width footer grid. */}
+          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
             <div className="space-y-10">
               {postcodesSection}
-              {mustHavesSection}
+              {commuteSection}
+              {transportSection}
             </div>
             <div className="space-y-10">
               {priceSizeSection}
               {propertyTypeSection}
               {furnishedSection}
-              {commuteSection}
-              {transportSection}
-              {portalsSection}
-              {cadenceSection}
+              {mustHavesSection}
+              {exclusionsSection}
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
+            {portalsSection}
+            {cadenceSection}
           </div>
         </div>
 
@@ -522,6 +534,7 @@ export function SearchForm({
         {propertyTypeSection}
         {furnishedSection}
         {mustHavesSection}
+        {exclusionsSection}
         {commuteSection}
         {transportSection}
         {portalsSection}

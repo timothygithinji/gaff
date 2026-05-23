@@ -1,0 +1,1 @@
+ALTER TABLE "searches" ADD COLUMN "exclusions" text[] DEFAULT '{}'::text[] NOT NULL;

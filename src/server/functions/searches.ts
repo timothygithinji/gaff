@@ -144,6 +144,14 @@ const baseSearchSchema = z
      */
     furnished: z.enum(["furnished", "unfurnished"]).nullable().default(null),
     mustHaves: z.array(z.enum(["garden", "parking", "pets"])).default([]),
+    /**
+     * Listing categories to hide from results. Same pattern as
+     * `mustHaves` but inverted in intent. Per-portal mapping in
+     * `src/lib/portal-urls.ts`.
+     */
+    exclusions: z
+      .array(z.enum(["student", "retirement", "house_share"]))
+      .default([]),
     commuteTargets: z.array(commuteTargetSchema).default([]),
     transportTargets: z.array(transportTargetSchema).default([]),
     /** Cron string, or `null` for the explicit "Off" preset. */
@@ -276,6 +284,7 @@ export const createSearch = createServerFn({ method: "POST" })
         propertyTypes: data.propertyTypes,
         furnished: data.furnished ?? null,
         mustHaves: data.mustHaves,
+        exclusions: data.exclusions,
         commuteTargets: data.commuteTargets,
         transportTargets: data.transportTargets,
         active: !isOff,
@@ -346,6 +355,7 @@ export const updateSearch = createServerFn({ method: "POST" })
         propertyTypes: data.propertyTypes,
         furnished: data.furnished ?? null,
         mustHaves: data.mustHaves,
+        exclusions: data.exclusions,
         commuteTargets: data.commuteTargets,
         transportTargets: data.transportTargets,
         active: !isOff,

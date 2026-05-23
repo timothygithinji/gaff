@@ -62,21 +62,22 @@ export function CommuteTargetsList({ value, onChange }: Props) {
       {value.map((target, idx) => (
         // The list is index-keyed (no stable id on the target). Re-
         // ordering would tear state — we only ever append/remove from
-        // the ends, so this is fine in practice.
-        <div className="flex items-start gap-2" key={idx}>
-          <div className="min-w-0 flex-1">
-            <CommuteTargetRow
-              onChange={(next) => replaceAt(idx, next)}
-              value={target.label ? target : null}
-            />
-          </div>
+        // the ends, so this is fine in practice. The remove affordance
+        // is absolutely positioned over the row card (top-right), so
+        // it visually lives "inside" the card without needing to thread
+        // a callback through `CommuteTargetRow`.
+        <div className="relative" key={idx}>
+          <CommuteTargetRow
+            onChange={(next) => replaceAt(idx, next)}
+            value={target.label ? target : null}
+          />
           <button
             aria-label="Remove commute target"
-            className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-card hover:text-foreground"
             onClick={() => removeAt(idx)}
             type="button"
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={2} />
+            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
           </button>
         </div>
       ))}

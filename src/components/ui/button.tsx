@@ -66,14 +66,24 @@ function Button({
   loadingText,
   disabled,
   children,
+  render,
+  nativeButton,
   ...props
 }: ButtonProps) {
+  // Base UI defaults `nativeButton: true`, which warns when a consumer
+  // swaps the underlying element via `render` (e.g. `render={<Link/>}`
+  // for nav buttons). When `render` is provided and the consumer hasn't
+  // explicitly set `nativeButton`, default to `false` so the native
+  // button semantics don't compete with the rendered element.
+  const resolvedNativeButton = nativeButton ?? render === undefined;
   return (
     <ButtonPrimitive
       aria-busy={loading || undefined}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       disabled={disabled || loading}
+      nativeButton={resolvedNativeButton}
+      render={render}
       {...props}
     >
       {loading ? (
