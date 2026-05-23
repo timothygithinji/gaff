@@ -184,36 +184,52 @@ export const acceptInvite = createServerFn({ method: "POST" })
         ),
     });
 
-    if (!existing) {
-      // Drop the auto-created solo household if this user only has one
-      // membership and it's their own auto-created household — we
-      // can't have a user belong to two households cleanly.
-      const myMemberships = await db.query.householdMembers.findMany({
-        where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
-      });
-      for (const m of myMemberships) {
-        if (m.role === "owner") {
-          // Remove the solo household entirely — schema cascades the
-          // membership and any searches the user had there.
-          await db.delete(households).where(eq(households.id, m.householdId));
-        } else {
-          await db
-            .delete(householdMembers)
-            .where(eq(householdMembers.id, m.id));
-        }
-      }
+    // Single-use: always drop the verification row whether or not we
+    // created a new membership. Built first so we can append it to the
+    // batch tail unconditionally.
+    const deleteVerification = db
+      .delete(verification)
+      .where(eq(verification.id, row.id));
 
-      await db.insert(householdMembers).values({
-        id: nanoid(),
-        householdId,
-        userId: session.userId,
-        role: "member",
-      });
+    if (existing) {
+      // Already a member — just burn the token in a single-statement
+      // batch and bail.
+      await db.batch([deleteVerification]);
+      return { householdId };
     }
 
-    // Single-use: drop the verification row whether or not we created
-    // a new membership.
-    await db.delete(verification).where(eq(verification.id, row.id));
+    // Drop the auto-created solo household if this user only has one
+    // membership and it's their own auto-created household — we
+    // can't have a user belong to two households cleanly. Reads stay
+    // outside the batch; only the resulting writes are batched.
+    const myMemberships = await db.query.householdMembers.findMany({
+      where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
+    });
+    const cleanupWrites = myMemberships.map((m) =>
+      m.role === "owner"
+        ? // Remove the solo household entirely — schema cascades the
+          // membership and any searches the user had there.
+          db
+            .delete(households)
+            .where(eq(households.id, m.householdId))
+        : db.delete(householdMembers).where(eq(householdMembers.id, m.id))
+    );
+
+    const insertMembership = db.insert(householdMembers).values({
+      id: nanoid(),
+      householdId,
+      userId: session.userId,
+      role: "member",
+    });
+
+    // db.batch expects a non-empty tuple; the head is the first cleanup
+    // write if present, otherwise the membership insert.
+    const head = cleanupWrites[0] ?? insertMembership;
+    const tail =
+      cleanupWrites.length > 0
+        ? [...cleanupWrites.slice(1), insertMembership, deleteVerification]
+        : [deleteVerification];
+    await db.batch([head, ...tail]);
 
     return { householdId };
   });
