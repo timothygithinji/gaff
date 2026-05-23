@@ -15,15 +15,11 @@ import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
-import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
 import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as ListingsClusterIdRouteImport } from './routes/listings/$clusterId'
 import { Route as InviteTokenRouteImport } from './routes/invite/$token'
-import { Route as AdminSpendRouteImport } from './routes/admin/spend'
-import { Route as AdminSchedulesRouteImport } from './routes/admin/schedules'
-import { Route as AdminRunsRouteImport } from './routes/admin/runs'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -55,11 +51,6 @@ const SearchesIndexRoute = SearchesIndexRouteImport.update({
   path: '/searches/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsHouseholdRoute = SettingsHouseholdRouteImport.update({
   id: '/settings/household',
   path: '/settings/household',
@@ -85,21 +76,6 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminSpendRoute = AdminSpendRouteImport.update({
-  id: '/admin/spend',
-  path: '/admin/spend',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminSchedulesRoute = AdminSchedulesRouteImport.update({
-  id: '/admin/schedules',
-  path: '/admin/schedules',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRunsRoute = AdminRunsRouteImport.update({
-  id: '/admin/runs',
-  path: '/admin/runs',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -107,15 +83,11 @@ export interface FileRoutesByFullPath {
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
   '/signup': typeof SignupRoute
-  '/admin/runs': typeof AdminRunsRoute
-  '/admin/schedules': typeof AdminSchedulesRoute
-  '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
-  '/admin/': typeof AdminIndexRoute
   '/searches/': typeof SearchesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -124,15 +96,11 @@ export interface FileRoutesByTo {
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
   '/signup': typeof SignupRoute
-  '/admin/runs': typeof AdminRunsRoute
-  '/admin/schedules': typeof AdminSchedulesRoute
-  '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
-  '/admin': typeof AdminIndexRoute
   '/searches': typeof SearchesIndexRoute
 }
 export interface FileRoutesById {
@@ -142,15 +110,11 @@ export interface FileRoutesById {
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
   '/signup': typeof SignupRoute
-  '/admin/runs': typeof AdminRunsRoute
-  '/admin/schedules': typeof AdminSchedulesRoute
-  '/admin/spend': typeof AdminSpendRoute
   '/invite/$token': typeof InviteTokenRoute
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/household': typeof SettingsHouseholdRoute
-  '/admin/': typeof AdminIndexRoute
   '/searches/': typeof SearchesIndexRoute
 }
 export interface FileRouteTypes {
@@ -161,15 +125,11 @@ export interface FileRouteTypes {
     | '/matches'
     | '/shortlist'
     | '/signup'
-    | '/admin/runs'
-    | '/admin/schedules'
-    | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
-    | '/admin/'
     | '/searches/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -178,15 +138,11 @@ export interface FileRouteTypes {
     | '/matches'
     | '/shortlist'
     | '/signup'
-    | '/admin/runs'
-    | '/admin/schedules'
-    | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
-    | '/admin'
     | '/searches'
   id:
     | '__root__'
@@ -195,15 +151,11 @@ export interface FileRouteTypes {
     | '/matches'
     | '/shortlist'
     | '/signup'
-    | '/admin/runs'
-    | '/admin/schedules'
-    | '/admin/spend'
     | '/invite/$token'
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
     | '/settings/household'
-    | '/admin/'
     | '/searches/'
   fileRoutesById: FileRoutesById
 }
@@ -213,15 +165,11 @@ export interface RootRouteChildren {
   MatchesRoute: typeof MatchesRoute
   ShortlistRoute: typeof ShortlistRoute
   SignupRoute: typeof SignupRoute
-  AdminRunsRoute: typeof AdminRunsRoute
-  AdminSchedulesRoute: typeof AdminSchedulesRoute
-  AdminSpendRoute: typeof AdminSpendRoute
   InviteTokenRoute: typeof InviteTokenRoute
   ListingsClusterIdRoute: typeof ListingsClusterIdRoute
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
-  AdminIndexRoute: typeof AdminIndexRoute
   SearchesIndexRoute: typeof SearchesIndexRoute
 }
 
@@ -269,13 +217,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SearchesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/': {
-      id: '/admin/'
-      path: '/admin'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings/household': {
       id: '/settings/household'
       path: '/settings/household'
@@ -311,27 +252,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/spend': {
-      id: '/admin/spend'
-      path: '/admin/spend'
-      fullPath: '/admin/spend'
-      preLoaderRoute: typeof AdminSpendRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/schedules': {
-      id: '/admin/schedules'
-      path: '/admin/schedules'
-      fullPath: '/admin/schedules'
-      preLoaderRoute: typeof AdminSchedulesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/runs': {
-      id: '/admin/runs'
-      path: '/admin/runs'
-      fullPath: '/admin/runs'
-      preLoaderRoute: typeof AdminRunsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -341,15 +261,11 @@ const rootRouteChildren: RootRouteChildren = {
   MatchesRoute: MatchesRoute,
   ShortlistRoute: ShortlistRoute,
   SignupRoute: SignupRoute,
-  AdminRunsRoute: AdminRunsRoute,
-  AdminSchedulesRoute: AdminSchedulesRoute,
-  AdminSpendRoute: AdminSpendRoute,
   InviteTokenRoute: InviteTokenRoute,
   ListingsClusterIdRoute: ListingsClusterIdRoute,
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
-  AdminIndexRoute: AdminIndexRoute,
   SearchesIndexRoute: SearchesIndexRoute,
 }
 export const routeTree = rootRouteImport

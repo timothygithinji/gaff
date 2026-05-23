@@ -523,9 +523,8 @@ export type SearchesPortfolio = {
 };
 
 /**
- * Hardcoded monthly budget cap, mirrors `admin.ts`'s `MONTHLY_BUDGET_USD`.
- * Lives here separately so this file stays standalone — when we move
- * the cap to a settings table, both sites collapse onto that read.
+ * Hardcoded monthly budget cap — move to a settings table when the
+ * cap needs to be configurable per household.
  */
 const PORTFOLIO_BUDGET_USD = 15.0;
 
