@@ -3,7 +3,7 @@ import {
   formatHotkeySequence,
   getHotkeyManager,
   getSequenceManager,
-} from "@tanstack/hotkeys";
+} from "@tanstack/react-hotkeys";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useAppHotkeys } from "../hooks/use-app-hotkeys";
 import {
