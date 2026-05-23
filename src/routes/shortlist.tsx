@@ -48,6 +48,7 @@ const myQueryOptions = {
 };
 
 export const Route = createFileRoute("/shortlist")({
+  head: () => ({ meta: [{ title: "Shortlist · Gaff" }] }),
   beforeLoad: ({ context }) => {
     requireSession(context as { currentUserId: string | null }, "/shortlist");
   },

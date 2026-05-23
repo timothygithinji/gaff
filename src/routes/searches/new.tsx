@@ -30,6 +30,7 @@ import {
 } from "../../server/functions/searches";
 
 export const Route = createFileRoute("/searches/new")({
+  head: () => ({ meta: [{ title: "New search · Gaff" }] }),
   beforeLoad: ({ context }) => {
     requireSession(
       context as { currentUserId: string | null },
