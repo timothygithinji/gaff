@@ -215,6 +215,28 @@ export const listings = pgTable(
     lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
     availableFrom: timestamp("available_from"),
     status: listingStatusEnum("status").default("active").notNull(),
+    /**
+     * Floor area in square feet, when the portal exposes it. Rightmove's
+     * `sizings` array and Zoopla's `floorArea` both feed this; OpenRent
+     * doesn't publish it. Stored as int (no fractional sq-ft) — closer
+     * to how listing sites round the value than a numeric.
+     */
+    sizeSqFt: integer("size_sq_ft"),
+    /** Council tax band letter (typically A–H). */
+    councilTaxBand: text("council_tax_band"),
+    /**
+     * Portal-reported "first listed" date. Useful as a freshness signal
+     * that doesn't drift the way `first_seen_at` does when the row is
+     * re-clustered or backfilled.
+     */
+    publishedAt: timestamp("published_at"),
+    /**
+     * Closed tenant-acceptance flag for pets. `null` = portal didn't
+     * say; `true`/`false` = explicit. Only `pets` is promoted to a
+     * column today because that's the filter users ask for most often;
+     * the rest of `tenantPreferences` lives in raw_json.
+     */
+    petsAccepted: boolean("pets_accepted"),
     rawJson: jsonb("raw_json").notNull(),
   },
   (t) => [
@@ -396,6 +418,15 @@ export const scrapeRuns = pgTable("scrape_runs", {
   newListings: integer("new_listings").default(0).notNull(),
   errorMessage: text("error_message"),
   costUsd: numeric("cost_usd"),
+  /**
+   * R2 object key pointing at the gzipped raw HTML this run pulled
+   * from Zyte (`{portal}/{scope}/{run_id}.html.gz`). Lets future
+   * parser improvements backfill new fields from the archived bytes
+   * instead of re-spending Zyte. `null` when R2 creds aren't staged
+   * or the upload errored (the run still finalises — raw_key is
+   * best-effort).
+   */
+  rawKey: text("raw_key"),
 });
 
 // Per-user UI state. Today's only field is `lastSeenMatches` — the
