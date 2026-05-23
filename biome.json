@@ -9,7 +9,8 @@
       ".wrangler",
       "src/routeTree.gen.ts",
       "src/lib/api-clients/epc/generated",
-      "src/lib/api-clients/postcodes-io/generated"
+      "src/lib/api-clients/postcodes-io/generated",
+      ".fallowrc.json"
     ]
   },
   "javascript": {
