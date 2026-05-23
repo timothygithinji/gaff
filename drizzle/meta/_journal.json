@@ -57,6 +57,13 @@
       "when": 1779561158022,
       "tag": "0007_many_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779577643631,
+      "tag": "0008_small_devos",
+      "breakpoints": true
     }
   ]
 }
