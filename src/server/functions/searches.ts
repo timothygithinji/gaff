@@ -138,6 +138,12 @@ const baseSearchSchema = z
     minPrice: z.number().int().min(0).max(20_000),
     maxPrice: z.number().int().min(0).max(20_000),
     propertyTypes: z.array(z.string().trim().min(1)).default([]),
+    /**
+     * `null` = no furnishing filter. Closed set is enforced here so we
+     * never write a bogus token even if the form drifts.
+     */
+    furnished: z.enum(["furnished", "unfurnished"]).nullable().default(null),
+    mustHaves: z.array(z.enum(["garden", "parking", "pets"])).default([]),
     commuteTargets: z.array(commuteTargetSchema).default([]),
     transportTargets: z.array(transportTargetSchema).default([]),
     /** Cron string, or `null` for the explicit "Off" preset. */
@@ -160,6 +166,17 @@ const baseSearchSchema = z
         code: "custom",
         message: "Min beds must be ≤ max beds",
         path: ["minBedrooms"],
+      });
+    }
+    if (
+      val.minBathrooms !== null &&
+      val.maxBathrooms !== null &&
+      val.minBathrooms > val.maxBathrooms
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Min baths must be ≤ max baths",
+        path: ["minBathrooms"],
       });
     }
   });
@@ -252,9 +269,13 @@ export const createSearch = createServerFn({ method: "POST" })
         excludeOutcodes,
         minBedrooms: data.minBedrooms ?? null,
         maxBedrooms: data.maxBedrooms ?? null,
+        minBathrooms: data.minBathrooms ?? null,
+        maxBathrooms: data.maxBathrooms ?? null,
         minPrice: data.minPrice,
         maxPrice: data.maxPrice,
         propertyTypes: data.propertyTypes,
+        furnished: data.furnished ?? null,
+        mustHaves: data.mustHaves,
         commuteTargets: data.commuteTargets,
         transportTargets: data.transportTargets,
         active: !isOff,
@@ -318,9 +339,13 @@ export const updateSearch = createServerFn({ method: "POST" })
         excludeOutcodes,
         minBedrooms: data.minBedrooms ?? null,
         maxBedrooms: data.maxBedrooms ?? null,
+        minBathrooms: data.minBathrooms ?? null,
+        maxBathrooms: data.maxBathrooms ?? null,
         minPrice: data.minPrice,
         maxPrice: data.maxPrice,
         propertyTypes: data.propertyTypes,
+        furnished: data.furnished ?? null,
+        mustHaves: data.mustHaves,
         commuteTargets: data.commuteTargets,
         transportTargets: data.transportTargets,
         active: !isOff,
