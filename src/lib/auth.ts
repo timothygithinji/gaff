@@ -83,5 +83,3 @@ export function createAuth(env: AuthEnv) {
     ],
   });
 }
-
-export type Auth = ReturnType<typeof createAuth>;

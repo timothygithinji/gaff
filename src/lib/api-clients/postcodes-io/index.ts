@@ -6,5 +6,4 @@
  */
 
 export { createPostcodesClient } from "./client";
-export type { CreatePostcodesClientOptions } from "./client";
 export * from "./generated";

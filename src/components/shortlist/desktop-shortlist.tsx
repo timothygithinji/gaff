@@ -28,8 +28,6 @@ import { AdminSidebar } from "../layout/admin-sidebar";
 
 /* ---------------- Types ---------------- */
 
-type Member = { userId: string; name: string; emailInitial: string };
-
 type Props = {
   // Header
   partnerLabel: string | null;
@@ -444,6 +442,3 @@ function locationLine(
   }
   return parts.join(" · ");
 }
-
-// Re-export for type-narrowing in callers that want to construct lists.
-export type { Member };
