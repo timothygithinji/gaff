@@ -5,7 +5,10 @@ import { useIsMobile } from "./use-mobile";
 
 // Adds a `category` field to every registration's `meta`. The help dialog
 // reads it to group shortcuts under headings without us having to maintain
-// a parallel list of what's registered where.
+// a parallel list of what's registered where. Augments the underlying
+// `@tanstack/hotkeys` core module — `react-hotkeys` re-exports its types
+// but the `declare module` target has to be the package that owns the
+// interface.
 declare module "@tanstack/hotkeys" {
   interface HotkeyMeta {
     /** Group label used by the help dialog (e.g. "Navigation", "Theme"). */
