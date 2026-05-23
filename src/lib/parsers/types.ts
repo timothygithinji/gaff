@@ -34,6 +34,20 @@ export interface ListingSummary {
   lng?: number;
 }
 
+/**
+ * Tenant-acceptance flags. All optional — `undefined` means the portal
+ * didn't say (treat as "unknown", not "no"). OpenRent surfaces these
+ * directly via labelled fields; Rightmove/Zoopla mostly leave them to
+ * the description + AI enrichment.
+ */
+export interface TenantPreferences {
+  studentsAccepted?: boolean;
+  familiesAccepted?: boolean;
+  petsAccepted?: boolean;
+  smokersAccepted?: boolean;
+  dssAccepted?: boolean;
+}
+
 export interface ListingDetail extends ListingSummary {
   description?: string;
   availableFrom?: string;
@@ -46,4 +60,37 @@ export interface ListingDetail extends ListingSummary {
   keyFeatures?: string[];
   epcRating?: string;
   nearestStations?: NearestStation[];
+
+  // ---- gap-fill fields (PR: parser expansion) -----------------------------
+
+  /** Floor area in square feet. Rightmove `sizings` / Zoopla `floorArea`. */
+  sizeSqFt?: number;
+  /** Council tax band letter (A–H typically). Rightmove `livingCosts.councilTaxBand`. */
+  councilTaxBand?: string;
+  /** When the listing was first published on the portal. ISO 8601 string. */
+  publishedAt?: string;
+  /** Minimum tenancy length in months. */
+  minimumTermMonths?: number;
+  /** Free-text let type — "Long term", "Short term", "Holiday", etc. */
+  letType?: string;
+  /** Service charge per year, in GBP. */
+  serviceChargeAnnual?: number;
+  /** Ground rent per year, in GBP. */
+  groundRentAnnual?: number;
+  /** Embedded video URLs (Zoopla `embeddedContent.videos`). */
+  videos?: string[];
+  /** First virtual-tour URL when available. */
+  virtualTourUrl?: string;
+  /** Agent's parent company (Rightmove `customer.companyName`). */
+  agentCompany?: string;
+  /** Absolute URL to the agent's branch page on the portal. */
+  agentBranchUrl?: string;
+  /** Tenancy fees / disclosures text — required by UK letting rules. */
+  feesText?: string;
+  /** Free-form badge labels — "Just added", "New build", etc. */
+  tags?: string[];
+  /** Closed-set tenant-acceptance booleans (see TenantPreferences). */
+  tenantPreferences?: TenantPreferences;
+  /** True when the listed rent includes all bills. */
+  billsIncluded?: boolean;
 }

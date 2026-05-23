@@ -93,6 +93,28 @@ describe("parseOpenrentDetail", () => {
     }
   });
 
+  it("captures tenantPreferences from the labelled fact table", () => {
+    expect(detail.tenantPreferences).toBeDefined();
+    // The 2026-05 fixture has Pets Allowed (check) and Smokers Not Allowed (x).
+    expect(detail.tenantPreferences?.petsAccepted).toBe(true);
+    expect(detail.tenantPreferences?.smokersAccepted).toBe(false);
+    expect(detail.tenantPreferences?.familiesAccepted).toBe(true);
+    expect(detail.tenantPreferences?.studentsAccepted).toBe(true);
+    // DSS/LHA Covers Rent is a cross in the fixture.
+    expect(detail.tenantPreferences?.dssAccepted).toBe(false);
+  });
+
+  it("captures minimumTermMonths from 'Preferred Minimum Tenancy'", () => {
+    // The fixture shows "6 Months".
+    expect(detail.minimumTermMonths).toBe(6);
+  });
+
+  it("uses the twitter:image hero photo when og:image is the placeholder", () => {
+    // First photo should be the high-res listing CDN image, not the
+    // OpenRent share-graphic logo.
+    expect(detail.photos[0]).toMatch(/imagescdn\.openrent\.co\.uk\//);
+  });
+
   it("throws on an unrelated page", () => {
     expect(() =>
       parseOpenrentDetail("<html><body>nope</body></html>")

@@ -95,6 +95,32 @@ describe("parseZooplaDetail", () => {
     expect(detail.agentPhone?.length ?? 0).toBeGreaterThan(0);
   });
 
+  it("captures publishedAt as a valid ISO timestamp", () => {
+    expect(detail.publishedAt).toBeDefined();
+    expect(detail.publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(Number.isNaN(new Date(detail.publishedAt ?? "").getTime())).toBe(
+      false
+    );
+  });
+
+  it("captures sizeSqFt when floorArea/ingested data is on the page", () => {
+    // The 2026-05 detail fixture has floorArea.value 5120 sq ft.
+    expect(detail.sizeSqFt).toBeGreaterThan(0);
+  });
+
+  it("captures agentBranchUrl as an absolute zoopla URL", () => {
+    if (detail.agentBranchUrl) {
+      expect(detail.agentBranchUrl).toMatch(
+        /^https:\/\/www\.zoopla\.co\.uk\/find-agents\//
+      );
+    }
+  });
+
+  it("captures tags including the statusSummary label", () => {
+    expect(Array.isArray(detail.tags)).toBe(true);
+    expect((detail.tags ?? []).length).toBeGreaterThan(0);
+  });
+
   it("throws when no RSC flight chunks are present", () => {
     expect(() =>
       parseZooplaDetail("<html><body>nope</body></html>")
