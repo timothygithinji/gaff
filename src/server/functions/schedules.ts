@@ -8,13 +8,17 @@
  * them locally so the dashboard and the search edit screen all stay
  * in sync.
  *
- * `findScheduleByExternalId` lists+filters client-side because the
- * Trigger SDK has no `findOne(externalId)` endpoint as of v4.
+ * `findScheduleByExternalId` lives in `src/lib/schedule-lookup.ts` so
+ * the Trigger worker can import it without pulling `@tanstack/react-start`
+ * into the worker bundle. We re-export it here so existing web-side
+ * callers keep working without import-path churn.
  */
 import { createServerFn } from "@tanstack/react-start";
 import type { ScheduleObject } from "@trigger.dev/core/v3";
 import { schedules } from "@trigger.dev/sdk";
 import { z } from "zod";
+
+export { findScheduleByExternalId } from "../../lib/schedule-lookup";
 
 const cronPatternSchema = z.string().trim().min(1, "cron expression required");
 const timezoneSchema = z.string().trim().min(1).max(64).optional();
@@ -79,17 +83,3 @@ export const updateSchedule = createServerFn({ method: "POST" })
 export const deactivateSchedule = createServerFn({ method: "POST" })
   .inputValidator(idSchema)
   .handler(({ data }): Promise<ScheduleRow> => schedules.deactivate(data.id));
-
-/**
- * Look up a schedule by the `externalId` we attached at create time
- * (i.e. the `searches.id`). The Trigger SDK has no `findOne` endpoint
- * as of v4 so we list + filter client-side. `perPage: 100` matches the
- * cap on `listSchedules`; if a household ever exceeds that we'd need
- * to walk pages.
- */
-export async function findScheduleByExternalId(
-  externalId: string
-): Promise<ScheduleRow | undefined> {
-  const page = await schedules.list({ perPage: 100 });
-  return page.data.find((row) => row.externalId === externalId);
-}

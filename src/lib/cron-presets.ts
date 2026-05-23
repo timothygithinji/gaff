@@ -21,6 +21,14 @@ export type CadencePreset = {
   cron: string | null;
   /** How many scrapes per day this preset triggers — drives cost estimate. */
   scrapesPerDay: number;
+  /**
+   * Cap on listing age (days) to request from portals that support it
+   * (currently only Rightmove via `maxDaysSinceAdded`). Picked from the
+   * cadence so faster schedules pull tighter windows — avoids re-ingesting
+   * weeks-old listings on every scrape. `undefined` means "don't pass the
+   * param" (the right behaviour for "off", since off shouldn't run anyway).
+   */
+  maxDaysSinceAdded?: number;
 };
 
 const DEFAULT_PRESET: CadencePreset = {
@@ -28,15 +36,46 @@ const DEFAULT_PRESET: CadencePreset = {
   label: "Daily",
   cron: "0 7 * * *",
   scrapesPerDay: 1,
+  maxDaysSinceAdded: 7,
 };
 
 export const CADENCE_PRESETS: CadencePreset[] = [
   DEFAULT_PRESET,
-  { id: "12h", label: "Every 12h", cron: "0 7,19 * * *", scrapesPerDay: 2 },
-  { id: "6h", label: "Every 6h", cron: "0 */6 * * *", scrapesPerDay: 4 },
-  { id: "4h", label: "Every 4h", cron: "0 */4 * * *", scrapesPerDay: 6 },
-  { id: "2h", label: "Every 2h", cron: "0 */2 * * *", scrapesPerDay: 12 },
-  { id: "hourly", label: "Hourly", cron: "0 * * * *", scrapesPerDay: 24 },
+  {
+    id: "12h",
+    label: "Every 12h",
+    cron: "0 7,19 * * *",
+    scrapesPerDay: 2,
+    maxDaysSinceAdded: 7,
+  },
+  {
+    id: "6h",
+    label: "Every 6h",
+    cron: "0 */6 * * *",
+    scrapesPerDay: 4,
+    maxDaysSinceAdded: 3,
+  },
+  {
+    id: "4h",
+    label: "Every 4h",
+    cron: "0 */4 * * *",
+    scrapesPerDay: 6,
+    maxDaysSinceAdded: 3,
+  },
+  {
+    id: "2h",
+    label: "Every 2h",
+    cron: "0 */2 * * *",
+    scrapesPerDay: 12,
+    maxDaysSinceAdded: 3,
+  },
+  {
+    id: "hourly",
+    label: "Hourly",
+    cron: "0 * * * *",
+    scrapesPerDay: 24,
+    maxDaysSinceAdded: 1,
+  },
   { id: "off", label: "Off", cron: null, scrapesPerDay: 0 },
 ];
 
