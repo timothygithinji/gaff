@@ -4,7 +4,7 @@ import {
   getHotkeyManager,
   getSequenceManager,
 } from "@tanstack/react-hotkeys";
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { useAppHotkeys } from "../hooks/use-app-hotkeys";
 import {
   Dialog,
@@ -35,7 +35,6 @@ const TOKEN_SEPARATOR = /\s+/;
 export function HotkeyHelp() {
   const [open, setOpen] = useState(false);
   useAppHotkeys(() => setOpen(true));
-  const groups = useShortcutGroups();
 
   return (
     <Dialog onOpenChange={setOpen} open={open}>
@@ -46,28 +45,56 @@ export function HotkeyHelp() {
         <DialogDescription>
           Press a sequence anywhere in the app — except while typing in a field.
         </DialogDescription>
-        <div className="mt-3 space-y-4">
-          {groups.map((group) => (
-            <section key={group.category}>
-              <h3 className="mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                {group.category}
-              </h3>
-              <ul className="divide-y divide-border">
-                {group.rows.map((row) => (
-                  <li
-                    key={row.id}
-                    className="flex items-center justify-between py-2 text-sm"
-                  >
-                    <span className="text-foreground">{row.description}</span>
-                    <ShortcutKeys tokens={row.tokens} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+        {open ? <ShortcutList /> : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Reads the singleton hotkey + sequence registrations once on mount and
+ * renders them grouped by `meta.category`. We snapshot rather than
+ * subscribing because the library's `useHotkey` calls `setOptions` on
+ * every render of its caller, and `setOptions` always mutates the
+ * registration store — a live subscription here would re-render this
+ * component on every parent re-render, which in turn would cascade
+ * back into more `setOptions` calls and lock the main thread.
+ *
+ * Only mounted while the dialog is open, so the snapshot is taken at
+ * the moment the user asks to see the shortcut list and discarded when
+ * they close the dialog.
+ */
+function ShortcutList() {
+  const groups = useMemo(
+    () =>
+      groupShortcuts({
+        hotkeys: getHotkeyManager().registrations.state,
+        sequences: getSequenceManager().registrations.state,
+      }),
+    []
+  );
+
+  return (
+    <div className="mt-3 space-y-4">
+      {groups.map((group) => (
+        <section key={group.category}>
+          <h3 className="mb-1 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            {group.category}
+          </h3>
+          <ul className="divide-y divide-border">
+            {group.rows.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center justify-between py-2 text-sm"
+              >
+                <span className="text-foreground">{row.description}</span>
+                <ShortcutKeys tokens={row.tokens} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -83,55 +110,6 @@ function ShortcutKeys({ tokens }: { tokens: string[] }) {
     </KbdGroup>
   );
 }
-
-/**
- * Read every registration from the singleton hotkey + sequence managers
- * and return them grouped by `meta.category`. Re-renders when registrations
- * appear, disappear, or change `enabled` (the stores update on every mount/
- * unmount).
- *
- * Registrations without a `meta.description` are ignored — that's the
- * library's convention for "internal" registrations we don't want surfaced.
- */
-function useShortcutGroups(): ShortcutGroup[] {
-  const hotkeyStore = getHotkeyManager().registrations;
-  const sequenceStore = getSequenceManager().registrations;
-
-  const subscribe = useCallback(
-    (cb: () => void) => {
-      const a = hotkeyStore.subscribe(cb);
-      const b = sequenceStore.subscribe(cb);
-      return () => {
-        a.unsubscribe();
-        b.unsubscribe();
-      };
-    },
-    [hotkeyStore, sequenceStore]
-  );
-  const getSnapshot = useCallback(
-    // Stable identity per store version — useSyncExternalStore expects the
-    // snapshot to compare strictly equal when nothing has changed, and the
-    // store guarantees that the Map identity changes on every update.
-    () => ({
-      hotkeys: hotkeyStore.state,
-      sequences: sequenceStore.state,
-    }),
-    [hotkeyStore, sequenceStore]
-  );
-  const getServerSnapshot = useCallback(() => EMPTY_SNAPSHOT, []);
-  const snapshot = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    getServerSnapshot
-  );
-
-  return useMemo(() => groupShortcuts(snapshot), [snapshot]);
-}
-
-const EMPTY_SNAPSHOT = {
-  hotkeys: new Map(),
-  sequences: new Map(),
-};
 
 function groupShortcuts(snapshot: {
   hotkeys: Map<
