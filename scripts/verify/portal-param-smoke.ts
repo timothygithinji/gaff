@@ -86,6 +86,18 @@ const CASES: TestCase[] = [
     url: `${RM_BASE}&maxDaysSinceAdded=7`,
     restrictive: true,
   },
+  {
+    portal: "rm",
+    label: "+ dontShow=student",
+    url: `${RM_BASE}&dontShow=student`,
+    restrictive: true,
+  },
+  {
+    portal: "rm",
+    label: "+ dontShow=student,retirement,houseShare (combined)",
+    url: `${RM_BASE}&dontShow=student%2Cretirement%2ChouseShare`,
+    restrictive: true,
+  },
 
   // ---- Zoopla ----
   { portal: "zp", label: "baseline", url: ZP_BASE, restrictive: false },
@@ -113,6 +125,30 @@ const CASES: TestCase[] = [
     url: `${ZP_BASE}&available_from=2026-06-01`,
     restrictive: true,
   },
+  {
+    portal: "zp",
+    label: "+ feature=has_garden",
+    url: `${ZP_BASE}&feature=has_garden`,
+    restrictive: true,
+  },
+  {
+    portal: "zp",
+    label: "+ feature=has_parking_garage",
+    url: `${ZP_BASE}&feature=has_parking_garage`,
+    restrictive: true,
+  },
+  {
+    portal: "zp",
+    label: "+ pets_allowed=true",
+    url: `${ZP_BASE}&pets_allowed=true`,
+    restrictive: true,
+  },
+  {
+    portal: "zp",
+    label: "+ is_shared_accommodation=false",
+    url: `${ZP_BASE}&is_shared_accommodation=false`,
+    restrictive: true,
+  },
 
   // ---- OpenRent ----
   { portal: "or", label: "baseline", url: OR_BASE, restrictive: false },
@@ -124,32 +160,32 @@ const CASES: TestCase[] = [
   },
   {
     portal: "or",
-    label: "+ furnishing=Furnished",
-    url: `${OR_BASE}&furnishing=Furnished`,
+    label: "+ furnishedType=1 (Furnished)",
+    url: `${OR_BASE}&furnishedType=1`,
     restrictive: true,
   },
   {
     portal: "or",
-    label: "+ pets=true",
-    url: `${OR_BASE}&pets=true`,
+    label: "+ hasGarden=true",
+    url: `${OR_BASE}&hasGarden=true`,
     restrictive: true,
   },
   {
     portal: "or",
-    label: "+ parking=true",
-    url: `${OR_BASE}&parking=true`,
+    label: "+ hasParking=true",
+    url: `${OR_BASE}&hasParking=true`,
     restrictive: true,
   },
   {
     portal: "or",
-    label: "+ garden=true",
-    url: `${OR_BASE}&garden=true`,
+    label: "+ acceptPets=true",
+    url: `${OR_BASE}&acceptPets=true`,
     restrictive: true,
   },
   {
     portal: "or",
-    label: "+ propertyType=flat",
-    url: `${OR_BASE}&propertyType=flat`,
+    label: "+ acceptStudents=false",
+    url: `${OR_BASE}&acceptStudents=false`,
     restrictive: true,
   },
 ];

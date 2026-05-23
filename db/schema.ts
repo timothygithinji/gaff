@@ -124,6 +124,15 @@ export const searches = pgTable(
      * adding a new value later is a no-migration change.
      */
     mustHaves: text("must_haves").array().notNull().default(sql`'{}'::text[]`),
+    /**
+     * Listing categories to hide. Closed set is enforced in Zod
+     * (`["student", "retirement", "house_share"]`). Per-portal mapping
+     * lives in `src/lib/portal-urls.ts`:
+     *   - Rightmove: `dontShow=studentLet,retirement,houseShare` (comma list)
+     *   - Zoopla: `include_*=false` per category
+     *   - OpenRent: no URL support — parser-side filter (best-effort)
+     */
+    exclusions: text("exclusions").array().notNull().default(sql`'{}'::text[]`),
     commuteTargets: jsonb("commute_targets")
       .$type<
         Array<{

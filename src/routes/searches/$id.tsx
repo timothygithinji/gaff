@@ -114,6 +114,7 @@ function EditSearchPage() {
           propertyTypes: values.propertyTypes,
           furnished: values.furnished,
           mustHaves: values.mustHaves,
+          exclusions: values.exclusions,
           commuteTargets: values.commuteTargets,
           transportTargets: values.transportTargets,
           cron: cadence.cron,
@@ -281,6 +282,7 @@ function buildPatch(
     propertyTypes: values.propertyTypes,
     furnished: values.furnished,
     mustHaves: values.mustHaves,
+    exclusions: values.exclusions,
     commuteTargets: values.commuteTargets,
     transportTargets: values.transportTargets,
     active: cadence.cron !== null,
@@ -317,6 +319,7 @@ function toFormValues(
     propertyTypes: search.propertyTypes,
     furnished: search.furnished as SearchFormValues["furnished"],
     mustHaves: search.mustHaves as SearchFormValues["mustHaves"],
+    exclusions: search.exclusions as SearchFormValues["exclusions"],
     commuteTargets: search.commuteTargets,
     transportTargets: search.transportTargets,
     portals: search.portals as SearchFormValues["portals"],
@@ -334,7 +337,7 @@ function pickBedsId(min: number): string {
 
 /**
  * Maps stored (min, max) bathrooms back to one of the BATH_OPTIONS ids
- * (1+, 2, 3+). The "2" pill is the only exact match; anything else
+ * (1+, 2, 3+, 4+). The "2" pill is the only exact match; anything else
  * snaps to the surrounding "+" bucket. `null` min defaults to "1+".
  */
 function pickBathsId(min: number | null, max: number | null): string {
@@ -344,7 +347,10 @@ function pickBathsId(min: number | null, max: number | null): string {
   if (min === 2 && max === 2) {
     return "2";
   }
-  if (min >= 3) {
+  if (min >= 4) {
+    return "4+";
+  }
+  if (min === 3) {
     return "3+";
   }
   return "1+";
