@@ -106,6 +106,10 @@ export const searches = pgTable(
     minPrice: integer("min_price"),
     maxPrice: integer("max_price"),
     propertyTypes: text("property_types").array().notNull(),
+    excludeOutcodes: text("exclude_outcodes")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     commuteTargets: jsonb("commute_targets")
       .$type<
         Array<{
@@ -117,7 +121,16 @@ export const searches = pgTable(
         }>
       >()
       .notNull(),
-    aiRules: jsonb("ai_rules").notNull(),
+    transportTargets: jsonb("transport_targets")
+      .$type<
+        Array<{
+          amenity: "tube_station" | "train_station" | "bus_stop" | "tram_stop";
+          mode: "walk" | "cycle" | "transit" | "drive";
+          maxMinutes: number;
+        }>
+      >()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     active: boolean("active").default(true).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
