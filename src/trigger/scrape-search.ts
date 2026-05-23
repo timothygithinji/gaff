@@ -16,20 +16,10 @@
  * load, fan out, walk the results for logging.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, schedules } from "@trigger.dev/sdk";
-import { drizzle } from "drizzle-orm/neon-http";
-import * as schema from "../../db/schema";
+import { getDb } from "../../db";
 import type { Portal } from "../lib/parsers/types";
 import { scrapePortalTask } from "./scrape-portal";
-
-function getDb() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL not set in the Trigger.dev worker env");
-  }
-  return drizzle(neon(url), { schema });
-}
 
 export const scrapeSearchTask = schedules.task({
   id: "scrape-search",

@@ -55,7 +55,7 @@ export type HouseholdPayload = {
  * (over the wire) and the household-context provider's loader.
  */
 async function loadHouseholdFor(userId: string): Promise<HouseholdPayload> {
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
 
   const membership = await db.query.householdMembers.findFirst({
     where: (hm, { eq: eqOp }) => eqOp(hm.userId, userId),
@@ -115,7 +115,7 @@ export const createInvite = createServerFn({ method: "POST" })
       throw new Error("unauthorized");
     }
 
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
     const payload = await loadHouseholdFor(session.userId);
     const me = payload.members.find((m) => m.userId === session.userId);
     if (me?.role !== "owner") {
@@ -152,7 +152,7 @@ export const acceptInvite = createServerFn({ method: "POST" })
       throw new Error("unauthorized");
     }
 
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
     const row = await db.query.verification.findFirst({
       where: (v, { eq: eqOp, and: andOp, like: likeOp }) =>
         andOp(
@@ -230,7 +230,7 @@ export const removeMember = createServerFn({ method: "POST" })
       throw new Error("unauthorized");
     }
 
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
     const payload = await loadHouseholdFor(session.userId);
     const me = payload.members.find((m) => m.userId === session.userId);
     if (me?.role !== "owner") {

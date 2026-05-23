@@ -14,15 +14,13 @@
  * enrichment tasks. No-ops when the cluster has no postcode.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { PROMPT_VERSION } from "../lib/ai/config";
 import { getBroadband } from "../lib/broadband";
-import { env } from "../lib/env";
 import { scrapeQueue } from "./queues";
 
 export type EnrichBroadbandPayload = {
@@ -34,11 +32,6 @@ export type EnrichBroadbandOutput = {
   technology: string | null;
   listingsTouched: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 function getZyteKey(): string {
   const key = process.env.ZYTE_API_KEY;

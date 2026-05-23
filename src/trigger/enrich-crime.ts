@@ -12,14 +12,12 @@
  * when the API returns no records (rural areas, very recent months).
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { PROMPT_VERSION } from "../lib/ai/config";
-import { env } from "../lib/env";
 import { getCrimeAggregate } from "../lib/police-uk";
 import { scrapeQueue } from "./queues";
 
@@ -32,11 +30,6 @@ export type EnrichCrimeOutput = {
   total: number;
   listingsTouched: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 function parseNumeric(value: string | null): number | null {
   if (value == null) {

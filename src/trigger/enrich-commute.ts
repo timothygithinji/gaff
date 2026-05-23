@@ -29,11 +29,10 @@
  *     but cheap to guard).
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { PROMPT_VERSION } from "../lib/ai/config";
 import { env } from "../lib/env";
@@ -61,11 +60,6 @@ type CommuteTarget = {
   mode: string;
   maxMinutes?: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 function parseNumeric(value: string | null): number | null {
   if (value == null) {

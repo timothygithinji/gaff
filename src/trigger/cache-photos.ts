@@ -27,11 +27,10 @@
  * which keeps us comfortably under any portal CDN's per-IP rate limit.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq, isNull } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { env } from "../lib/env";
 import { scrapeQueue } from "./queues";
@@ -46,11 +45,6 @@ export type CachePhotosOutput = {
   skipped: number;
   failed: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 const FETCH_TIMEOUT_MS = 10_000;
 

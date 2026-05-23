@@ -24,7 +24,6 @@ import { cloudflareAccess } from "./auth/cloudflare-access";
  * the `<HouseholdContext>` provider then has data on first paint.
  */
 type AuthEnv = {
-  DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   CLOUDFLARE_ACCESS_AUD: string;
@@ -33,7 +32,7 @@ type AuthEnv = {
 };
 
 export function createAuth(env: AuthEnv) {
-  const db = getDb(env);
+  const db = getDb();
 
   return betterAuth({
     database: drizzleAdapter(db, { provider: "pg" }),

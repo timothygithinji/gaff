@@ -40,11 +40,10 @@
  * have different copy.
  */
 
-import { neon } from "@neondatabase/serverless";
 import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-http";
 import { nanoid } from "nanoid";
+import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { checkDailyBudget } from "../lib/ai/budget";
 import { extractFeatures } from "../lib/ai/client";
@@ -65,11 +64,6 @@ export type EnrichAiOutput = {
   inputTokens: number;
   outputTokens: number;
 };
-
-function getDb() {
-  const { DATABASE_URL } = env();
-  return drizzle(neon(DATABASE_URL), { schema });
-}
 
 /**
  * Cast the JSONB blob written by scrape-detail back to ListingDetail.

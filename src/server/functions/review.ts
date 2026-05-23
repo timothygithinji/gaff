@@ -26,7 +26,6 @@
  * The cluster's `listings` set spans multiple portals — the headline
  * listing is the cheapest, the others surface in the "ALSO ON" badge.
  */
-import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -41,7 +40,6 @@ import {
   swipes,
 } from "../../../db/schema";
 import type { Features } from "../../lib/ai/prompt";
-import type { Env } from "../../server";
 import { getCurrentUser } from "./session";
 
 const swipeOutcomeSchema = z.enum(["keep", "skip", "shortlist"]);
@@ -206,7 +204,7 @@ async function requireHouseholdMembers(): Promise<{
   if (!session) {
     throw new Error("unauthorized");
   }
-  const db = getDb(env as unknown as Env);
+  const db = getDb();
   const myMembership = await db.query.householdMembers.findFirst({
     where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
   });
@@ -334,7 +332,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<ReviewCard | null> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdMembers();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
       db,
@@ -519,7 +517,7 @@ export const getReviewQueue = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<ReviewQueue> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdMembers();
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
       db,
@@ -691,7 +689,7 @@ export const getTodayReviewStats = createServerFn({ method: "GET" })
     if (!session) {
       throw new Error("unauthorized");
     }
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const now = new Date();
     const startOfTodayUtc = new Date(
@@ -741,7 +739,7 @@ export const recordSwipe = createServerFn({ method: "POST" })
     if (!session) {
       throw new Error("unauthorized");
     }
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     // Authz: the search must belong to the caller's household. We don't
     // separately check the cluster — clusters are global, scoped by the
@@ -799,7 +797,7 @@ export const undoLastSwipe = createServerFn({ method: "POST" }).handler(
     if (!session) {
       throw new Error("unauthorized");
     }
-    const db = getDb(env as unknown as Env);
+    const db = getDb();
 
     const last = await db
       .select({ id: swipes.id, clusterId: swipes.clusterId })
