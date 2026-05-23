@@ -23,6 +23,7 @@
     "lint:branch": "bun scripts/validation/branch-name.ts",
     "auth:generate": "bun scripts/auth/generate.ts",
     "test": "vitest",
+    "smoke:portals": "doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji -- bun scripts/verify/portal-param-smoke.ts",
     "trigger:dev": "trigger dev",
     "codegen": "openapi-ts"
   },
