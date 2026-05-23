@@ -2,9 +2,9 @@
  * `/searches/$id` — edit an existing search.
  *
  * Reuses the same SearchForm; hydrates the form from the stored row
- * (including the EXCLUDE outcodes tucked into `aiRules.excludeOutcodes`)
- * and the schedule's cron (looked up by externalId, falling back to
- * "off" if no schedule exists).
+ * (excludeOutcodes / commuteTargets / transportTargets are now all
+ * first-class columns on `searches`) and the schedule's cron (looked
+ * up by externalId, falling back to "off" if no schedule exists).
  *
  * Two mutations live here — `updateSearch` and `archiveSearch`. Both
  * are optimistic against the `["searches"]` list cache and patch the
@@ -37,7 +37,6 @@ import {
   type SearchRow,
   archiveSearch,
   getSearch,
-  readAiRules,
   updateSearch,
 } from "../../server/functions/searches";
 
@@ -113,8 +112,8 @@ function EditSearchPage() {
           minPrice: values.minPrice,
           maxPrice: values.maxPrice,
           propertyTypes: [],
-          commuteTargets: values.commute ? [values.commute] : [],
-          aiRules: values.aiRules,
+          commuteTargets: values.commuteTargets,
+          transportTargets: values.transportTargets,
           cron: cadence.cron,
         },
       });
@@ -269,18 +268,14 @@ function buildPatch(
     name: values.name,
     portals: values.portals,
     outcodes: values.outcodesInclude.map((o) => o.trim().toUpperCase()),
+    excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
     minBedrooms: beds.min,
     maxBedrooms: beds.max,
     minPrice: values.minPrice,
     maxPrice: values.maxPrice,
     propertyTypes: [],
-    commuteTargets: values.commute ? [values.commute] : [],
-    aiRules: {
-      rules: values.aiRules,
-      excludeOutcodes: values.outcodesExclude.map((o) =>
-        o.trim().toUpperCase()
-      ),
-    },
+    commuteTargets: values.commuteTargets,
+    transportTargets: values.transportTargets,
     active: cadence.cron !== null,
     updatedAt: new Date(),
     // Preserve the immutable identifiers.
@@ -296,7 +291,6 @@ function toFormValues(
   schedules: Awaited<ReturnType<typeof listSchedules>>
 ): Partial<SearchFormValues> {
   const matching = schedules.find((s) => s.externalId === search.id);
-  const stored = readAiRules(search.aiRules);
   const bedsId =
     search.minBedrooms === null
       ? DEFAULT_FORM_VALUES.bedsId
@@ -311,14 +305,13 @@ function toFormValues(
   return {
     name: search.name,
     outcodesInclude: search.outcodes,
-    outcodesExclude: stored.excludeOutcodes,
+    outcodesExclude: search.excludeOutcodes,
     minPrice: search.minPrice ?? DEFAULT_FORM_VALUES.minPrice,
     maxPrice: search.maxPrice ?? DEFAULT_FORM_VALUES.maxPrice,
     bedsId,
     bathsId,
-    aiRules:
-      stored.rules.length > 0 ? stored.rules : DEFAULT_FORM_VALUES.aiRules,
-    commute: search.commuteTargets[0] ?? null,
+    commuteTargets: search.commuteTargets,
+    transportTargets: search.transportTargets,
     portals: search.portals as SearchFormValues["portals"],
     cadenceId: cadence.id,
   };

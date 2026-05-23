@@ -7,6 +7,12 @@
  * row); the household-scoping rule means a user can never see / edit
  * another household's search.
  *
+ * Excluded outcodes are stored as a top-level `exclude_outcodes` text[]
+ * column; commute and transport targets each get their own jsonb array
+ * column (`commute_targets`, `transport_targets`). There is no AI-rules
+ * column — feature extraction lives in the prompt itself, not as
+ * per-search toggles.
+ *
  * Scrape cadence lives on Trigger.dev, not in our DB:
  *
  *   - `createSearch`  → INSERT + `createSchedule(externalId = search.id)`
@@ -104,13 +110,17 @@ const commuteTargetSchema = z.object({
   mode: z.string().trim().min(1).max(32),
 });
 
-const aiRuleSchema = z.object({
-  id: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  body: z.string().trim().optional(),
-  enabled: z.boolean(),
-  /** Free-form custom rules carry their full prompt text here. */
-  customPrompt: z.string().trim().optional(),
+const transportAmenitySchema = z.enum([
+  "tube_station",
+  "train_station",
+  "bus_stop",
+  "tram_stop",
+]);
+const transportModeSchema = z.enum(["walk", "cycle", "transit", "drive"]);
+const transportTargetSchema = z.object({
+  amenity: transportAmenitySchema,
+  mode: transportModeSchema,
+  maxMinutes: z.number().int().min(1).max(120),
 });
 
 const baseSearchSchema = z
@@ -129,7 +139,7 @@ const baseSearchSchema = z
     maxPrice: z.number().int().min(0).max(20_000),
     propertyTypes: z.array(z.string().trim().min(1)).default([]),
     commuteTargets: z.array(commuteTargetSchema).default([]),
-    aiRules: z.array(aiRuleSchema).default([]),
+    transportTargets: z.array(transportTargetSchema).default([]),
     /** Cron string, or `null` for the explicit "Off" preset. */
     cron: z.string().trim().min(1).nullable(),
   })
@@ -169,65 +179,13 @@ const idSchema = z.object({ id: z.string().trim().min(1) });
 // -----------------------------------------------------------------------------
 
 /**
- * The `aiRules` jsonb column carries both the toggle state of the
- * preset rules and any custom user-authored rules. The shape is
- * intentionally permissive so PR 6 can extend it without a migration.
+ * `SearchRow` mirrors the DB row exactly — `excludeOutcodes` is a top-
+ * level text[] column, `commuteTargets` / `transportTargets` are typed
+ * jsonb arrays. No further read transformation is needed; the column
+ * `$type<>` annotations on `db/schema.ts` already carry the precise
+ * shape over the wire.
  */
-export type StoredAiRules = {
-  rules: Array<{
-    id: string;
-    label: string;
-    body?: string;
-    enabled: boolean;
-    customPrompt?: string;
-  }>;
-  /**
-   * Excluded outcodes live here too — the table only has one `outcodes`
-   * array column, so we tuck the EXCLUDE list inside the same jsonb
-   * blob to keep the schema migration-free for PR 3.
-   */
-  excludeOutcodes: string[];
-};
-
-/** Strongly-typed accessor for the otherwise `unknown`-typed jsonb column. */
-export function readAiRules(value: unknown): StoredAiRules {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "rules" in value &&
-    Array.isArray((value as { rules: unknown }).rules)
-  ) {
-    const v = value as Partial<StoredAiRules>;
-    return {
-      rules: (v.rules ?? []).map((r) => ({
-        id: String(r.id ?? ""),
-        label: String(r.label ?? ""),
-        body: r.body,
-        enabled: Boolean(r.enabled),
-        customPrompt: r.customPrompt,
-      })),
-      excludeOutcodes: Array.isArray(v.excludeOutcodes)
-        ? v.excludeOutcodes.map((o) => String(o))
-        : [],
-    };
-  }
-  return { rules: [], excludeOutcodes: [] };
-}
-
-/**
- * Search row over-the-wire. The DB column types `aiRules` as `jsonb`
- * (i.e. `unknown`), which TanStack Start refuses to serialise — so the
- * read functions widen it to `StoredAiRules` here and the writers
- * round-trip it through `readAiRules` to enforce the shape on the way
- * back in.
- */
-export type SearchRow = Omit<Search, "aiRules"> & {
-  aiRules: StoredAiRules;
-};
-
-function toSearchRow(row: Search): SearchRow {
-  return { ...row, aiRules: readAiRules(row.aiRules) };
-}
+export type SearchRow = Search;
 
 // -----------------------------------------------------------------------------
 // Reads
@@ -242,7 +200,7 @@ export const listSearches = createServerFn({ method: "GET" }).handler(
       .from(searches)
       .where(eq(searches.householdId, householdId))
       .orderBy(desc(searches.createdAt));
-    return rows.map(toSearchRow);
+    return rows;
   }
 );
 
@@ -258,7 +216,7 @@ export const getSearch = createServerFn({ method: "GET" })
     if (!row) {
       throw new Error("not_found");
     }
-    return toSearchRow(row);
+    return row;
   });
 
 // -----------------------------------------------------------------------------
@@ -283,11 +241,6 @@ export const createSearch = createServerFn({ method: "POST" })
     );
     const isOff = data.cron === null;
 
-    const aiRules: StoredAiRules = {
-      rules: data.aiRules,
-      excludeOutcodes,
-    };
-
     const inserted = await db
       .insert(searches)
       .values({
@@ -296,13 +249,14 @@ export const createSearch = createServerFn({ method: "POST" })
         name: data.name,
         portals: data.portals,
         outcodes,
+        excludeOutcodes,
         minBedrooms: data.minBedrooms ?? null,
         maxBedrooms: data.maxBedrooms ?? null,
         minPrice: data.minPrice,
         maxPrice: data.maxPrice,
         propertyTypes: data.propertyTypes,
         commuteTargets: data.commuteTargets,
-        aiRules,
+        transportTargets: data.transportTargets,
         active: !isOff,
       })
       .returning()
@@ -310,7 +264,7 @@ export const createSearch = createServerFn({ method: "POST" })
     if (!inserted) {
       throw new Error("insert_failed");
     }
-    const insertedRow = toSearchRow(inserted);
+    const insertedRow: SearchRow = inserted;
 
     if (isOff || !data.cron) {
       return { search: insertedRow, scheduleId: null };
@@ -355,24 +309,20 @@ export const updateSearch = createServerFn({ method: "POST" })
     );
     const isOff = data.cron === null;
 
-    const aiRules: StoredAiRules = {
-      rules: data.aiRules,
-      excludeOutcodes,
-    };
-
     const updated = await db
       .update(searches)
       .set({
         name: data.name,
         portals: data.portals,
         outcodes,
+        excludeOutcodes,
         minBedrooms: data.minBedrooms ?? null,
         maxBedrooms: data.maxBedrooms ?? null,
         minPrice: data.minPrice,
         maxPrice: data.maxPrice,
         propertyTypes: data.propertyTypes,
         commuteTargets: data.commuteTargets,
-        aiRules,
+        transportTargets: data.transportTargets,
         active: !isOff,
       })
       .where(
@@ -383,7 +333,7 @@ export const updateSearch = createServerFn({ method: "POST" })
     if (!updated) {
       throw new Error("update_failed");
     }
-    const updatedRow = toSearchRow(updated);
+    const updatedRow: SearchRow = updated;
 
     // Reconcile schedule state.
     const existingSchedule = await findScheduleByExternalId(updatedRow.id);

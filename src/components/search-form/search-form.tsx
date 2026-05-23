@@ -10,8 +10,8 @@
  *
  * The layout mirrors the "Search create" Paper artboard:
  * eyebrow + tap-to-edit headline → Postcodes (INCLUDE + EXCLUDE chips)
- * → Price slider + Bed/Bath pills → AI floor plan rules
- * → Commute target → Portals → Re-scrape cadence → sticky CTA footer.
+ * → Price slider + Bed/Bath pills → Commute targets → Transport targets
+ * → Portals → Re-scrape cadence → sticky CTA footer.
  *
  * Sub-components remain plain controlled inputs that take `value` +
  * `onChange` — `form.Field` adapts cleanly to that shape so we don't
@@ -25,11 +25,6 @@ import { z } from "zod";
 import { type Portal, estimateCost } from "../../lib/cost-estimate";
 import { findCadenceById } from "../../lib/cron-presets";
 import {
-  type AiRule,
-  AiRulesEditor,
-  DEFAULT_AI_RULES,
-} from "./ai-rules-editor";
-import {
   BATH_OPTIONS,
   BED_OPTIONS,
   type BathOption,
@@ -37,11 +32,16 @@ import {
   PillGroup,
 } from "./bed-bath-pills";
 import { CadencePicker } from "./cadence-picker";
-import { type CommuteTarget, CommuteTargetRow } from "./commute-target-row";
+import type { CommuteTarget } from "./commute-target-row";
+import { CommuteTargetsList } from "./commute-targets-list";
 import { CostEstimate } from "./cost-estimate";
 import { OutcodeChips } from "./outcode-chips";
 import { PortalToggles } from "./portal-toggles";
 import { PriceSlider } from "./price-slider";
+import {
+  type TransportTarget,
+  TransportTargetsList,
+} from "./transport-targets-list";
 
 export type SearchFormValues = {
   name: string;
@@ -51,8 +51,8 @@ export type SearchFormValues = {
   maxPrice: number;
   bedsId: string;
   bathsId: string;
-  aiRules: AiRule[];
-  commute: CommuteTarget | null;
+  commuteTargets: CommuteTarget[];
+  transportTargets: TransportTarget[];
   portals: Portal[];
   cadenceId: string;
 };
@@ -65,8 +65,8 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   maxPrice: 2800,
   bedsId: "2+",
   bathsId: "1+",
-  aiRules: DEFAULT_AI_RULES,
-  commute: null,
+  commuteTargets: [],
+  transportTargets: [],
   portals: ["rightmove", "zoopla", "openrent"],
   cadenceId: "daily",
 };
@@ -108,9 +108,9 @@ type Props = {
   onSubmit: (values: SearchFormValues) => void;
   /**
    * Fires whenever a tracked field changes (outcodes / portals /
-   * cadence / price / name / aiRules / etc.). Used by the desktop
-   * wrapper to power a live estimate panel that lives outside the
-   * form's render tree.
+   * cadence / price / name / commute / transport / etc.). Used by the
+   * desktop wrapper to power a live estimate panel that lives outside
+   * the form's render tree.
    */
   onValuesChange?: (values: SearchFormValues) => void;
   /**
@@ -152,7 +152,7 @@ export function SearchForm({
 
   // Mirror the full form values out to interested parents on every
   // change. We read straight from the store so the broadcast picks up
-  // fields the cost panel doesn't render directly (e.g. aiRules).
+  // fields the cost panel doesn't render directly (e.g. transport).
   const allValues = useStore(form.store, (s) => s.values);
   useEffect(() => {
     onValuesChange?.(allValues);
@@ -295,34 +295,32 @@ export function SearchForm({
     </section>
   );
 
-  const aiRulesSection = (
+  const commuteSection = (
     <section className="space-y-3">
-      <p className="text-[11px] text-primary uppercase tracking-[0.16em]">
-        + AI FLOOR PLAN RULES
+      <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
+      <p className="-mt-1 text-muted-foreground text-sm">
+        Specific places you need to reach — office, family, anywhere.
       </p>
-      <h2 className="font-serif text-2xl text-foreground">
-        What makes it a yes
-      </h2>
-      <p className="text-muted-foreground text-sm">
-        We read every floor plan against these.
-      </p>
-      <form.Field name="aiRules">
+      <form.Field name="commuteTargets">
         {(field) => (
-          <AiRulesEditor
+          <CommuteTargetsList
             onChange={(next) => field.handleChange(next)}
-            rules={field.state.value}
+            value={field.state.value}
           />
         )}
       </form.Field>
     </section>
   );
 
-  const commuteSection = (
+  const transportSection = (
     <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
-      <form.Field name="commute">
+      <h2 className="font-serif text-2xl text-foreground">Transport nearby</h2>
+      <p className="-mt-1 text-muted-foreground text-sm">
+        How close to the nearest tube, train, bus, or tram you need to be.
+      </p>
+      <form.Field name="transportTargets">
         {(field) => (
-          <CommuteTargetRow
+          <TransportTargetsList
             onChange={(next) => field.handleChange(next)}
             value={field.state.value}
           />
@@ -394,15 +392,17 @@ export function SearchForm({
             </button>
           </div>
 
-          {/* Two-column field grid */}
+          {/* Two-column field grid. Postcodes own the wider left column
+              (they're the heaviest input — INCLUDE + EXCLUDE chip rows
+              + the map affordance). The right column carries price, the
+              two location-targeting sections (commute + transport), then
+              portals and cadence. */}
           <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[1.4fr_1fr]">
-            <div className="space-y-10">
-              {postcodesSection}
-              {aiRulesSection}
-            </div>
+            <div className="space-y-10">{postcodesSection}</div>
             <div className="space-y-10">
               {priceSizeSection}
               {commuteSection}
+              {transportSection}
               {portalsSection}
               {cadenceSection}
             </div>
@@ -452,8 +452,8 @@ export function SearchForm({
         {headlineSection}
         {postcodesSection}
         {priceSizeSection}
-        {aiRulesSection}
         {commuteSection}
+        {transportSection}
         {portalsSection}
         {cadenceSection}
       </div>

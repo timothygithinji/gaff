@@ -49,13 +49,14 @@ async function main() {
       name: "Smoke search",
       portals: ["rightmove", "zoopla", "openrent"],
       outcodes: ["NW3"],
+      excludeOutcodes: [],
       minBedrooms: 1,
       maxBedrooms: 3,
       minPrice: 1500,
       maxPrice: 3500,
       propertyTypes: [],
       commuteTargets: [],
-      aiRules: { rules: [], excludeOutcodes: [] },
+      transportTargets: [],
       active: true,
     });
     search = await db.query.searches.findFirst({

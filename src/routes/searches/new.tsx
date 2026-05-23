@@ -23,11 +23,7 @@ import {
 import { requireSession } from "../../lib/auth-guard";
 import { findCadenceById } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
-import {
-  type SearchRow,
-  type StoredAiRules,
-  createSearch,
-} from "../../server/functions/searches";
+import { type SearchRow, createSearch } from "../../server/functions/searches";
 
 export const Route = createFileRoute("/searches/new")({
   head: () => ({ meta: [{ title: "New search · Gaff" }] }),
@@ -63,8 +59,8 @@ function NewSearchPage() {
           minPrice: values.minPrice,
           maxPrice: values.maxPrice,
           propertyTypes: [],
-          commuteTargets: values.commute ? [values.commute] : [],
-          aiRules: values.aiRules,
+          commuteTargets: values.commuteTargets,
+          transportTargets: values.transportTargets,
           cron: cadence.cron,
         },
       });
@@ -131,23 +127,20 @@ function synthesizeSearchRow(values: SearchFormValues): SearchRow {
   const beds = bedOptionFor(values.bedsId);
   const cadence = findCadenceById(values.cadenceId);
   const now = new Date();
-  const aiRules: StoredAiRules = {
-    rules: values.aiRules,
-    excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
-  };
   return {
     id: `tmp-${nanoid()}`,
     householdId: "",
     name: values.name,
     portals: values.portals,
     outcodes: values.outcodesInclude.map((o) => o.trim().toUpperCase()),
+    excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
     minBedrooms: beds.min,
     maxBedrooms: beds.max,
     minPrice: values.minPrice,
     maxPrice: values.maxPrice,
     propertyTypes: [],
-    commuteTargets: values.commute ? [values.commute] : [],
-    aiRules,
+    commuteTargets: values.commuteTargets,
+    transportTargets: values.transportTargets,
     active: cadence.cron !== null,
     createdAt: now,
     updatedAt: now,
