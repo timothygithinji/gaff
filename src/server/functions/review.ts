@@ -65,6 +65,20 @@ const queueFilterSchema = z
   })
   .optional();
 
+/**
+ * `getNextReviewCard` accepts an extra optional `clusterId`. When set,
+ * the card hydrates that specific cluster instead of the top of the
+ * queue — drives the desktop "click a queue row to preview" flow. The
+ * cluster still has to belong to the household's active searches; an
+ * unknown id resolves to `null` (handled as empty-queue downstream).
+ */
+const reviewCardInputSchema = z
+  .object({
+    searchId: z.string().trim().min(1).optional(),
+    clusterId: z.string().trim().min(1).optional(),
+  })
+  .optional();
+
 export type ReviewCardCluster = {
   id: string;
   normalisedAddress: string;
@@ -316,7 +330,7 @@ async function loadRankedQueueClusterIds(
 type Db = ReturnType<typeof getDb>;
 
 export const getNextReviewCard = createServerFn({ method: "GET" })
-  .inputValidator(queueFilterSchema)
+  .inputValidator(reviewCardInputSchema)
   .handler(async ({ data }): Promise<ReviewCard | null> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdMembers();
@@ -334,7 +348,14 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
     }
     const activeSearchIds = activeSearches.map((s) => s.id);
 
-    const nextClusterId = clusterIds[0];
+    // If the caller explicitly pinned a cluster, hydrate that one as
+    // long as it's still in the queue (i.e. the user hasn't swiped on
+    // it and it hasn't been household-skipped). Otherwise fall back to
+    // the top-of-queue card. This drives the queue-rail click-to-preview
+    // behaviour without going through a separate endpoint.
+    const explicit = data?.clusterId;
+    const nextClusterId =
+      explicit && clusterIds.includes(explicit) ? explicit : clusterIds[0];
     if (!nextClusterId) {
       return null;
     }
@@ -478,11 +499,18 @@ export type ReviewQueueItem = {
 };
 
 export type ReviewQueue = {
-  upcoming: ReviewQueueItem[];
   /**
-   * Total ranked clusters still awaiting the caller's swipe, including
-   * the one `getNextReviewCard` is currently showing. The header copy
-   * "N in queue" reads this directly.
+   * Every ranked cluster still awaiting the caller's swipe, in queue
+   * order (top of queue first). The client decides which entry is
+   * "currently displayed in the hero" by matching the `card.cluster.id`
+   * against this list — that allows queue-row click to repoint the
+   * hero without a separate endpoint.
+   */
+  items: ReviewQueueItem[];
+  /**
+   * Same as `items.length`. Kept for symmetry with the header copy
+   * "N in queue" and so the UI doesn't have to know it's a derived
+   * count.
    */
   remaining: number;
 };
@@ -503,23 +531,15 @@ export const getReviewQueue = createServerFn({ method: "GET" })
     );
     const remaining = clusterIds.length;
     if (remaining === 0) {
-      return { upcoming: [], remaining: 0 };
+      return { items: [], remaining: 0 };
     }
 
-    // Position 0 is the card `getNextReviewCard` is showing — skip it.
-    // The rail is scrollable, so we hydrate the full tail rather than
-    // capping at a fixed window.
-    const upcomingClusterIds = clusterIds.slice(1);
-    if (upcomingClusterIds.length === 0) {
-      return { upcoming: [], remaining };
-    }
-
-    const upcoming = await hydrateQueueItems(
+    const items = await hydrateQueueItems(
       db,
-      upcomingClusterIds,
+      clusterIds,
       activeSearches.map((s) => s.id)
     );
-    return { upcoming, remaining };
+    return { items, remaining };
   }
 );
 

@@ -41,6 +41,7 @@ import { useHotkey } from "@tanstack/react-hotkeys";
 import { Link } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useIsMobile } from "../../hooks/use-mobile";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
@@ -525,6 +526,18 @@ function HeroPhoto({
   );
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const isMobile = useIsMobile();
+  // ←/→ cycle the hero photos when the lightbox isn't already steering the
+  // arrow keys. `canPaginate` covers the single-photo edge case.
+  const heroKeysEnabled = !lightboxOpen && !isMobile && canPaginate;
+  useHotkey("ArrowLeft", scrollPrev, {
+    enabled: heroKeysEnabled,
+    meta: { category: "Review", description: "Previous photo" },
+  });
+  useHotkey("ArrowRight", scrollNext, {
+    enabled: heroKeysEnabled,
+    meta: { category: "Review", description: "Next photo" },
+  });
   const openLightbox = useCallback(() => setLightboxOpen(true), []);
 
   // Mirror the lightbox state up so the route can disable its page-level
@@ -665,18 +678,14 @@ function PhotoLightbox({
     }
   }, [open, emblaApi, startIndex]);
 
-  // ArrowLeft / ArrowRight scroll the embla carousel while the lightbox
-  // is open. The page-level Review shortcuts use letter keys (not arrows),
-  // so there's no longer any cross-handler conflict to defend against;
-  // we just gate on `open`. Esc is handled by base-ui Dialog.
-  useHotkey("ArrowLeft", () => emblaApi?.scrollPrev(), {
-    enabled: open,
-    meta: { category: "Lightbox", description: "Previous photo" },
-  });
-  useHotkey("ArrowRight", () => emblaApi?.scrollNext(), {
-    enabled: open,
-    meta: { category: "Lightbox", description: "Next photo" },
-  });
+  // ArrowLeft / ArrowRight scroll the embla carousel while the lightbox is
+  // open. Mutually exclusive with HeroPhoto's same-key registrations (which
+  // gate on `!lightboxOpen`), so only one handler fires at a time. No
+  // `description` here — the help dialog's "Previous/Next photo" entry
+  // already covers both contexts; listing them twice would just confuse.
+  // Esc is handled by base-ui Dialog.
+  useHotkey("ArrowLeft", () => emblaApi?.scrollPrev(), { enabled: open });
+  useHotkey("ArrowRight", () => emblaApi?.scrollNext(), { enabled: open });
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -895,51 +904,83 @@ function HeroActions({
   pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <div className="mt-4 flex shrink-0 items-center justify-between gap-3 border-bone border-t px-7 pt-4 pb-6">
-      <div className="flex items-center gap-2">
-        <ActionButton
-          disabled={disabled}
-          hint="Z"
-          icon={ArrowReloadHorizontalIcon}
-          label="Undo"
-          loading={pendingAction === "undo"}
-          onClick={onUndo}
-        />
-        <ActionButton
-          disabled={disabled}
-          hint="S"
-          icon={Cancel01Icon}
-          label="Skip"
-          loading={pendingAction === "skip"}
-          onClick={onSkip}
-        />
-        <ActionButton
-          disabled={disabled}
-          hint="I"
-          icon={InformationCircleIcon}
-          label="Details"
-          onClick={onOpenDetail}
-        />
+    <div className="mt-4 flex shrink-0 flex-col gap-2.5 border-bone border-t px-7 pt-3 pb-6">
+      <HeroActionHints />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ActionButton
+            disabled={disabled}
+            hint="Z"
+            icon={ArrowReloadHorizontalIcon}
+            label="Undo"
+            loading={pendingAction === "undo"}
+            onClick={onUndo}
+          />
+          <ActionButton
+            disabled={disabled}
+            hint="S"
+            icon={Cancel01Icon}
+            label="Skip"
+            loading={pendingAction === "skip"}
+            onClick={onSkip}
+          />
+          <ActionButton
+            disabled={disabled}
+            hint="I"
+            icon={InformationCircleIcon}
+            label="Details"
+            onClick={onOpenDetail}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <ActionButton
+            disabled={disabled}
+            hint="L"
+            icon={StarIcon}
+            label="Shortlist"
+            loading={pendingAction === "shortlist"}
+            onClick={onShortlist}
+          />
+          <ActionButton
+            disabled={disabled}
+            hint="K"
+            icon={FavouriteIcon}
+            label="Keep"
+            loading={pendingAction === "keep"}
+            onClick={onKeep}
+            variant="primary"
+          />
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <ActionButton
-          disabled={disabled}
-          hint="L"
-          icon={StarIcon}
-          label="Shortlist"
-          loading={pendingAction === "shortlist"}
-          onClick={onShortlist}
-        />
-        <ActionButton
-          disabled={disabled}
-          hint="K"
-          icon={FavouriteIcon}
-          label="Keep"
-          loading={pendingAction === "keep"}
-          onClick={onKeep}
-          variant="primary"
-        />
+    </div>
+  );
+}
+
+/**
+ * Thin strip above the action button row that surfaces the keyboard
+ * shortcuts that *don't* have buttons of their own — arrow keys for
+ * photos / queue navigation and `?` for the help dialog. Kept subtle
+ * so it reads as a tip, not a control.
+ */
+function HeroActionHints() {
+  return (
+    <div className="flex items-center justify-between gap-3 text-muted-foreground text-xs">
+      <div className="flex items-center gap-4">
+        <span className="inline-flex items-center gap-1.5">
+          <Kbd>←</Kbd>
+          <Kbd>→</Kbd>
+          <span>photos</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd>
+          <span>queue</span>
+        </span>
       </div>
+      <span className="inline-flex items-center gap-1.5">
+        <Kbd>?</Kbd>
+        <span>shortcuts</span>
+      </span>
     </div>
   );
 }

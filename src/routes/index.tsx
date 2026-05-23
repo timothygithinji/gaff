@@ -364,7 +364,43 @@ function ReviewPage() {
     });
   }, [card, navigate]);
 
+  // Up/Down step through the queue rail by repointing the URL's
+  // `clusterId` search param. No-ops at the ends so wrap-around behavior
+  // doesn't surprise — the QueueRail itself doesn't wrap on click either.
+  const queueItems = queue?.items ?? [];
+  const currentQueueIdx = card
+    ? queueItems.findIndex((i) => i.clusterId === card.cluster.id)
+    : -1;
+  const doPrevInQueue = useCallback(() => {
+    if (currentQueueIdx <= 0) {
+      return;
+    }
+    const target = queueItems[currentQueueIdx - 1];
+    if (!target) {
+      return;
+    }
+    navigate({
+      to: "/",
+      search: (prev) => ({ ...prev, clusterId: target.clusterId }),
+    });
+  }, [currentQueueIdx, queueItems, navigate]);
+  const doNextInQueue = useCallback(() => {
+    if (currentQueueIdx < 0 || currentQueueIdx >= queueItems.length - 1) {
+      return;
+    }
+    const target = queueItems[currentQueueIdx + 1];
+    if (!target) {
+      return;
+    }
+    navigate({
+      to: "/",
+      search: (prev) => ({ ...prev, clusterId: target.clusterId }),
+    });
+  }, [currentQueueIdx, queueItems, navigate]);
+
   // Review-screen shortcuts: S Skip · K Keep · L Shortlist (Like) · Z Undo · I Details.
+  // Plus ↑/↓ to step through the queue rail, and ←/→ to cycle the hero photos
+  // (the latter registered inside HeroPhoto where the embla instance lives).
   // Disabled while the photo lightbox owns the keyboard (so its ArrowLeft/Right
   // only scroll photos), and disabled on mobile (no physical keyboard).
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -389,6 +425,14 @@ function ReviewPage() {
   useHotkey("I", doOpenDetail, {
     enabled: reviewKeysEnabled,
     meta: { category: "Review", description: "Open listing details" },
+  });
+  useHotkey("ArrowUp", doPrevInQueue, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Previous in queue" },
+  });
+  useHotkey("ArrowDown", doNextInQueue, {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Next in queue" },
   });
 
   const banner = error ?? queryError;

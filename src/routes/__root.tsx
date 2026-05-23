@@ -7,6 +7,8 @@ import {
 } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { type ReactNode, useEffect } from "react";
+import faviconSvg from "../assets/favicon.svg?url";
+import { HotkeyHelp } from "../components/hotkey-help";
 import { ThemeProvider } from "../components/theme-provider";
 import {
   HouseholdProvider,
@@ -47,9 +49,12 @@ export const Route = createRootRouteWithContext<{
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "gaff" },
+      { title: "Gaff" },
     ],
-    links: [{ rel: "stylesheet", href: globalsCss }],
+    links: [
+      { rel: "stylesheet", href: globalsCss },
+      { rel: "icon", type: "image/svg+xml", href: faviconSvg },
+    ],
   }),
   beforeLoad: async ({ context }) => {
     const { userId } = await getCurrentUserId();
@@ -72,6 +77,7 @@ function RootComponent() {
       <ThemeProvider defaultTheme="system">
         <HouseholdProvider initialUserId={currentUserId}>
           <Outlet />
+          {currentUserId ? <HotkeyHelp /> : null}
         </HouseholdProvider>
       </ThemeProvider>
     </RootDocument>

@@ -38,6 +38,7 @@
     "@neondatabase/serverless": "^0.10.4",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-form": "^1.32.0",
+    "@tanstack/react-hotkeys": "^0.10.0",
     "@tanstack/react-query": "^5.100.11",
     "@tanstack/react-router": "^1.87.0",
     "@tanstack/react-start": "^1.168.10",
