@@ -11,7 +11,13 @@
  * common path.
  */
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, createContext, useContext, useMemo } from "react";
+import {
+  type Context,
+  type ReactNode,
+  createContext,
+  useContext,
+  useMemo,
+} from "react";
 import type { Household } from "../../db/schema";
 import {
   type HouseholdMemberRow,
@@ -29,7 +35,24 @@ export interface HouseholdValue {
   otherMembers: HouseholdMemberRow[];
 }
 
-const HouseholdContext = createContext<HouseholdValue | null>(null);
+/**
+ * Pin the context object to `globalThis` so HMR module reloads don't
+ * mint a fresh `createContext()` reference. Without this, when this
+ * module's *consumer* (e.g. a listing-detail component) Fast-Refreshes,
+ * the consumer picks up a new Context instance while the higher-up
+ * Provider still writes to the old one — and `useContext` returns the
+ * default `null`, triggering "useHousehold() called with no household".
+ * Production never hits this path (no HMR), but the dev DX is bad
+ * enough to warrant the global. Typed as a record to avoid `any`.
+ */
+const CONTEXT_KEY = "__gaff_household_context";
+type GlobalWithContext = typeof globalThis & {
+  [CONTEXT_KEY]?: Context<HouseholdValue | null>;
+};
+const HouseholdContext: Context<HouseholdValue | null> =
+  (globalThis as GlobalWithContext)[CONTEXT_KEY] ??
+  ((globalThis as GlobalWithContext)[CONTEXT_KEY] =
+    createContext<HouseholdValue | null>(null));
 
 export const householdQueryOptions = {
   queryKey: queryKeys.household(),
