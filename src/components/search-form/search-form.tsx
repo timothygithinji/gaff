@@ -22,11 +22,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect } from "react";
 import { z } from "zod";
-import {
-  type Portal,
-  estimateCost,
-  estimateListingsPerWeek,
-} from "../../lib/cost-estimate";
+import { type Portal, estimateCost } from "../../lib/cost-estimate";
 import { findCadenceById } from "../../lib/cron-presets";
 import {
   type AiRule,
@@ -67,7 +63,7 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   outcodesExclude: [],
   minPrice: 2000,
   maxPrice: 2800,
-  bedsId: "2",
+  bedsId: "2+",
   bathsId: "1+",
   aiRules: DEFAULT_AI_RULES,
   commute: null,
@@ -75,7 +71,7 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   cadenceId: "daily",
 };
 
-const DEFAULT_BED: BedOption = { id: "2", label: "2", min: 2, max: 2 };
+const DEFAULT_BED: BedOption = { id: "2+", label: "2+", min: 2, max: null };
 const DEFAULT_BATH: BathOption = { id: "1+", label: "1+", min: 1, max: null };
 
 export function bedOptionFor(id: string): BedOption {
@@ -117,6 +113,13 @@ type Props = {
    * form's render tree.
    */
   onValuesChange?: (values: SearchFormValues) => void;
+  /**
+   * `"mobile"` (default) renders the single-column, sticky-header
+   * variant. `"desktop"` drops the mobile chrome (close-X / title /
+   * Reset header are owned by the desktop breadcrumb) and lays the
+   * field sections out in a two-column grid.
+   */
+  layout?: "mobile" | "desktop";
 };
 
 export function SearchForm({
@@ -127,6 +130,7 @@ export function SearchForm({
   onReset,
   onSubmit,
   onValuesChange,
+  layout = "mobile",
 }: Props) {
   const defaults: SearchFormValues = { ...DEFAULT_FORM_VALUES, ...initial };
   const form = useForm({
@@ -160,16 +164,255 @@ export function SearchForm({
     portals,
     scrapesPerDay: cadence.scrapesPerDay,
   });
-  const listingsPerWeek = estimateListingsPerWeek({
-    outcodeCount: outcodesInclude.length,
-    portals,
-  });
 
   const canSubmit =
     outcodesInclude.length > 0 &&
     portals.length > 0 &&
     name.trim().length > 0 &&
     minPrice <= maxPrice;
+
+  const isDesktop = layout === "desktop";
+
+  const headlineSection = (
+    <section>
+      <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
+        WHAT WE'RE LOOKING FOR
+      </p>
+      <form.Field name="name" validators={{ onChange: nameSchema }}>
+        {(field) => (
+          <input
+            className={`-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-foreground leading-[1.05] outline-none placeholder:text-muted-foreground/50 focus:bg-muted/60 ${
+              isDesktop ? "text-5xl" : "text-4xl"
+            }`}
+            onBlur={field.handleBlur}
+            onChange={(e) => field.handleChange(e.target.value)}
+            placeholder="A flat in North London"
+            type="text"
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+      <p className="mt-2 text-muted-foreground text-xs italic">
+        {isDesktop ? "click to rename" : "tap to rename"}
+      </p>
+    </section>
+  );
+
+  const postcodesSection = (
+    <section className="space-y-4">
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-serif text-2xl text-foreground">Postcodes</h2>
+        <button
+          className="inline-flex items-center gap-1 text-primary text-xs"
+          onClick={() => {
+            /* Map view deferred — PR 8 / 9.5 territory. */
+          }}
+          type="button"
+        >
+          <HugeiconsIcon icon={MapPinIcon} size={12} strokeWidth={2} />
+          Map
+        </button>
+      </div>
+      <p className="-mt-3 text-muted-foreground text-sm">
+        Include what you want, kill what you don't.
+      </p>
+      <form.Field
+        name="outcodesInclude"
+        validators={{ onChange: outcodesIncludeSchema }}
+      >
+        {(field) => (
+          <OutcodeChips
+            countLabel={
+              field.state.value.length > 0
+                ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
+                : undefined
+            }
+            onChange={(next) => field.handleChange(next)}
+            values={field.state.value}
+            variant="include"
+          />
+        )}
+      </form.Field>
+      <form.Field name="outcodesExclude">
+        {(field) => (
+          <OutcodeChips
+            countLabel={
+              field.state.value.length > 0
+                ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
+                : undefined
+            }
+            onChange={(next) => field.handleChange(next)}
+            values={field.state.value}
+            variant="exclude"
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const priceSizeSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Price & size</h2>
+      <form.Field name="minPrice">
+        {(minField) => (
+          <form.Field name="maxPrice">
+            {(maxField) => (
+              <PriceSlider
+                max={5000}
+                min={0}
+                onChange={([lo, hi]) => {
+                  minField.handleChange(lo);
+                  maxField.handleChange(hi);
+                }}
+                value={[minField.state.value, maxField.state.value]}
+              />
+            )}
+          </form.Field>
+        )}
+      </form.Field>
+      <div className="flex gap-3">
+        <form.Field name="bedsId">
+          {(field) => (
+            <PillGroup
+              onChange={(id) => field.handleChange(id)}
+              options={BED_OPTIONS}
+              selectedId={field.state.value}
+              title="BEDS"
+            />
+          )}
+        </form.Field>
+        <form.Field name="bathsId">
+          {(field) => (
+            <PillGroup
+              onChange={(id) => field.handleChange(id)}
+              options={BATH_OPTIONS}
+              selectedId={field.state.value}
+              title="BATHS"
+            />
+          )}
+        </form.Field>
+      </div>
+    </section>
+  );
+
+  const aiRulesSection = (
+    <section className="space-y-3">
+      <p className="text-[11px] text-primary uppercase tracking-[0.16em]">
+        + AI FLOOR PLAN RULES
+      </p>
+      <h2 className="font-serif text-2xl text-foreground">
+        What makes it a yes
+      </h2>
+      <p className="text-muted-foreground text-sm">
+        We read every floor plan against these.
+      </p>
+      <form.Field name="aiRules">
+        {(field) => (
+          <AiRulesEditor
+            onChange={(next) => field.handleChange(next)}
+            rules={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const commuteSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
+      <form.Field name="commute">
+        {(field) => (
+          <CommuteTargetRow
+            onChange={(next) => field.handleChange(next)}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const portalsSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Portals to watch</h2>
+      <form.Field name="portals" validators={{ onChange: portalsSchema }}>
+        {(field) => (
+          <PortalToggles
+            onChange={(next) => field.handleChange(next)}
+            selected={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const cadenceSection = (
+    <section className="space-y-3">
+      <form.Field name="cadenceId">
+        {(field) => (
+          <CadencePicker
+            onChange={(id) => field.handleChange(id)}
+            perDayUsd={cost.perDayUsd}
+            selectedId={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const costEstimate = (
+    <CostEstimate
+      ctaLabel={mode === "create" ? "Start watching" : "Save changes"}
+      disabled={!canSubmit || Boolean(pending)}
+      onSubmit={() => form.handleSubmit()}
+      pending={pending}
+    />
+  );
+
+  if (isDesktop) {
+    return (
+      <form
+        className="flex w-full min-w-0 flex-1 flex-col bg-background"
+        onSubmit={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          form.handleSubmit();
+        }}
+      >
+        <div className="flex-1 space-y-10 px-10 pt-7 pb-8">
+          {/* Headline + Reset, full width */}
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex-1">{headlineSection}</div>
+            <button
+              className="mt-7 shrink-0 text-primary text-sm hover:underline"
+              onClick={() => {
+                form.reset(DEFAULT_FORM_VALUES);
+                onReset?.();
+              }}
+              type="button"
+            >
+              Reset
+            </button>
+          </div>
+
+          {/* Two-column field grid */}
+          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[1.4fr_1fr]">
+            <div className="space-y-10">
+              {postcodesSection}
+              {aiRulesSection}
+            </div>
+            <div className="space-y-10">
+              {priceSizeSection}
+              {commuteSection}
+              {portalsSection}
+              {cadenceSection}
+            </div>
+          </div>
+        </div>
+
+        {costEstimate}
+      </form>
+    );
+  }
 
   return (
     <form
@@ -206,193 +449,16 @@ export function SearchForm({
       </header>
 
       <div className="flex-1 space-y-8 px-5 pt-6 pb-8">
-        {/* Editable headline */}
-        <section>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-            WHAT WE'RE LOOKING FOR
-          </p>
-          <form.Field name="name" validators={{ onChange: nameSchema }}>
-            {(field) => (
-              <input
-                className="-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-4xl text-foreground leading-[1.05] outline-none placeholder:text-muted-foreground/50 focus:bg-muted/60"
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="A flat in North London"
-                type="text"
-                value={field.state.value}
-              />
-            )}
-          </form.Field>
-          <p className="mt-2 text-muted-foreground text-xs italic">
-            tap to rename
-          </p>
-        </section>
-
-        {/* Postcodes */}
-        <section className="space-y-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-serif text-2xl text-foreground">Postcodes</h2>
-            <button
-              className="inline-flex items-center gap-1 text-primary text-xs"
-              onClick={() => {
-                /* Map view deferred — PR 8 / 9.5 territory. */
-              }}
-              type="button"
-            >
-              <HugeiconsIcon icon={MapPinIcon} size={12} strokeWidth={2} />
-              Map
-            </button>
-          </div>
-          <p className="-mt-3 text-muted-foreground text-sm">
-            Include what you want, kill what you don't.
-          </p>
-          <form.Field
-            name="outcodesInclude"
-            validators={{ onChange: outcodesIncludeSchema }}
-          >
-            {(field) => (
-              <OutcodeChips
-                countLabel={
-                  field.state.value.length > 0
-                    ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
-                    : undefined
-                }
-                onChange={(next) => field.handleChange(next)}
-                values={field.state.value}
-                variant="include"
-              />
-            )}
-          </form.Field>
-          <form.Field name="outcodesExclude">
-            {(field) => (
-              <OutcodeChips
-                countLabel={
-                  field.state.value.length > 0
-                    ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
-                    : undefined
-                }
-                onChange={(next) => field.handleChange(next)}
-                values={field.state.value}
-                variant="exclude"
-              />
-            )}
-          </form.Field>
-        </section>
-
-        {/* Price + size */}
-        <section className="space-y-3">
-          <h2 className="font-serif text-2xl text-foreground">Price & size</h2>
-          <form.Field name="minPrice">
-            {(minField) => (
-              <form.Field name="maxPrice">
-                {(maxField) => (
-                  <PriceSlider
-                    max={5000}
-                    min={1000}
-                    onChange={([lo, hi]) => {
-                      minField.handleChange(lo);
-                      maxField.handleChange(hi);
-                    }}
-                    value={[minField.state.value, maxField.state.value]}
-                  />
-                )}
-              </form.Field>
-            )}
-          </form.Field>
-          <div className="flex gap-3">
-            <form.Field name="bedsId">
-              {(field) => (
-                <PillGroup
-                  onChange={(id) => field.handleChange(id)}
-                  options={BED_OPTIONS}
-                  selectedId={field.state.value}
-                  title="BEDS"
-                />
-              )}
-            </form.Field>
-            <form.Field name="bathsId">
-              {(field) => (
-                <PillGroup
-                  onChange={(id) => field.handleChange(id)}
-                  options={BATH_OPTIONS}
-                  selectedId={field.state.value}
-                  title="BATHS"
-                />
-              )}
-            </form.Field>
-          </div>
-        </section>
-
-        {/* AI rules */}
-        <section className="space-y-3">
-          <p className="text-[11px] text-primary uppercase tracking-[0.16em]">
-            + AI FLOOR PLAN RULES
-          </p>
-          <h2 className="font-serif text-2xl text-foreground">
-            What makes it a yes
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            We read every floor plan against these.
-          </p>
-          <form.Field name="aiRules">
-            {(field) => (
-              <AiRulesEditor
-                onChange={(next) => field.handleChange(next)}
-                rules={field.state.value}
-              />
-            )}
-          </form.Field>
-        </section>
-
-        {/* Commute */}
-        <section className="space-y-3">
-          <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
-          <form.Field name="commute">
-            {(field) => (
-              <CommuteTargetRow
-                onChange={(next) => field.handleChange(next)}
-                value={field.state.value}
-              />
-            )}
-          </form.Field>
-        </section>
-
-        {/* Portals */}
-        <section className="space-y-3">
-          <h2 className="font-serif text-2xl text-foreground">
-            Portals to watch
-          </h2>
-          <form.Field name="portals" validators={{ onChange: portalsSchema }}>
-            {(field) => (
-              <PortalToggles
-                onChange={(next) => field.handleChange(next)}
-                selected={field.state.value}
-              />
-            )}
-          </form.Field>
-        </section>
-
-        {/* Cadence */}
-        <section className="space-y-3">
-          <form.Field name="cadenceId">
-            {(field) => (
-              <CadencePicker
-                onChange={(id) => field.handleChange(id)}
-                perDayUsd={cost.perDayUsd}
-                selectedId={field.state.value}
-              />
-            )}
-          </form.Field>
-        </section>
+        {headlineSection}
+        {postcodesSection}
+        {priceSizeSection}
+        {aiRulesSection}
+        {commuteSection}
+        {portalsSection}
+        {cadenceSection}
       </div>
 
-      <CostEstimate
-        ctaLabel={mode === "create" ? "Start watching" : "Save changes"}
-        disabled={!canSubmit || Boolean(pending)}
-        listingsPerWeek={listingsPerWeek}
-        onSubmit={() => form.handleSubmit()}
-        pending={pending}
-      />
+      {costEstimate}
     </form>
   );
 }

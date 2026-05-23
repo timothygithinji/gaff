@@ -54,20 +54,6 @@ export function estimateCost({
   };
 }
 
-/**
- * Rough listings-per-week estimate — pretends every portal returns ~7
- * fresh listings per outcode per day on average. Used purely as a vibey
- * number under the CTA; PR 4 will replace this with a 7d windowed query
- * against `listings.first_seen_at` once real data exists.
- */
-export function estimateListingsPerWeek({
-  outcodeCount,
-  portals,
-}: Pick<CostEstimateInput, "outcodeCount" | "portals">): number {
-  // Wild guess: 7 new listings per outcode per portal per week.
-  return outcodeCount * portals.length * 7;
-}
-
 export function formatUsd(amount: number): string {
   if (amount < 0.01) {
     return `$${amount.toFixed(4)}`;

@@ -22,9 +22,9 @@ export type BathOption = {
 };
 
 export const BED_OPTIONS: BedOption[] = [
-  { id: "1", label: "1", min: 1, max: 1 },
-  { id: "2", label: "2", min: 2, max: 2 },
-  { id: "3", label: "3", min: 3, max: 3 },
+  { id: "1+", label: "1+", min: 1, max: null },
+  { id: "2+", label: "2+", min: 2, max: null },
+  { id: "3+", label: "3+", min: 3, max: null },
   { id: "4+", label: "4+", min: 4, max: null },
 ];
 
@@ -52,7 +52,7 @@ export function PillGroup<T extends { id: string; label: string }>({
       <p className="mb-3 text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
         {title}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {options.map((opt) => {
           const active = opt.id === selectedId;
           return (
