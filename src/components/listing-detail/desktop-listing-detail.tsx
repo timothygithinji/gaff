@@ -18,11 +18,13 @@ import {
   AiMagicIcon,
   Alert01Icon,
   ArrowLeft01Icon,
+  ArrowRight01Icon,
   Cancel01Icon,
   Download01Icon,
   FavouriteIcon,
   FitToScreenIcon,
   LinkSquare01Icon,
+  Loading03Icon,
   MinusSignIcon,
   PlusSignIcon,
   Share05Icon,
@@ -33,10 +35,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import {
-  TransformComponent,
-  TransformWrapper,
-} from "react-zoom-pan-pinch";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { cn } from "../../lib/utils";
 import type {
   ListingDetailPayload,
@@ -45,14 +44,15 @@ import type {
   ListingDetailSmallPrintItem,
 } from "../../server/functions/listing-detail";
 import { AdminSidebar } from "../layout/admin-sidebar";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-} from "../ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 
 type Outcome = "keep" | "skip" | "shortlist";
+
+/**
+ * Which swipe action is currently mid-flight. Drives the per-button
+ * spinner in {@link DecisionBar}. `null` means nothing is pending.
+ */
+export type ListingDetailPendingAction = Outcome | null;
 
 type Props = {
   data: ListingDetailPayload;
@@ -60,6 +60,7 @@ type Props = {
   onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
+  pendingAction?: ListingDetailPendingAction;
 };
 
 export function DesktopListingDetail({
@@ -68,6 +69,7 @@ export function DesktopListingDetail({
   onKeep,
   onSkip,
   onShortlist,
+  pendingAction = null,
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
@@ -80,6 +82,7 @@ export function DesktopListingDetail({
           onKeep={onKeep}
           onShortlist={onShortlist}
           onSkip={onSkip}
+          pendingAction={pendingAction}
         />
       </div>
     </AdminSidebar>
@@ -178,18 +181,7 @@ function TopBar({
 /* ---------------- Media column ---------------- */
 
 function MediaColumn({ data }: { data: ListingDetailPayload }) {
-  const {
-    photos,
-    headline,
-    portalSpread,
-    features,
-    floorplan,
-    commuteMinutes,
-  } = data;
-  const alsoOn =
-    portalSpread.length > 1
-      ? `${portalSpread.length} portals · same property`
-      : "Single listing";
+  const { photos, headline, features, floorplan, commuteMinutes } = data;
   const photoCount = Math.max(photos.length, 1);
 
   const canPaginate = photos.length > 1;
@@ -219,14 +211,18 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
     (i: number) => emblaApi?.scrollTo(i),
     [emblaApi]
   );
+  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
 
   return (
     <section className="flex w-[720px] shrink-0 flex-col gap-3.5">
       <HeroPhoto
         activeIndex={activeIndex}
-        alsoOn={alsoOn}
         alt={headline.addressRaw}
+        canPaginate={canPaginate}
         emblaRef={emblaRef}
+        onNext={scrollNext}
+        onPrev={scrollPrev}
         photoCount={photoCount}
         photos={photos}
       />
@@ -249,17 +245,21 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
 function HeroPhoto({
   photos,
   photoCount,
-  alsoOn,
   alt,
   emblaRef,
   activeIndex,
+  canPaginate,
+  onPrev,
+  onNext,
 }: {
   photos: ListingDetailPayload["photos"];
   photoCount: number;
-  alsoOn: string;
   alt: string;
   emblaRef: ReturnType<typeof useEmblaCarousel>[0];
   activeIndex: number;
+  canPaginate: boolean;
+  onPrev: () => void;
+  onNext: () => void;
 }) {
   if (photos.length === 0) {
     return (
@@ -276,7 +276,7 @@ function HeroPhoto({
   }
 
   return (
-    <div className="relative h-[400px] w-full select-none overflow-hidden rounded-2xl bg-muted">
+    <div className="group relative h-[400px] w-full select-none overflow-hidden rounded-2xl bg-muted">
       <div className="h-full w-full overflow-hidden" ref={emblaRef}>
         <div className="flex h-full touch-pan-y">
           {photos.map((p, i) => (
@@ -299,12 +299,26 @@ function HeroPhoto({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent"
       />
-      <span className="pointer-events-none absolute top-5 left-5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#E2B584]" />
-        <span className="font-semibold text-[10px] text-white uppercase tracking-wider">
-          {alsoOn}
-        </span>
-      </span>
+      {canPaginate ? (
+        <>
+          <button
+            aria-label="Previous photo"
+            className="-translate-y-1/2 absolute top-1/2 left-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            onClick={onPrev}
+            type="button"
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={18} strokeWidth={2} />
+          </button>
+          <button
+            aria-label="Next photo"
+            className="-translate-y-1/2 absolute top-1/2 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            onClick={onNext}
+            type="button"
+          >
+            <HugeiconsIcon icon={ArrowRight01Icon} size={18} strokeWidth={2} />
+          </button>
+        </>
+      ) : null}
       <span className="pointer-events-none absolute top-5 right-5 rounded-full bg-black/70 px-3 py-1.5 font-semibold text-[11px] text-white">
         {activeIndex + 1} / {photoCount}
       </span>
@@ -494,7 +508,7 @@ function FloorplanLightbox({
                     src={url}
                   />
                 </TransformComponent>
-                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-foreground/85 p-1 text-white shadow-lg">
+                <div className="-translate-x-1/2 absolute bottom-5 left-1/2 flex items-center gap-1 rounded-full bg-foreground/85 p-1 text-white shadow-lg">
                   <ZoomButton
                     icon={MinusSignIcon}
                     label="Zoom out"
@@ -595,12 +609,14 @@ function InfoColumn({
   onKeep,
   onSkip,
   onShortlist,
+  pendingAction,
 }: {
   data: ListingDetailPayload;
   disabled?: boolean;
   onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
+  pendingAction?: ListingDetailPendingAction;
 }) {
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-3.5">
@@ -616,6 +632,7 @@ function InfoColumn({
         partnerNames={data.partnerSwipes
           .filter((s) => s.outcome === null)
           .map((s) => s.name)}
+        pendingAction={pendingAction}
       />
     </section>
   );
@@ -822,6 +839,7 @@ function DecisionBar({
   onSkip,
   onShortlist,
   partnerNames,
+  pendingAction,
 }: {
   disabled?: boolean;
   mySwipe?: Outcome;
@@ -829,19 +847,19 @@ function DecisionBar({
   onSkip: () => void;
   onShortlist: () => void;
   partnerNames: string[];
+  pendingAction?: ListingDetailPendingAction;
 }) {
   const headline = decisionHeadline(mySwipe, partnerNames);
   return (
     <article className="flex items-center gap-2.5 rounded-2xl bg-foreground px-5 py-4">
-      <button
-        aria-label="Keep"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-bone"
-        disabled={disabled}
+      <DecisionBarButton
+        ariaLabel="Keep"
+        className="bg-primary text-bone"
+        icon={FavouriteIcon}
+        loading={pendingAction === "keep"}
         onClick={onKeep}
-        type="button"
-      >
-        <HugeiconsIcon icon={FavouriteIcon} size={16} strokeWidth={1.8} />
-      </button>
+        disabled={disabled}
+      />
       <div className="flex flex-1 flex-col gap-0.5">
         <span className="font-semibold text-[13px] text-bone">{headline}</span>
         <span className="text-[11px] text-white/55">
@@ -850,30 +868,64 @@ function DecisionBar({
             : "Your call only — keep, skip, or star to revisit"}
         </span>
       </div>
-      <button
-        aria-label="Skip"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white"
-        disabled={disabled}
+      <DecisionBarButton
+        ariaLabel="Skip"
+        className="bg-white/10 text-white"
+        icon={Cancel01Icon}
+        loading={pendingAction === "skip"}
         onClick={onSkip}
-        type="button"
-      >
-        <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.6} />
-      </button>
-      <button
-        aria-label="Star"
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        disabled={disabled}
+      />
+      <DecisionBarButton
+        ariaLabel="Star"
+        className={
           mySwipe === "shortlist"
             ? "bg-bone text-primary"
             : "bg-white/10 text-white"
-        )}
-        disabled={disabled}
+        }
+        icon={StarIcon}
+        loading={pendingAction === "shortlist"}
         onClick={onShortlist}
-        type="button"
-      >
-        <HugeiconsIcon icon={StarIcon} size={16} strokeWidth={1.6} />
-      </button>
+        disabled={disabled}
+      />
     </article>
+  );
+}
+
+function DecisionBarButton({
+  ariaLabel,
+  className,
+  icon,
+  loading,
+  onClick,
+  disabled,
+}: {
+  ariaLabel: string;
+  className?: string;
+  icon: typeof FavouriteIcon;
+  loading: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      aria-busy={loading || undefined}
+      aria-label={ariaLabel}
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        className
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <HugeiconsIcon
+        className={loading ? "animate-spin" : undefined}
+        icon={loading ? Loading03Icon : icon}
+        size={16}
+        strokeWidth={loading ? 2 : 1.8}
+      />
+    </button>
   );
 }
 

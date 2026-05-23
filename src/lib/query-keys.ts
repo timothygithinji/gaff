@@ -18,8 +18,8 @@ export const queryKeys = {
   search: (id: string) => ["searches", id] as const,
   household: () => ["household"] as const,
   schedules: () => ["schedules"] as const,
-  reviewNext: (searchId?: string | null) =>
-    ["review", "next", searchId ?? null] as const,
+  reviewNext: (searchId?: string | null, clusterId?: string | null) =>
+    ["review", "next", searchId ?? null, clusterId ?? null] as const,
   reviewQueue: (searchId?: string | null) =>
     ["review", "queue", searchId ?? null] as const,
   reviewTodayStats: (searchId?: string | null) =>

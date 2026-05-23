@@ -10,7 +10,11 @@
  * Validation is async (network round-trip), so the chip group exposes
  * a `pending` state to disable submission while a lookup is in flight.
  */
-import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  Loading03Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import {
@@ -157,7 +161,12 @@ export function OutcodeChips({ variant, values, onChange, countLabel }: Props) {
               type="button"
             >
               {pending ? (
-                "…"
+                <HugeiconsIcon
+                  className="animate-spin"
+                  icon={Loading03Icon}
+                  size={14}
+                  strokeWidth={2}
+                />
               ) : (
                 <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2.5} />
               )}

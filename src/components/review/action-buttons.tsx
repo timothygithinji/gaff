@@ -15,15 +15,29 @@ import {
   Cancel01Icon,
   FavouriteIcon,
   InformationCircleIcon,
+  Loading03Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "../../components/ui/button";
 
+/**
+ * Which mutation is mid-flight. Swaps the matching button's icon for a
+ * spinner so the user sees instant feedback even when the network
+ * hasn't returned yet. `null` means nothing pending.
+ */
+export type ActionButtonsPending =
+  | "keep"
+  | "skip"
+  | "shortlist"
+  | "undo"
+  | null;
+
 type Props = {
   clusterId: string;
   disabled?: boolean;
+  pendingAction?: ActionButtonsPending;
   onUndo: () => void;
   onSkip: () => void;
   onKeep: () => void;
@@ -33,6 +47,7 @@ type Props = {
 export function ActionButtons({
   clusterId,
   disabled,
+  pendingAction = null,
   onUndo,
   onSkip,
   onKeep,
@@ -41,6 +56,7 @@ export function ActionButtons({
   return (
     <div className="flex items-center justify-center gap-3 py-4">
       <Button
+        aria-busy={pendingAction === "undo" || undefined}
         aria-label="Undo last swipe"
         className="size-11 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
@@ -50,13 +66,17 @@ export function ActionButtons({
         variant="outline"
       >
         <HugeiconsIcon
-          icon={ArrowReloadHorizontalIcon}
+          className={pendingAction === "undo" ? "animate-spin" : undefined}
+          icon={
+            pendingAction === "undo" ? Loading03Icon : ArrowReloadHorizontalIcon
+          }
           size={18}
           strokeWidth={1.8}
         />
       </Button>
 
       <Button
+        aria-busy={pendingAction === "skip" || undefined}
         aria-label="Skip"
         className="size-13 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
@@ -65,7 +85,12 @@ export function ActionButtons({
         type="button"
         variant="outline"
       >
-        <HugeiconsIcon icon={Cancel01Icon} size={22} strokeWidth={1.8} />
+        <HugeiconsIcon
+          className={pendingAction === "skip" ? "animate-spin" : undefined}
+          icon={pendingAction === "skip" ? Loading03Icon : Cancel01Icon}
+          size={22}
+          strokeWidth={1.8}
+        />
       </Button>
 
       <Button
@@ -84,6 +109,7 @@ export function ActionButtons({
       </Button>
 
       <Button
+        aria-busy={pendingAction === "keep" || undefined}
         aria-label="Keep"
         className="size-16 rounded-full shadow-lg"
         disabled={disabled}
@@ -91,10 +117,16 @@ export function ActionButtons({
         size="icon"
         type="button"
       >
-        <HugeiconsIcon icon={FavouriteIcon} size={28} strokeWidth={2} />
+        <HugeiconsIcon
+          className={pendingAction === "keep" ? "animate-spin" : undefined}
+          icon={pendingAction === "keep" ? Loading03Icon : FavouriteIcon}
+          size={28}
+          strokeWidth={2}
+        />
       </Button>
 
       <Button
+        aria-busy={pendingAction === "shortlist" || undefined}
         aria-label="Shortlist"
         className="size-13 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
         disabled={disabled}
@@ -103,7 +135,12 @@ export function ActionButtons({
         type="button"
         variant="outline"
       >
-        <HugeiconsIcon icon={StarIcon} size={20} strokeWidth={1.8} />
+        <HugeiconsIcon
+          className={pendingAction === "shortlist" ? "animate-spin" : undefined}
+          icon={pendingAction === "shortlist" ? Loading03Icon : StarIcon}
+          size={20}
+          strokeWidth={1.8}
+        />
       </Button>
     </div>
   );

@@ -13,6 +13,7 @@ import { authClient } from "../lib/auth-client";
 import { redirectIfSignedIn } from "../lib/auth-guard";
 
 export const Route = createFileRoute("/signup")({
+  head: () => ({ meta: [{ title: "Sign up · Gaff" }] }),
   beforeLoad: ({ context }) => {
     redirectIfSignedIn(context as { currentUserId: string | null });
   },
@@ -192,11 +193,12 @@ function SignupPage() {
 
           <Button
             className="w-full rounded-full"
-            disabled={signUp.isPending}
+            loading={signUp.isPending}
+            loadingText="Creating…"
             size="lg"
             type="submit"
           >
-            {signUp.isPending ? "Creating…" : "Create account"}
+            Create account
           </Button>
         </form>
 

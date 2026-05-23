@@ -38,6 +38,7 @@ import {
 } from "../../server/functions/household";
 
 export const Route = createFileRoute("/settings/household")({
+  head: () => ({ meta: [{ title: "Household settings · Gaff" }] }),
   beforeLoad: ({ context }) => {
     requireSession(
       context as { currentUserId: string | null },
@@ -81,10 +82,7 @@ function HouseholdSettingsPage() {
                   </p>
                 </div>
                 {isOwner && member.userId !== currentUserId && (
-                  <RemoveMemberButton
-                    memberId={member.id}
-                    name={member.name}
-                  />
+                  <RemoveMemberButton memberId={member.id} name={member.name} />
                 )}
               </li>
             ))}
@@ -146,11 +144,12 @@ function InviteSection() {
             <DialogFooter>
               <DialogClose render={<Button variant="ghost">Cancel</Button>} />
               <Button
-                disabled={create.isPending}
+                loading={create.isPending}
+                loadingText="Minting…"
                 onClick={() => create.mutate()}
                 type="button"
               >
-                {create.isPending ? "Minting…" : "Create link"}
+                Create link
               </Button>
             </DialogFooter>
           )}
@@ -219,16 +218,19 @@ function RemoveMemberButton({
           Their swipe history stays; they just won't appear in mutual matches
           any more.
         </DialogDescription>
-        {error ? <p className="mt-2 text-destructive text-sm">{error}</p> : null}
+        {error ? (
+          <p className="mt-2 text-destructive text-sm">{error}</p>
+        ) : null}
         <DialogFooter>
           <DialogClose render={<Button variant="ghost">Cancel</Button>} />
           <Button
-            disabled={remove.isPending}
+            loading={remove.isPending}
+            loadingText="Removing…"
             onClick={() => remove.mutate()}
             type="button"
             variant="destructive"
           >
-            {remove.isPending ? "Removing…" : "Remove"}
+            Remove
           </Button>
         </DialogFooter>
       </DialogContent>

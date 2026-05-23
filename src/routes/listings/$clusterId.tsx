@@ -26,12 +26,14 @@
 import {
   ArrowLeft01Icon,
   Bookmark01Icon,
+  Loading03Icon,
   Share05Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
 import { FloorplanAnalysis } from "../../components/listing-detail/floorplan-analysis";
@@ -40,6 +42,7 @@ import { PortalCrossList } from "../../components/listing-detail/portal-cross-li
 import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
 import { WhereItSits } from "../../components/listing-detail/where-it-sits";
+import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
 import { queryKeys } from "../../lib/query-keys";
@@ -48,6 +51,8 @@ import {
   getListingDetail,
 } from "../../server/functions/listing-detail";
 import { recordSwipe } from "../../server/functions/review";
+
+type SwipeOutcome = "keep" | "skip" | "shortlist";
 
 const listingDetailQueryOptions = (clusterId: string) =>
   ({
@@ -59,6 +64,18 @@ const listingDetailQueryOptions = (clusterId: string) =>
   }) as const;
 
 export const Route = createFileRoute("/listings/$clusterId")({
+  head: (ctx) => {
+    const data = ctx.loaderData as ListingDetailPayload | undefined;
+    return {
+      meta: [
+        {
+          title: data?.headline.addressRaw
+            ? `${data.headline.addressRaw} · Gaff`
+            : "Listing · Gaff",
+        },
+      ],
+    };
+  },
   beforeLoad: ({ context, params }) => {
     requireSession(
       context as { currentUserId: string | null },
@@ -123,11 +140,10 @@ function ListingDetailPage() {
   const { data } = useQuery(queryOpts);
   const { memberCount } = useHousehold();
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<SwipeOutcome | null>(null);
 
   const swipe = useMutation({
-    mutationFn: (args: {
-      outcome: "keep" | "skip" | "shortlist";
-    }) => {
+    mutationFn: (args: { outcome: SwipeOutcome }) => {
       if (!data) {
         throw new Error("not_loaded");
       }
@@ -140,6 +156,7 @@ function ListingDetailPage() {
       });
     },
     onMutate: async (args) => {
+      setPendingAction(args.outcome);
       await qc.cancelQueries({ queryKey: queryOpts.queryKey });
       const previous = qc.getQueryData<ListingDetailPayload | null>(
         queryOpts.queryKey
@@ -159,6 +176,7 @@ function ListingDetailPage() {
       setError(e.message ?? "Couldn't record swipe");
     },
     onSettled: () => {
+      setPendingAction(null);
       qc.invalidateQueries({ queryKey: queryOpts.queryKey });
       // Also invalidate the review queue + shortlist queries; this
       // listing now has a different presence in those feeds.
@@ -168,13 +186,7 @@ function ListingDetailPage() {
   });
 
   if (!data) {
-    return (
-      <div className="mx-auto min-h-screen max-w-md bg-background">
-        <div className="flex h-screen items-center justify-center">
-          <div className="h-6 w-32 animate-pulse rounded bg-muted" />
-        </div>
-      </div>
-    );
+    return <ListingDetailSkeleton />;
   }
 
   const {
@@ -219,6 +231,7 @@ function ListingDetailPage() {
         onKeep={() => swipe.mutate({ outcome: "keep" })}
         onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
         onSkip={() => swipe.mutate({ outcome: "skip" })}
+        pendingAction={pendingAction}
       />
 
       <div className="mx-auto min-h-screen max-w-md bg-background pb-32 md:hidden">
@@ -260,14 +273,25 @@ function ListingDetailPage() {
               <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={2} />
             </button>
             <button
+              aria-busy={pendingAction === "shortlist" || undefined}
               aria-label="Bookmark"
-              className={`flex size-9 items-center justify-center rounded-[999px] border border-border bg-card ${
+              className={`flex size-9 items-center justify-center rounded-[999px] border border-border bg-card disabled:opacity-50 ${
                 mySwipe === "shortlist" ? "text-primary" : "text-foreground"
               }`}
+              disabled={swipe.isPending}
               onClick={() => swipe.mutate({ outcome: "shortlist" })}
               type="button"
             >
-              <HugeiconsIcon icon={Bookmark01Icon} size={16} strokeWidth={2} />
+              <HugeiconsIcon
+                className={
+                  pendingAction === "shortlist" ? "animate-spin" : undefined
+                }
+                icon={
+                  pendingAction === "shortlist" ? Loading03Icon : Bookmark01Icon
+                }
+                size={16}
+                strokeWidth={2}
+              />
             </button>
           </div>
         </header>
@@ -335,7 +359,62 @@ function ListingDetailPage() {
           onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
           onSkip={() => swipe.mutate({ outcome: "skip" })}
           partnerSwipes={partnerSwipes}
+          pendingAction={pendingAction}
         />
+      </div>
+    </>
+  );
+}
+
+const SKELETON_PORTAL_ROWS = ["p0", "p1"];
+const SKELETON_RECORDS_ROWS = ["r0", "r1", "r2", "r3"];
+
+/**
+ * Skeleton shown if the route component mounts before the loader has
+ * hydrated `getListingDetail`. With `ensureQueryData` this is rare, but
+ * a filter switch or a cold client navigation can land here briefly —
+ * a proper skeleton beats the previous half-line animate-pulse stub.
+ */
+function ListingDetailSkeleton() {
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
+          <section className="flex w-[420px] shrink-0 flex-col gap-3.5">
+            <Skeleton className="aspect-[4/3] w-full rounded-2xl" />
+            <div className="flex gap-2">
+              {SKELETON_PORTAL_ROWS.map((id) => (
+                <Skeleton className="h-16 flex-1 rounded-xl" key={id} />
+              ))}
+            </div>
+          </section>
+          <section className="flex min-w-0 flex-1 flex-col gap-3.5">
+            <Skeleton className="h-44 rounded-2xl" />
+            <Skeleton className="h-32 rounded-2xl" />
+            <Skeleton className="h-40 rounded-2xl" />
+            <Skeleton className="h-16 rounded-2xl" />
+          </section>
+        </div>
+      </AdminSidebar>
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-32 md:hidden">
+        <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
+          <Skeleton className="size-9 rounded-full" />
+          <div className="flex gap-2.5">
+            <Skeleton className="size-9 rounded-full" />
+            <Skeleton className="size-9 rounded-full" />
+          </div>
+        </header>
+        <Skeleton className="mx-4 aspect-[4/5] rounded-2xl" />
+        <section className="space-y-3 px-6 pt-6">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
+        </section>
+        <section className="space-y-3 px-4 pt-6">
+          {SKELETON_RECORDS_ROWS.map((id) => (
+            <Skeleton className="h-20 w-full rounded-2xl" key={id} />
+          ))}
+        </section>
       </div>
     </>
   );
