@@ -12,7 +12,11 @@
  *   - `createSearch`  → INSERT + `createSchedule(externalId = search.id)`
  *   - `updateSearch`  → UPDATE + reconcile schedule by externalId
  *   - `archiveSearch` → flip `active=false` + `deactivateSchedule`
- *   - `deleteSearch`  → `deleteSchedule` + DELETE row
+ *
+ * Hard deletes are intentionally not supported — archiving (pausing the
+ * schedule and flipping `active=false`) is the only destructive option
+ * exposed to the user. Listings, runs, and swipes all hang off
+ * `search_id`, so deleting a row would orphan that history.
  *
  * `cron: null` is the explicit "Off" sentinel — write the row with
  * `active=false` and skip schedule creation entirely.
@@ -40,7 +44,6 @@ import type { Env } from "../../server";
 import {
   createSchedule,
   deactivateSchedule,
-  deleteSchedule as deleteScheduleFn,
   findScheduleByExternalId,
   updateSchedule,
 } from "./schedules";
@@ -452,37 +455,6 @@ export const archiveSearch = createServerFn({ method: "POST" })
     if (schedule?.active) {
       await deactivateSchedule({ data: { id: schedule.id } });
     }
-    return { ok: true };
-  });
-
-export const deleteSearch = createServerFn({ method: "POST" })
-  .inputValidator(idSchema)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
-    const householdId = await requireHouseholdId();
-    const db = getDb(env as unknown as Env);
-    const existing = await db.query.searches.findFirst({
-      where: (s, { eq: eqOp, and: andOp }) =>
-        andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
-    });
-    if (!existing) {
-      throw new Error("not_found");
-    }
-
-    // Delete the schedule FIRST. If we deleted the row first and the
-    // schedule delete then failed, we'd have an orphan firing against a
-    // gone search id. Schedule-first means a failure here aborts the
-    // DB delete and leaves a consistent state.
-    const schedule = await findScheduleByExternalId(data.id);
-    if (schedule) {
-      await deleteScheduleFn({ data: { id: schedule.id } });
-    }
-
-    await db
-      .delete(searches)
-      .where(
-        and(eq(searches.id, data.id), eq(searches.householdId, householdId))
-      );
-
     return { ok: true };
   });
 

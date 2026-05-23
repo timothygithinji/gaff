@@ -1,17 +1,14 @@
 /**
  * Desktop Searches — portfolio view shown above the `md` breakpoint:
  *
- *   - HEADER  : "Your watch list" eyebrow + page title + New search CTA;
- *               a four-up metric strip beneath (active / listings this
- *               week / in queue / spend) — all from live aggregations.
- *   - LEFT    : 2-up card grid, one card per active `SearchRow` — name,
- *               status eyebrow, outcode chips, price band, portal pills,
- *               and a footer stats row (listings/wk · in queue · kept ·
- *               last run) from the portfolio payload. Paused searches
- *               use a warmer card surface so they read as inactive.
- *   - RIGHT   : "This week" pulse card with a 7-day mini bar chart from
- *               real day-bucketed listings; an archived snippet showing
- *               searches with `active=false`.
+ *   - HEADER : "Your watch list" eyebrow + page title + New search CTA;
+ *              a four-up metric strip beneath (active / listings this
+ *              week / in queue / spend) — all from live aggregations.
+ *   - GRID   : 2-up card grid, one card per active `SearchRow` — name,
+ *              status eyebrow, outcode chips, price band, portal pills,
+ *              and a footer stats row (listings/wk · in queue · kept ·
+ *              last run) from the portfolio payload. Paused searches
+ *              use a warmer card surface so they read as inactive.
  *
  * Per-search cadence labels aren't included in the portfolio payload —
  * they live on Trigger.dev. v1 surfaces a coarse "Active" / "Paused"
@@ -44,36 +41,23 @@ export function DesktopSearches({
     portfolio.perSearch.map((s) => [s.searchId, s])
   );
   const activeSearches = searches.filter((s) => s.active);
-  const archivedSearches = searches.filter((s) => !s.active);
   return (
     <AdminSidebar mode="desktop-only">
       <PageHeader />
       <MetricStrip totals={portfolio.totals} />
-      <div className="flex min-w-0 flex-1 gap-6 px-10 py-6">
-        <div className="flex min-w-0 flex-1 flex-wrap content-start gap-4">
-          {searches.length === 0 ? (
-            <EmptyState />
-          ) : (
-            activeSearches.map((s) => (
-              <SearchCard
-                cadenceLabel={cadenceBySearch.get(s.id) ?? null}
-                key={s.id}
-                search={s}
-                stats={statsBySearch.get(s.id) ?? null}
-              />
-            ))
-          )}
-        </div>
-        <aside className="flex w-[300px] shrink-0 flex-col gap-3.5">
-          <PulseCard
-            deltaPct={portfolio.totals.listingsThisWeekDeltaPct}
-            pulse={portfolio.pulseLast7Days}
-            total={portfolio.totals.listingsThisWeek}
-          />
-          {archivedSearches.length > 0 ? (
-            <ArchivedCard searches={archivedSearches} />
-          ) : null}
-        </aside>
+      <div className="flex min-w-0 flex-1 flex-wrap content-start gap-4 px-10 py-6">
+        {searches.length === 0 ? (
+          <EmptyState />
+        ) : (
+          activeSearches.map((s) => (
+            <SearchCard
+              cadenceLabel={cadenceBySearch.get(s.id) ?? null}
+              key={s.id}
+              search={s}
+              stats={statsBySearch.get(s.id) ?? null}
+            />
+          ))
+        )}
       </div>
     </AdminSidebar>
   );
@@ -301,7 +285,9 @@ function OutcodeChip({
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 font-medium text-[11px]",
-        muted ? "bg-bone text-muted-foreground" : "bg-[#F0E6D2] text-foreground"
+        muted
+          ? "bg-muted text-muted-foreground"
+          : "bg-foreground/10 text-foreground"
       )}
     >
       {children}
@@ -311,7 +297,7 @@ function OutcodeChip({
 
 function PortalChip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-foreground px-2.5 py-1 font-semibold text-[11px] text-white">
+    <span className="inline-flex items-center rounded-full bg-foreground px-2.5 py-1 font-semibold text-[11px] text-background">
       {children}
     </span>
   );
@@ -371,152 +357,9 @@ function StatCell({
   );
 }
 
-/* ---------------- Right rail ---------------- */
-
-function PulseCard({
-  pulse,
-  total,
-  deltaPct,
-}: {
-  pulse: number[];
-  total: number;
-  deltaPct: number;
-}) {
-  // Compute the bar labels relative to today. Index 0 is 6 days ago,
-  // index 6 is today — render shortest 1-letter day labels so the
-  // column stays narrow.
-  const dayLabels = computeDayLabels(7);
-  const todayIndex = 6;
-  const max = Math.max(1, ...pulse);
-  const delta = formatDelta(deltaPct);
-  return (
-    <article className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 py-4">
-      <div className="flex items-center justify-between">
-        <Eyebrow>This week · all searches</Eyebrow>
-        {delta ? (
-          <span className={cn("font-semibold text-[11px]", delta.color)}>
-            {delta.label}
-          </span>
-        ) : null}
-      </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-serif text-[38px] text-foreground leading-none tracking-tight">
-          {total}
-        </span>
-        <span className="text-[12px] text-muted-foreground">
-          new listing{total === 1 ? "" : "s"} reached you
-        </span>
-      </div>
-      <div className="flex h-14 items-end gap-1">
-        {pulse.map((count, i) => {
-          // Always paint a thin sliver even at zero so the chart's
-          // baseline stays visible — otherwise empty days vanish.
-          const pct = max === 0 ? 0 : (count / max) * 100;
-          const minPct = 6;
-          return (
-            <span
-              className={cn(
-                "flex-1 rounded-sm",
-                i === todayIndex ? "bg-primary" : "bg-[#F0E6D2]"
-              )}
-              key={dayLabels[i]}
-              style={{ height: `${Math.max(minPct, pct)}%` }}
-              title={`${count} listing${count === 1 ? "" : "s"}`}
-            />
-          );
-        })}
-      </div>
-      <div className="flex items-center justify-between">
-        {dayLabels.map((d, i) => (
-          <span
-            className={cn(
-              "text-[10px]",
-              i === todayIndex ? "font-semibold text-primary" : "text-[#B5A893]"
-            )}
-            key={`${d}-${i}`}
-          >
-            {d}
-          </span>
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function ArchivedCard({ searches }: { searches: SearchRow[] }) {
-  return (
-    <article className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-[18px] py-4">
-      <div className="flex items-center justify-between">
-        <Eyebrow>Archived · {searches.length}</Eyebrow>
-      </div>
-      <div className="flex flex-col">
-        {searches.map((s, i) => (
-          <ArchivedRow
-            ageLabel={`Paused ${relativeShort(s.updatedAt)}`}
-            id={s.id}
-            isLast={i === searches.length - 1}
-            key={s.id}
-            name={s.name}
-          />
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function ArchivedRow({
-  name,
-  ageLabel,
-  id,
-  isLast = false,
-}: {
-  name: string;
-  ageLabel: string;
-  id: string;
-  isLast?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between py-2",
-        !isLast && "border-[#F2EBDE] border-b"
-      )}
-    >
-      <div className="flex flex-col gap-px">
-        <span className="font-serif text-[13px] text-foreground">{name}</span>
-        <span className="text-[10px] text-muted-foreground">{ageLabel}</span>
-      </div>
-      <Link
-        className="text-[11px] text-primary"
-        params={{ id }}
-        to="/searches/$id"
-      >
-        Manage
-      </Link>
-    </div>
-  );
-}
-
-/**
- * Day-of-week labels for the last `count` days ending today. Returns
- * 1-letter labels (`M`, `T`, `W`, etc.) in chronological order so the
- * pulse chart's index 6 is always today.
- */
-function computeDayLabels(count: number): string[] {
-  const labels: string[] = [];
-  const today = new Date();
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-    labels.push(
-      d.toLocaleDateString("en-GB", { weekday: "short" }).slice(0, 1)
-    );
-  }
-  return labels;
-}
-
 /**
  * Compact relative-time formatter — "12m" / "3h" / "2d" / "5w". Used
- * inside chip-sized stats and archived rows.
+ * inside chip-sized stats.
  */
 function relativeShort(date: Date): string {
   const d = date instanceof Date ? date : new Date(date as unknown as string);
