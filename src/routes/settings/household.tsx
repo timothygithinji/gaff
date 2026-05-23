@@ -14,6 +14,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { BottomNav } from "../../components/layout/bottom-nav";
 import { Button } from "../../components/ui/button";
 import {
@@ -55,43 +56,137 @@ function HouseholdSettingsPage() {
   useSuspenseQuery(householdQueryOptions); // keep the cache alive
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-28">
-      <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-        <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
-          Household
-        </h1>
+    <>
+      <AdminSidebar mode="desktop-only">
+        <DesktopHousehold
+          currentUserId={currentUserId}
+          isOwner={isOwner}
+          members={members}
+        />
+      </AdminSidebar>
+
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 md:hidden">
+        <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
+          <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
+            Household
+          </h1>
+        </header>
+
+        <main className="space-y-6 px-4">
+          <section>
+            <p className="mb-2 px-2 font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+              Members
+            </p>
+            <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+              {members.map((member) => (
+                <li
+                  key={member.id}
+                  className="flex items-center justify-between px-4 py-3"
+                >
+                  <div>
+                    <p className="text-foreground text-sm">
+                      {member.name || member.email}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {member.email} · {member.role}
+                    </p>
+                  </div>
+                  {isOwner && member.userId !== currentUserId && (
+                    <RemoveMemberButton
+                      memberId={member.id}
+                      name={member.name}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {isOwner && <InviteSection />}
+        </main>
+        <BottomNav />
+      </div>
+    </>
+  );
+}
+
+function DesktopHousehold({
+  isOwner,
+  members,
+  currentUserId,
+}: {
+  isOwner: boolean;
+  members: HouseholdPayload["members"];
+  currentUserId: string;
+}) {
+  return (
+    <div className="flex w-full flex-col gap-6 px-10 pt-9 pb-8">
+      <header className="flex items-start justify-between gap-6">
+        <div className="flex flex-col gap-1.5">
+          <p className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.14em]">
+            Settings
+          </p>
+          <h1 className="font-medium font-serif text-[36px] text-foreground leading-[100%] tracking-[-0.03em]">
+            Household
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Manage who can swipe alongside you. Owners can invite and remove
+            members.
+          </p>
+        </div>
+        {isOwner ? (
+          <div className="shrink-0 pt-1">
+            <InviteSection />
+          </div>
+        ) : null}
       </header>
 
-      <main className="space-y-6 px-4">
-        <section>
-          <p className="mb-2 px-2 font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+      <section className="flex flex-col gap-2.5">
+        <div className="flex items-baseline justify-between px-1">
+          <p className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.14em]">
             Members
           </p>
-          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
-            {members.map((member) => (
+          <p className="text-muted-foreground text-xs">
+            {members.length} {members.length === 1 ? "member" : "members"}
+          </p>
+        </div>
+        <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+          {members.map((member) => {
+            const isSelf = member.userId === currentUserId;
+            return (
               <li
                 key={member.id}
-                className="flex items-center justify-between px-4 py-3"
+                className="flex items-center justify-between gap-4 px-4 py-3"
               >
-                <div>
-                  <p className="text-foreground text-sm">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <p className="truncate text-foreground text-sm">
                     {member.name || member.email}
+                    {isSelf ? (
+                      <span className="ml-2 text-muted-foreground text-xs">
+                        You
+                      </span>
+                    ) : null}
                   </p>
-                  <p className="text-muted-foreground text-xs">
-                    {member.email} · {member.role}
+                  <p className="truncate text-muted-foreground text-xs">
+                    {member.email}
                   </p>
                 </div>
-                {isOwner && member.userId !== currentUserId && (
-                  <RemoveMemberButton memberId={member.id} name={member.name} />
-                )}
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="rounded-full bg-muted px-2.5 py-0.5 font-medium text-[11px] text-muted-foreground capitalize">
+                    {member.role}
+                  </span>
+                  {isOwner && !isSelf ? (
+                    <RemoveMemberButton
+                      memberId={member.id}
+                      name={member.name}
+                    />
+                  ) : null}
+                </div>
               </li>
-            ))}
-          </ul>
-        </section>
-
-        {isOwner && <InviteSection />}
-      </main>
-      <BottomNav />
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 }

@@ -20,7 +20,6 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   Cancel01Icon,
-  Download01Icon,
   FavouriteIcon,
   FitToScreenIcon,
   LinkSquare01Icon,
@@ -36,6 +35,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import {
+  type ListingFromOrigin,
+  resolveFromOrigin,
+} from "../../lib/listing-origin";
 import { cn } from "../../lib/utils";
 import type {
   ListingDetailPayload,
@@ -57,6 +60,7 @@ export type ListingDetailPendingAction = Outcome | null;
 type Props = {
   data: ListingDetailPayload;
   disabled?: boolean;
+  from?: ListingFromOrigin;
   onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
@@ -66,6 +70,7 @@ type Props = {
 export function DesktopListingDetail({
   data,
   disabled,
+  from,
   onKeep,
   onSkip,
   onShortlist,
@@ -73,7 +78,7 @@ export function DesktopListingDetail({
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
-      <TopBar headline={data.headline} mySwipe={data.mySwipe} />
+      <TopBar from={from} headline={data.headline} mySwipe={data.mySwipe} />
       <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
         <MediaColumn data={data} />
         <InfoColumn
@@ -92,14 +97,17 @@ export function DesktopListingDetail({
 /* ---------------- Top bar ---------------- */
 
 function TopBar({
+  from,
   headline,
   mySwipe,
 }: {
+  from?: ListingFromOrigin;
   headline: ListingDetailPayload["headline"];
   mySwipe?: Outcome;
 }) {
   const navigate = useNavigate();
   const title = shortAddressTitle(headline.addressRaw);
+  const origin = resolveFromOrigin(from);
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between border-bone border-b bg-ground/85 px-10 py-5 backdrop-blur">
       <div className="flex items-center gap-3.5">
@@ -107,10 +115,14 @@ function TopBar({
           aria-label="Back"
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground"
           onClick={() => {
+            // Prefer real history.back so the prior page's scroll +
+            // selection state is restored; fall back to the recorded
+            // origin so deep-linked / refreshed loads still go somewhere
+            // sensible.
             if (typeof window !== "undefined" && window.history.length > 1) {
               window.history.back();
             } else {
-              navigate({ to: "/" });
+              navigate({ to: origin.path });
             }
           }}
           type="button"
@@ -121,26 +133,17 @@ function TopBar({
           aria-label="breadcrumb"
           className="flex items-center gap-2 text-xs"
         >
-          <Link className="text-muted-foreground hover:text-foreground" to="/">
-            Review
+          <Link
+            className="text-muted-foreground hover:text-foreground"
+            to={origin.path}
+          >
+            {origin.label}
           </Link>
           <span className="text-[#B5A893]">/</span>
           <span className="font-semibold text-foreground">{title}</span>
         </nav>
       </div>
       <div className="flex items-center gap-2.5">
-        <button
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-foreground text-xs"
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              window.print();
-            }
-          }}
-          type="button"
-        >
-          <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={1.6} />
-          <span className="font-medium">Save PDF</span>
-        </button>
         <button
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-foreground text-xs"
           onClick={() => {
@@ -235,7 +238,10 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
       ) : null}
       <FloorplanCard features={features} floorplanUrl={floorplan?.url} />
       <LocationCard
+        apiKey={data.googleMapsApiKey}
         commuteMinutes={commuteMinutes}
+        lat={data.cluster.lat}
+        lng={data.cluster.lng}
         postcode={headline.postcode ?? data.cluster.postcode}
       />
     </section>
@@ -565,21 +571,39 @@ function ZoomButton({
 function LocationCard({
   postcode,
   commuteMinutes,
+  lat,
+  lng,
+  apiKey,
 }: {
   postcode: string | null;
   commuteMinutes?: Record<string, number>;
+  lat: string | null;
+  lng: string | null;
+  apiKey: string;
 }) {
   const firstTarget = commuteMinutes
     ? Object.entries(commuteMinutes)[0]
     : undefined;
+  const title = postcode
+    ? `London ${postcode.toUpperCase()}`
+    : "Where it sits";
+  const latNum = lat ? Number(lat) : null;
+  const lngNum = lng ? Number(lng) : null;
+  const hasCoords =
+    latNum !== null &&
+    lngNum !== null &&
+    Number.isFinite(latNum) &&
+    Number.isFinite(lngNum);
+  const mapSrc =
+    hasCoords && apiKey
+      ? `https://www.google.com/maps/embed/v1/place?key=${apiKey}&q=${latNum},${lngNum}&zoom=15`
+      : null;
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
       <header className="flex items-end justify-between px-6 pt-5 pb-3.5">
         <div className="flex flex-col gap-1">
           <Eyebrow>Where it sits</Eyebrow>
-          <h2 className="font-serif text-[22px] text-foreground">
-            {postcode ? `London ${postcode.toUpperCase()}` : "Where it sits"}
-          </h2>
+          <h2 className="font-serif text-[22px] text-foreground">{title}</h2>
         </div>
         {firstTarget ? (
           <span className="inline-flex items-center gap-2 rounded-full bg-bone px-3 py-1.5">
@@ -592,11 +616,21 @@ function LocationCard({
           </span>
         ) : null}
       </header>
-      <div className="mx-6 mb-6 flex h-[220px] items-center justify-center overflow-hidden rounded-xl border border-bone bg-[#F3EBDC]">
-        <p className="text-muted-foreground text-sm">
-          Map renders here · see the embedded Google Maps view in the mobile
-          equivalent.
-        </p>
+      <div className="mx-6 mb-6 h-[220px] overflow-hidden rounded-xl border border-bone bg-[#F3EBDC]">
+        {mapSrc ? (
+          <iframe
+            allowFullScreen={false}
+            className="h-full w-full"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            src={mapSrc}
+            title={title}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <p className="text-muted-foreground text-sm">Location pending</p>
+          </div>
+        )}
       </div>
     </article>
   );

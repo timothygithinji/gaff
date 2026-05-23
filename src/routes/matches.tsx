@@ -141,6 +141,7 @@ function MatchesPage() {
     navigate({
       to: "/listings/$clusterId",
       params: { clusterId },
+      search: { from: "matches" },
     });
   }
 

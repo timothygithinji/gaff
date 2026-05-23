@@ -33,6 +33,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { z } from "zod";
+import {
+  listingFromOriginSchema,
+  resolveFromOrigin,
+} from "../../lib/listing-origin";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
@@ -63,6 +68,10 @@ const listingDetailQueryOptions = (clusterId: string) =>
     staleTime: 15_000,
   }) as const;
 
+const listingDetailSearchSchema = z.object({
+  from: listingFromOriginSchema,
+});
+
 export const Route = createFileRoute("/listings/$clusterId")({
   head: (ctx) => {
     const data = ctx.loaderData as ListingDetailPayload | undefined;
@@ -76,6 +85,7 @@ export const Route = createFileRoute("/listings/$clusterId")({
       ],
     };
   },
+  validateSearch: listingDetailSearchSchema,
   beforeLoad: ({ context, params }) => {
     requireSession(
       context as { currentUserId: string | null },
@@ -134,6 +144,7 @@ const TRAILING_COMMA_RE = /,\s*$/;
 
 function ListingDetailPage() {
   const { clusterId } = Route.useParams();
+  const { from } = Route.useSearch();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const queryOpts = listingDetailQueryOptions(clusterId);
@@ -228,6 +239,7 @@ function ListingDetailPage() {
       <DesktopListingDetail
         data={data}
         disabled={swipe.isPending}
+        from={from}
         onKeep={() => swipe.mutate({ outcome: "keep" })}
         onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
         onSkip={() => swipe.mutate({ outcome: "skip" })}
@@ -241,11 +253,12 @@ function ListingDetailPage() {
             aria-label="Back"
             className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
             onClick={() => {
-              // Prefer real back navigation; fall back to the review queue.
+              // Prefer real back navigation; fall back to wherever the
+              // user came from (`?from=` search param).
               if (typeof window !== "undefined" && window.history.length > 1) {
                 window.history.back();
               } else {
-                navigate({ to: "/" });
+                navigate({ to: resolveFromOrigin(from).path });
               }
             }}
             type="button"

@@ -57,7 +57,12 @@ import {
 } from "../../components/ui/sidebar";
 import { authClient } from "../../lib/auth-client";
 import { useHouseholdOptional } from "../../lib/household-context";
+import {
+  type ListingFromOrigin,
+  resolveFromOrigin,
+} from "../../lib/listing-origin";
 import { queryKeys } from "../../lib/query-keys";
+import { getReviewQueue } from "../../server/functions/review";
 import { listMyOutcomes } from "../../server/functions/shortlist";
 import { useTheme } from "../theme-provider";
 
@@ -83,16 +88,32 @@ const shortlistMineQueryOptions = {
   staleTime: 15_000,
 };
 
+// Unscoped review queue — the badge always reflects the total across
+// all searches, even when the user is on `/?searchId=…` looking at a
+// filtered view. Shares its queryKey with the Review page's
+// unscoped fetch so the cache is reused.
+const reviewQueueAllQueryOptions = {
+  queryKey: queryKeys.reviewQueue(null),
+  queryFn: () => getReviewQueue(),
+  staleTime: 0,
+};
+
 function useHouseLinks(): NavLink[] {
-  const { data } = useQuery(shortlistMineQueryOptions);
+  const { data: shortlist } = useQuery(shortlistMineQueryOptions);
+  const { data: queue } = useQuery(reviewQueueAllQueryOptions);
   return [
     { to: "/searches", label: "Searches", icon: Search01Icon },
-    { to: "/", label: "Review", icon: SwipeRight03Icon },
+    {
+      to: "/",
+      label: "Review",
+      icon: SwipeRight03Icon,
+      badge: queue?.remaining,
+    },
     {
       to: "/shortlist",
       label: "Shortlist",
       icon: StarIcon,
-      badge: data?.length,
+      badge: shortlist?.length,
     },
   ];
 }
@@ -124,7 +145,7 @@ export function AdminSidebar({ children, mode = "responsive" }: Props) {
         >
           <Brand />
           <SidebarContent>
-            <NavSection label="House" links={houseLinks} />
+            <NavSection label="Household" links={houseLinks} />
           </SidebarContent>
           <UserFooter />
         </Sidebar>
@@ -152,14 +173,15 @@ function Brand() {
 }
 
 function NavSection({ label, links }: { label: string; links: NavLink[] }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const location = useRouterState({ select: (s) => s.location });
+  const activeTo = resolveActiveLink(location.pathname, location.search);
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {links.map((link) => {
-            const active = isActive(pathname, link.to);
+            const active = link.to === activeTo;
             return (
               <SidebarMenuItem key={link.to}>
                 <SidebarMenuButton
@@ -241,18 +263,20 @@ function UserFooter() {
               side="top"
               sideOffset={8}
             >
-              <DropdownMenuLabel>
-                <div className="grid gap-0.5">
-                  <span className="truncate font-medium text-sm">
-                    {displayName}
-                  </span>
-                  {secondary ? (
-                    <span className="truncate text-muted-foreground text-xs">
-                      {secondary}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>
+                  <div className="grid gap-0.5">
+                    <span className="truncate font-medium text-sm">
+                      {displayName}
                     </span>
-                  ) : null}
-                </div>
-              </DropdownMenuLabel>
+                    {secondary ? (
+                      <span className="truncate text-muted-foreground text-xs">
+                        {secondary}
+                      </span>
+                    ) : null}
+                  </div>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem render={<Link to="/settings/household" />}>
@@ -261,8 +285,8 @@ function UserFooter() {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Theme</DropdownMenuLabel>
               <DropdownMenuGroup>
+                <DropdownMenuLabel>Theme</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => setTheme("light")}>
                   <HugeiconsIcon icon={Sun03Icon} size={14} />
                   Light
@@ -289,6 +313,31 @@ function UserFooter() {
   );
 }
 
-function isActive(pathname: string, to: string): boolean {
-  return to === "/" ? pathname === to : pathname.startsWith(to);
+/**
+ * Returns the sidebar `link.to` that should appear active for the
+ * current location. Normally pathname-driven, but `/listings/*` has no
+ * sidebar entry of its own — we read the `?from=` origin baked into the
+ * URL by the caller and project it onto Review or Shortlist so the
+ * shell still shows where the user came from.
+ */
+function resolveActiveLink(
+  pathname: string,
+  search: Record<string, unknown>
+): string | null {
+  if (pathname.startsWith("/listings/")) {
+    return resolveFromOrigin(search.from as ListingFromOrigin).sidebarTo;
+  }
+  if (pathname === "/") {
+    return "/";
+  }
+  if (pathname.startsWith("/shortlist")) {
+    return "/shortlist";
+  }
+  if (pathname.startsWith("/matches")) {
+    return "/shortlist";
+  }
+  if (pathname.startsWith("/searches")) {
+    return "/searches";
+  }
+  return null;
 }
