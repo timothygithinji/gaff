@@ -69,10 +69,13 @@ export const householdMembers = pgTable(
     id: text("id").primaryKey(),
     householdId: text("household_id")
       .notNull()
-      .references(() => households.id, { onDelete: "cascade" }),
+      .references(() => households.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     userId: text("user_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade", onUpdate: "cascade" }),
     role: householdRoleEnum("role").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -91,7 +94,10 @@ export const searches = pgTable(
     id: text("id").primaryKey(),
     householdId: text("household_id")
       .notNull()
-      .references(() => households.id, { onDelete: "cascade" }),
+      .references(() => households.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     name: text("name").notNull(),
     portals: text("portals").array().notNull(),
     outcodes: text("outcodes").array().notNull(),
@@ -151,10 +157,14 @@ export const listings = pgTable(
     portalListingId: text("portal_listing_id").notNull(),
     clusterId: text("cluster_id").references(() => propertyClusters.id, {
       onDelete: "set null",
+      onUpdate: "cascade",
     }),
     searchId: text("search_id")
       .notNull()
-      .references(() => searches.id, { onDelete: "cascade" }),
+      .references(() => searches.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     url: text("url").notNull(),
     title: text("title").notNull(),
     addressRaw: text("address_raw").notNull(),
@@ -193,7 +203,10 @@ export const listingPhotos = pgTable(
     id: text("id").primaryKey(),
     listingId: text("listing_id")
       .notNull()
-      .references(() => listings.id, { onDelete: "cascade" }),
+      .references(() => listings.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     url: text("url").notNull(),
     r2Key: text("r2_key"),
     position: integer("position").notNull(),
@@ -205,6 +218,7 @@ export const aiRuns = pgTable("ai_runs", {
   id: text("id").primaryKey(),
   listingId: text("listing_id").references(() => listings.id, {
     onDelete: "set null",
+    onUpdate: "cascade",
   }),
   promptVersion: text("prompt_version").notNull(),
   model: text("model").notNull(),
@@ -223,7 +237,10 @@ export const enrichments = pgTable(
     id: text("id").primaryKey(),
     listingId: text("listing_id")
       .notNull()
-      .references(() => listings.id, { onDelete: "cascade" }),
+      .references(() => listings.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     promptVersion: text("prompt_version").notNull(),
     features: jsonb("features")
       .$type<{
@@ -280,6 +297,7 @@ export const enrichments = pgTable(
     }>(),
     aiRunId: text("ai_run_id").references(() => aiRuns.id, {
       onDelete: "set null",
+      onUpdate: "cascade",
     }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -297,15 +315,21 @@ export const swipes = pgTable(
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade", onUpdate: "cascade" }),
     clusterId: text("cluster_id")
       .notNull()
       // Restrict — swipes record user decisions and must not be silently
       // dropped if a cluster row is ever removed.
-      .references(() => propertyClusters.id, { onDelete: "restrict" }),
+      .references(() => propertyClusters.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
     searchId: text("search_id")
       .notNull()
-      .references(() => searches.id, { onDelete: "cascade" }),
+      .references(() => searches.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
     outcome: swipeOutcomeEnum("outcome").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -324,7 +348,10 @@ export const scrapeRuns = pgTable("scrape_runs", {
   id: text("id").primaryKey(),
   searchId: text("search_id")
     .notNull()
-    .references(() => searches.id, { onDelete: "cascade" }),
+    .references(() => searches.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
   portal: text("portal").notNull(),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
@@ -343,7 +370,7 @@ export const scrapeRuns = pgTable("scrape_runs", {
 export const userState = pgTable("user_state", {
   userId: text("user_id")
     .primaryKey()
-    .references(() => user.id, { onDelete: "cascade" }),
+    .references(() => user.id, { onDelete: "cascade", onUpdate: "cascade" }),
   lastSeenMatches: timestamp("last_seen_matches").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .$onUpdate(() => new Date())
