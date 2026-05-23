@@ -67,3 +67,6 @@ infra/cloudflare/node_modules/
 /tmp/
 gaff-dev.log
 gaff-dev.pid
+
+# Claude Code local project memory
+.claude/projects/
