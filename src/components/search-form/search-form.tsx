@@ -35,9 +35,12 @@ import { CadencePicker } from "./cadence-picker";
 import type { CommuteTarget } from "./commute-target-row";
 import { CommuteTargetsList } from "./commute-targets-list";
 import { CostEstimate } from "./cost-estimate";
+import { FurnishedPicker, type FurnishedValue } from "./furnished-picker";
+import { type MustHaveValue, MustHavesToggles } from "./must-haves-toggles";
 import { OutcodeChips } from "./outcode-chips";
 import { PortalToggles } from "./portal-toggles";
 import { PriceSlider } from "./price-slider";
+import { PropertyTypePills } from "./property-type-pills";
 import {
   type TransportTarget,
   TransportTargetsList,
@@ -51,6 +54,9 @@ export type SearchFormValues = {
   maxPrice: number;
   bedsId: string;
   bathsId: string;
+  propertyTypes: string[];
+  furnished: FurnishedValue;
+  mustHaves: MustHaveValue[];
   commuteTargets: CommuteTarget[];
   transportTargets: TransportTarget[];
   portals: Portal[];
@@ -65,6 +71,9 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   maxPrice: 2800,
   bedsId: "2+",
   bathsId: "1+",
+  propertyTypes: [],
+  furnished: null,
+  mustHaves: [],
   commuteTargets: [],
   transportTargets: [],
   portals: ["rightmove", "zoopla", "openrent"],
@@ -295,6 +304,54 @@ export function SearchForm({
     </section>
   );
 
+  const propertyTypeSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Property type</h2>
+      <p className="-mt-1 text-muted-foreground text-sm">
+        Tap to add — leave empty for any.
+      </p>
+      <form.Field name="propertyTypes">
+        {(field) => (
+          <PropertyTypePills
+            onChange={(next) => field.handleChange(next)}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const furnishedSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Furnishing</h2>
+      <form.Field name="furnished">
+        {(field) => (
+          <FurnishedPicker
+            onChange={(next) => field.handleChange(next)}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
+  const mustHavesSection = (
+    <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Must-haves</h2>
+      <p className="-mt-1 text-muted-foreground text-sm">
+        Hard filters at scrape time — anything without these is hidden.
+      </p>
+      <form.Field name="mustHaves">
+        {(field) => (
+          <MustHavesToggles
+            onChange={(next) => field.handleChange(next)}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+    </section>
+  );
+
   const commuteSection = (
     <section className="space-y-3">
       <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
@@ -397,10 +454,20 @@ export function SearchForm({
               + the map affordance). The right column carries price, the
               two location-targeting sections (commute + transport), then
               portals and cadence. */}
+          {/* Two-column field grid. Postcodes own the wider left column
+              (heavy chip rows + the map affordance) alongside the
+              must-haves toggles which read as a similar "shaping" input.
+              The right column carries price, the property-shape filters,
+              the two location-targeting sections, then portals/cadence. */}
           <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[1.4fr_1fr]">
-            <div className="space-y-10">{postcodesSection}</div>
+            <div className="space-y-10">
+              {postcodesSection}
+              {mustHavesSection}
+            </div>
             <div className="space-y-10">
               {priceSizeSection}
+              {propertyTypeSection}
+              {furnishedSection}
               {commuteSection}
               {transportSection}
               {portalsSection}
@@ -452,6 +519,9 @@ export function SearchForm({
         {headlineSection}
         {postcodesSection}
         {priceSizeSection}
+        {propertyTypeSection}
+        {furnishedSection}
+        {mustHavesSection}
         {commuteSection}
         {transportSection}
         {portalsSection}

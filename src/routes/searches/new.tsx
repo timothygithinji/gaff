@@ -58,7 +58,9 @@ function NewSearchPage() {
           maxBathrooms: baths.max,
           minPrice: values.minPrice,
           maxPrice: values.maxPrice,
-          propertyTypes: [],
+          propertyTypes: values.propertyTypes,
+          furnished: values.furnished,
+          mustHaves: values.mustHaves,
           commuteTargets: values.commuteTargets,
           transportTargets: values.transportTargets,
           cron: cadence.cron,
@@ -125,6 +127,7 @@ function NewSearchPage() {
  */
 function synthesizeSearchRow(values: SearchFormValues): SearchRow {
   const beds = bedOptionFor(values.bedsId);
+  const baths = bathOptionFor(values.bathsId);
   const cadence = findCadenceById(values.cadenceId);
   const now = new Date();
   return {
@@ -136,9 +139,13 @@ function synthesizeSearchRow(values: SearchFormValues): SearchRow {
     excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
     minBedrooms: beds.min,
     maxBedrooms: beds.max,
+    minBathrooms: baths.min,
+    maxBathrooms: baths.max,
     minPrice: values.minPrice,
     maxPrice: values.maxPrice,
-    propertyTypes: [],
+    propertyTypes: values.propertyTypes,
+    furnished: values.furnished,
+    mustHaves: values.mustHaves,
     commuteTargets: values.commuteTargets,
     transportTargets: values.transportTargets,
     active: cadence.cron !== null,
