@@ -103,6 +103,8 @@ export const searches = pgTable(
     outcodes: text("outcodes").array().notNull(),
     minBedrooms: integer("min_bedrooms"),
     maxBedrooms: integer("max_bedrooms"),
+    minBathrooms: integer("min_bathrooms"),
+    maxBathrooms: integer("max_bathrooms"),
     minPrice: integer("min_price"),
     maxPrice: integer("max_price"),
     propertyTypes: text("property_types").array().notNull(),
@@ -110,6 +112,18 @@ export const searches = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * Furnishing preference. `null` means "no filter".
+     * Stored as plain text (not an enum) to keep the migration trivial;
+     * Zod enforces the closed set at write time.
+     */
+    furnished: text("furnished"),
+    /**
+     * Must-have amenities. Closed set is enforced in Zod
+     * (`["garden", "parking", "pets"]`); the column is plain text[] so
+     * adding a new value later is a no-migration change.
+     */
+    mustHaves: text("must_haves").array().notNull().default(sql`'{}'::text[]`),
     commuteTargets: jsonb("commute_targets")
       .$type<
         Array<{
