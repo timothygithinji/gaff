@@ -584,9 +584,7 @@ function LocationCard({
   const firstTarget = commuteMinutes
     ? Object.entries(commuteMinutes)[0]
     : undefined;
-  const title = postcode
-    ? `London ${postcode.toUpperCase()}`
-    : "Where it sits";
+  const title = postcode ? `London ${postcode.toUpperCase()}` : "Where it sits";
   const latNum = lat ? Number(lat) : null;
   const lngNum = lng ? Number(lng) : null;
   const hasCoords =
