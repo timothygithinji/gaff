@@ -76,6 +76,7 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "drizzle-kit": "^0.28.1",
+    "fallow": "^2.79.0",
     "node-html-parser": "^7.1.0",
     "react-grab": "^0.1.37",
     "trigger.dev": "^4.4.6",

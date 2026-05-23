@@ -70,3 +70,4 @@ gaff-dev.pid
 
 # Claude Code local project memory
 .claude/projects/
+.fallow/
