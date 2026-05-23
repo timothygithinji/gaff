@@ -34,10 +34,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
-import {
-  listingFromOriginSchema,
-  resolveFromOrigin,
-} from "../../lib/listing-origin";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
@@ -50,6 +46,10 @@ import { WhereItSits } from "../../components/listing-detail/where-it-sits";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
+import {
+  listingFromOriginSchema,
+  resolveFromOrigin,
+} from "../../lib/listing-origin";
 import { queryKeys } from "../../lib/query-keys";
 import {
   type ListingDetailPayload,
