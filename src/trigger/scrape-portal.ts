@@ -41,6 +41,7 @@ import {
   rightmoveSearchUrl,
   zooplaSearchUrl,
 } from "../lib/portal-urls";
+import { storeRawHtml } from "../lib/raw-html";
 import { createRightmoveLocationCache } from "../lib/rightmove-location";
 import { findScheduleByExternalId } from "../lib/schedule-lookup";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
@@ -57,6 +58,8 @@ export type ScrapePortalOutput = {
   costUsd: number;
   listingsFound: number;
   newListings: number;
+  /** R2 key for the gzipped raw HTML; `null` when uploads were skipped or all failed. */
+  rawKey: string | null;
 };
 
 function getZyteKey(): string {
@@ -304,6 +307,7 @@ export const scrapePortalTask = task({
         costUsd: output.costUsd.toFixed(6),
         listingsFound: output.listingsFound,
         newListings: output.newListings,
+        rawKey: output.rawKey,
       })
       .where(eq(schema.scrapeRuns.id, output.runId));
   },
@@ -373,6 +377,10 @@ export const scrapePortalTask = task({
     // outcodes. After the per-outcode loop we resolve these to
     // `listings.id` values for fanout into the cluster task.
     const allTouchedPortalListingIds: string[] = [];
+    // Last successful raw-html R2 key for this run. Written onto
+    // scrape_runs.raw_key on the success path; left null if every
+    // outcode failed to upload or R2 creds aren't staged.
+    let rawKey: string | null = null;
 
     // Per-portal cost fallback when Zyte's response header is missing.
     const portalCostFallback = PORTAL_COST_USD[portal];
@@ -432,6 +440,29 @@ export const scrapePortalTask = task({
 
       totalCost += res.cost ?? portalCostFallback;
 
+      // Archive the raw HTML to R2 (best-effort). One per outcode means
+      // a portal sweep may write N keys; we keep the last successful one
+      // on `scrape_runs.raw_key`. Failures don't propagate — the scrape
+      // succeeds either way; the run row just won't carry a raw_key.
+      try {
+        const stored = await storeRawHtml({
+          portal,
+          scope: outcode,
+          runId,
+          html: res.html,
+        });
+        if (stored) {
+          rawKey = stored.key;
+        }
+      } catch (err) {
+        logger.warn("scrape-portal: raw-html upload failed", {
+          portal,
+          outcode,
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
       const summaries = parsePortalHtml(portal, res.html);
       const { totalSeen, newCount, touchedPortalListingIds } =
         await upsertListings(db, searchId, portal, summaries);
@@ -481,6 +512,7 @@ export const scrapePortalTask = task({
       costUsd: totalCost,
       listingsFound: totalListingsFound,
       newListings: totalNew,
+      rawKey,
     };
   },
 });

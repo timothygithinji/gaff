@@ -45,6 +45,7 @@ import {
   parseZooplaDetail,
 } from "../lib/parsers";
 import type { ListingDetail, Portal } from "../lib/parsers/types";
+import { storeRawHtml } from "../lib/raw-html";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { cachePhotosTask } from "./cache-photos";
 import { enrichAiTask } from "./enrich-ai";
@@ -135,6 +136,29 @@ function buildListingPatch(
     }
   }
 
+  // Filter-tier fields promoted to dedicated columns (queryable + indexable).
+  // fillIfMissing keeps the search-tier value authoritative when both
+  // tiers populate the same column.
+  fillIfMissing(patch, "sizeSqFt", existing.sizeSqFt, detail.sizeSqFt);
+  fillIfMissing(
+    patch,
+    "councilTaxBand",
+    existing.councilTaxBand,
+    detail.councilTaxBand
+  );
+  if (detail.publishedAt) {
+    const parsed = new Date(detail.publishedAt);
+    if (!Number.isNaN(parsed.getTime()) && existing.publishedAt == null) {
+      patch.publishedAt = parsed;
+    }
+  }
+  fillIfMissing(
+    patch,
+    "petsAccepted",
+    existing.petsAccepted,
+    detail.tenantPreferences?.petsAccepted
+  );
+
   // Always refresh raw_json with the richer detail blob so the admin UI
   // and downstream enrichment can read whatever's there without re-fetching.
   patch.rawJson = detail as unknown as Record<string, unknown>;
@@ -220,13 +244,22 @@ export const scrapeDetailTask = task({
     // lifecycle hooks can find it. We pass searchId from the listing
     // because scrape_runs.search_id is NOT NULL — every detail scrape is
     // attributable to whichever search surfaced the listing.
+    //
+    // `onConflictDoNothing` mirrors scrape-portal.ts:359 — when Trigger
+    // retries a failed run (same ctx.run.id, new attempt), attempts 2+
+    // would otherwise collide with the row attempt 1 inserted. Letting
+    // the INSERT no-op preserves the original `onFailure` error_message
+    // instead of overwriting it with the pkey-collision text.
     const runId = ctx.run.id;
-    await db.insert(schema.scrapeRuns).values({
-      id: runId,
-      searchId: listing.searchId,
-      portal,
-      status: "running",
-    });
+    await db
+      .insert(schema.scrapeRuns)
+      .values({
+        id: runId,
+        searchId: listing.searchId,
+        portal,
+        status: "running",
+      })
+      .onConflictDoNothing({ target: schema.scrapeRuns.id });
 
     const useBrowser = portal === "rightmove" || portal === "zoopla";
     const portalCostFallback = PORTAL_COST_USD[portal];
@@ -245,6 +278,28 @@ export const scrapeDetailTask = task({
       httpResponseBody: useBrowser ? undefined : true,
     });
     const cost = res.cost ?? portalCostFallback;
+
+    // Best-effort raw archive (gzipped HTML to R2). Skipped silently
+    // when R2 creds aren't staged; logged but non-fatal on transport error.
+    let rawKey: string | null = null;
+    try {
+      const stored = await storeRawHtml({
+        portal,
+        scope: listingId,
+        runId,
+        html: res.html,
+      });
+      if (stored) {
+        rawKey = stored.key;
+      }
+    } catch (err) {
+      logger.warn("scrape-detail: raw-html upload failed", {
+        portal,
+        listingId,
+        runId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     const detail = parsePortalDetail(portal, res.html);
 
@@ -302,6 +357,7 @@ export const scrapeDetailTask = task({
         costUsd: cost.toFixed(6),
         listingsFound: 1,
         newListings: 0,
+        rawKey,
       })
       .where(eq(schema.scrapeRuns.id, runId));
 
