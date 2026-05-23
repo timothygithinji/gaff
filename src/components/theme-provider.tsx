@@ -5,8 +5,8 @@
  */
 import { ScriptOnce } from "@tanstack/react-router";
 import {
-  createContext,
   type ReactNode,
+  createContext,
   useContext,
   useEffect,
   useState,
@@ -28,14 +28,18 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 // STORAGE_KEY constant is interpolated at module evaluation time.
 const themeScript = `(function(){try{var k='${STORAGE_KEY}';var t=localStorage.getItem(k)||'system';var r=t==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;var d=document.documentElement;d.classList.remove('light','dark');d.classList.add(r);d.style.colorScheme=r;}catch(e){}})();`;
 
+function resolveTheme(theme: Theme): "light" | "dark" {
+  if (theme !== "system") {
+    return theme;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  const resolved =
-    theme === "system"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-      : theme;
+  const resolved = resolveTheme(theme);
   root.classList.remove("light", "dark");
   root.classList.add(resolved);
   root.style.colorScheme = resolved;
@@ -51,7 +55,9 @@ export function ThemeProvider({ children, defaultTheme = "system" }: Props) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored) setThemeState(stored);
+    if (stored) {
+      setThemeState(stored);
+    }
   }, []);
 
   useEffect(() => {
@@ -59,7 +65,9 @@ export function ThemeProvider({ children, defaultTheme = "system" }: Props) {
   }, [theme]);
 
   useEffect(() => {
-    if (theme !== "system") return;
+    if (theme !== "system") {
+      return;
+    }
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => applyTheme("system");
     mq.addEventListener("change", onChange);
@@ -84,6 +92,8 @@ export function ThemeProvider({ children, defaultTheme = "system" }: Props) {
 
 export function useTheme() {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be used within a ThemeProvider");
+  if (!ctx) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
   return ctx;
 }
