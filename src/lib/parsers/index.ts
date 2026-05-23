@@ -6,25 +6,14 @@
  * each `parseXDetail` returns `ListingDetail`. Parsers throw only when
  * the page's root data structure is missing (page-shape change); they
  * leave individual missing fields as `undefined`.
+ *
+ * Only the per-portal `parseX*` functions are exposed via this barrel;
+ * shared helpers in `./common`, `./page-model`, and `./rsc-flight` are
+ * imported from their files directly. Same for the result types in
+ * `./types`. Keeps the barrel honest about what's actually a public
+ * entry point.
  */
 
-export {
-  decodeEntities,
-  extractPostcode,
-  extractScriptJson,
-  pluck,
-  pluckSafe,
-  probe,
-} from "./common";
 export { parseOpenrentDetail, parseOpenrentSearch } from "./openrent";
-export { extractRightmoveModel } from "./page-model";
 export { parseRightmoveDetail, parseRightmoveSearch } from "./rightmove";
-export { findByKey, findInFlight, parseFlight } from "./rsc-flight";
-export type {
-  Furnished,
-  ListingDetail,
-  ListingSummary,
-  NearestStation,
-  Portal,
-} from "./types";
 export { parseZooplaDetail, parseZooplaSearch } from "./zoopla";
