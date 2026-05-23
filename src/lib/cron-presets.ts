@@ -40,8 +40,6 @@ export const CADENCE_PRESETS: CadencePreset[] = [
   { id: "off", label: "Off", cron: null, scrapesPerDay: 0 },
 ];
 
-export const DEFAULT_CADENCE_ID = DEFAULT_PRESET.id;
-
 export function findCadenceByCron(cron: string | null): CadencePreset {
   if (cron === null) {
     return CADENCE_PRESETS.find((p) => p.id === "off") ?? DEFAULT_PRESET;

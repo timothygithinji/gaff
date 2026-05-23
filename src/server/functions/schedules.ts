@@ -8,24 +8,13 @@
  * them locally so the dashboard and the search edit screen all stay
  * in sync.
  *
- * Modelled on scout's `server/functions/schedules.ts` — same shape, same
- * paging-discard pattern, same task whitelist gate on "Run now". The
- * `findScheduleByExternalId` helper lists+filters client-side because
- * the SDK has no `findOne(externalId)` endpoint as of v4.
+ * `findScheduleByExternalId` lists+filters client-side because the
+ * Trigger SDK has no `findOne(externalId)` endpoint as of v4.
  */
 import { createServerFn } from "@tanstack/react-start";
-import type { AnyRunHandle, ScheduleObject } from "@trigger.dev/core/v3";
-import { schedules, tasks } from "@trigger.dev/sdk";
+import type { ScheduleObject } from "@trigger.dev/core/v3";
+import { schedules } from "@trigger.dev/sdk";
 import { z } from "zod";
-
-/**
- * Whitelist of task IDs that may be triggered via "Run now" on a
- * schedule row. Keeps the endpoint from becoming an arbitrary task
- * launcher — anything new needs a deliberate edit here. `scrape-search`
- * doesn't exist yet (PR 4 lands it) but the wrapper needs to be ready
- * to schedule it the moment it does, so it's whitelisted up front.
- */
-const SCHEDULABLE_TASK_IDS = ["scrape-search"] as const;
 
 const cronPatternSchema = z.string().trim().min(1, "cron expression required");
 const timezoneSchema = z.string().trim().min(1).max(64).optional();
@@ -87,44 +76,9 @@ export const updateSchedule = createServerFn({ method: "POST" })
       })
   );
 
-export const activateSchedule = createServerFn({ method: "POST" })
-  .inputValidator(idSchema)
-  .handler(({ data }): Promise<ScheduleRow> => schedules.activate(data.id));
-
 export const deactivateSchedule = createServerFn({ method: "POST" })
   .inputValidator(idSchema)
   .handler(({ data }): Promise<ScheduleRow> => schedules.deactivate(data.id));
-
-export const deleteSchedule = createServerFn({ method: "POST" })
-  .inputValidator(idSchema)
-  .handler(async ({ data }): Promise<{ id: string }> => {
-    const deleted = await schedules.del(data.id);
-    return { id: deleted.id };
-  });
-
-const runNowSchema = z.object({
-  task: z.enum(SCHEDULABLE_TASK_IDS),
-});
-
-/**
- * Fire the underlying scheduled task immediately, bypassing the cron.
- * Tagged `trigger:manual` so the runs table can distinguish manual
- * firings from cron firings.
- */
-export const runScheduleTaskNow = createServerFn({ method: "POST" })
-  .inputValidator(runNowSchema)
-  .handler(
-    ({ data }): Promise<AnyRunHandle> =>
-      tasks.trigger(
-        data.task,
-        {},
-        {
-          tags: [`task:${data.task}`, "trigger:manual"],
-          idempotencyKey: `${data.task}-manual-${Date.now()}`,
-          idempotencyKeyTTL: "1m",
-        }
-      )
-  );
 
 /**
  * Look up a schedule by the `externalId` we attached at create time

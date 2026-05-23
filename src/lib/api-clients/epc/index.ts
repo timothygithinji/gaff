@@ -6,5 +6,4 @@
  */
 
 export { createEpcClient } from "./client";
-export type { CreateEpcClientOptions } from "./client";
 export * from "./generated";

@@ -65,15 +65,6 @@ export function probe(
   return null;
 }
 
-/** Same as `pluck` but returns `undefined` instead of throwing. */
-export function pluckSafe(obj: unknown, path: (string | number)[]): unknown {
-  try {
-    return pluck(obj, path);
-  } catch {
-    return undefined;
-  }
-}
-
 /** Coerce an unknown to `number | undefined` (parses numeric strings). */
 export function toNumber(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) {
