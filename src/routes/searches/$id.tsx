@@ -111,7 +111,9 @@ function EditSearchPage() {
           maxBathrooms: baths.max,
           minPrice: values.minPrice,
           maxPrice: values.maxPrice,
-          propertyTypes: [],
+          propertyTypes: values.propertyTypes,
+          furnished: values.furnished,
+          mustHaves: values.mustHaves,
           commuteTargets: values.commuteTargets,
           transportTargets: values.transportTargets,
           cron: cadence.cron,
@@ -263,6 +265,7 @@ function buildPatch(
   existing: SearchRow
 ): Partial<SearchRow> {
   const beds = bedOptionFor(values.bedsId);
+  const baths = bathOptionFor(values.bathsId);
   const cadence = findCadenceById(values.cadenceId);
   return {
     name: values.name,
@@ -271,9 +274,13 @@ function buildPatch(
     excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
     minBedrooms: beds.min,
     maxBedrooms: beds.max,
+    minBathrooms: baths.min,
+    maxBathrooms: baths.max,
     minPrice: values.minPrice,
     maxPrice: values.maxPrice,
-    propertyTypes: [],
+    propertyTypes: values.propertyTypes,
+    furnished: values.furnished,
+    mustHaves: values.mustHaves,
     commuteTargets: values.commuteTargets,
     transportTargets: values.transportTargets,
     active: cadence.cron !== null,
@@ -295,10 +302,7 @@ function toFormValues(
     search.minBedrooms === null
       ? DEFAULT_FORM_VALUES.bedsId
       : pickBedsId(search.minBedrooms);
-  const bathsId = pickBathsId(
-    DEFAULT_FORM_VALUES.bathsId,
-    search.commuteTargets
-  );
+  const bathsId = pickBathsId(search.minBathrooms, search.maxBathrooms);
   const cron = matching ? matching.generator.expression : null;
   const cadence = matching ? findCadenceByCron(cron) : findCadenceById("off");
 
@@ -310,6 +314,9 @@ function toFormValues(
     maxPrice: search.maxPrice ?? DEFAULT_FORM_VALUES.maxPrice,
     bedsId,
     bathsId,
+    propertyTypes: search.propertyTypes,
+    furnished: search.furnished as SearchFormValues["furnished"],
+    mustHaves: search.mustHaves as SearchFormValues["mustHaves"],
     commuteTargets: search.commuteTargets,
     transportTargets: search.transportTargets,
     portals: search.portals as SearchFormValues["portals"],
@@ -326,13 +333,19 @@ function pickBedsId(min: number): string {
 }
 
 /**
- * Baths column isn't on the row directly — keep the form-default until
- * we add `(minBathrooms, maxBathrooms)` to the table. The signature
- * keeps `commuteTargets` referenced so the compiler doesn't trim it.
+ * Maps stored (min, max) bathrooms back to one of the BATH_OPTIONS ids
+ * (1+, 2, 3+). The "2" pill is the only exact match; anything else
+ * snaps to the surrounding "+" bucket. `null` min defaults to "1+".
  */
-function pickBathsId(
-  fallback: string,
-  _commuteTargets: { label: string }[]
-): string {
-  return fallback;
+function pickBathsId(min: number | null, max: number | null): string {
+  if (min === null) {
+    return DEFAULT_FORM_VALUES.bathsId;
+  }
+  if (min === 2 && max === 2) {
+    return "2";
+  }
+  if (min >= 3) {
+    return "3+";
+  }
+  return "1+";
 }
