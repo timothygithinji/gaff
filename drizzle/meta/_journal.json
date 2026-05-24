@@ -78,6 +78,20 @@
       "when": 1779623068359,
       "tag": "0010_shocking_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779631799117,
+      "tag": "0011_same_rocket_racer",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779632579500,
+      "tag": "0012_common_mantis",
+      "breakpoints": true
     }
   ]
 }

@@ -1,24 +1,29 @@
 /**
  * Search-page URL builders for the three rental portals.
  *
- * Each function takes a normalised filter object (one outcode + the
- * search row's bed/price/propertyType constraints) and returns the full
- * URL we hand to Zyte.
+ * Each function takes a normalised filter object (location ref + the
+ * search row's bed/price/propertyType constraints + the user-picked
+ * radius) and returns the full URL we hand to Zyte.
  *
  * Notes / quirks:
  *
  *   - Rightmove requires a numeric `locationIdentifier` (resolved upstream
  *     via `resolveRightmove` in `portal-locations.ts`). The plain outcode
  *     string does not work — Rightmove silently returns a "not found" page.
+ *     Radius is sent as `radius=<miles>` (decimal); `0.0` means "this
+ *     area only".
  *   - Zoopla uses the free-text search route `/search/?section=to-rent&q=...`.
  *     The path-based `/to-rent/property/<city>/<outcode>/` URL still
  *     works but requires a city segment we don't have for arbitrary
  *     locality picks (e.g. "Manchester", "Cambridge"). The free-text
  *     route handles every place type with no slug derivation —
  *     verified empirically: full parity vs path for postcodes, correct
- *     scoping for cities and sublocalities.
- *   - OpenRent uses `term=` and `within=<miles>`; we pass the place's
- *     display name and a radius derived from the Place viewport.
+ *     scoping for cities and sublocalities. Radius is `radius=<miles>`
+ *     (decimal); `0` means "this area only".
+ *   - OpenRent uses `term=` and `area=<km integer>`; we pass the place's
+ *     display name and convert the user's miles → km (rounded) at
+ *     URL-build time, floored at OR's UI minimum of 2km. The older
+ *     `within=` param is no longer honoured.
  *   - `propertyTypes` maps to portal-specific tokens (Rightmove: comma
  *     joined; Zoopla: single `property_sub_type`; OpenRent: not supported
  *     in the URL — filtered downstream by the parser).
@@ -50,11 +55,18 @@ export type Exclusion = "student" | "retirement" | "house_share";
 
 /**
  * Shared filter params — every portal builder consumes some subset.
- * The location-specific bits (Zoopla `q`, OpenRent `term`/`within`,
- * Rightmove `locationIdentifier`) are passed via portal-specific
- * params types because their shapes diverge.
+ * The location-specific bits (Zoopla `q`, OpenRent `term`, Rightmove
+ * `locationIdentifier`) are passed via portal-specific params types
+ * because their shapes diverge. `radiusMiles` is shared and required —
+ * it lives on the search row, not the location.
  */
 export type PortalSearchParams = {
+  /**
+   * User-picked search radius in miles. Sent to Rightmove + Zoopla
+   * as-is (decimal); converted to a km integer for OpenRent.
+   * `0` means "this area only" — strict to the resolved location.
+   */
+  radiusMiles: number;
   minBedrooms?: number | null;
   maxBedrooms?: number | null;
   minBathrooms?: number | null;
@@ -115,7 +127,7 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
   const usp = new URLSearchParams();
   usp.set("locationIdentifier", params.locationIdentifier);
   usp.set("searchType", "RENT");
-  usp.set("radius", "0.0");
+  usp.set("radius", params.radiusMiles.toFixed(2));
   usp.set("sortType", "6"); // newest listings first
   usp.set("index", "0");
   // Silent-win defaults — every Gaff search wants long-term lets only
@@ -183,8 +195,10 @@ export type ZooplaSearchUrlParams = PortalSearchParams & {
  * Zoopla's free-text search route accepts any human-readable place
  * via `q=`. Confirmed equivalent to the legacy path-based URL for
  * postcodes (`/london/nw3/`) and correctly scopes for cities and
- * sublocalities. Bbox / lat-lng / radius params are silently ignored
- * — only `q` drives the location.
+ * sublocalities. Bbox / lat-lng params are silently ignored, but
+ * `radius=0` IS honoured and pins results to the resolved `q` area
+ * with no surrounding buffer (matches the "this area only" toggle in
+ * Zoopla's UI).
  *
  * Must-haves use the `feature=<key>` pattern, REPEATED (not comma-
  * joined). `pets_allowed=true` is its own top-level param. House-share
@@ -196,6 +210,7 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
   usp.set("section", "to-rent");
   usp.set("category", "residential");
   usp.set("q", params.q);
+  usp.set("radius", params.radiusMiles.toFixed(2));
   usp.set("price_frequency", "per_month");
   usp.set("results_sort", "newest_listings");
   usp.set("search_source", "to-rent");
@@ -275,9 +290,11 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
  *     on OR — nothing to hide.
  *
  * `isLive=true` is OpenRent's equivalent of "exclude let-agreed".
- * `within=<miles>` caps the radius around the term — derived from the
- * Google place's viewport bounds by the resolver in
- * `src/lib/portal-locations.ts` (clamped to [1, 5]).
+ * `area=<km integer>` caps the radius around the term. We accept the
+ * user's pick in miles (matches the RM/ZP unit), convert to km and
+ * round to an integer because OR only honours whole-km values, then
+ * floor at 2 — OR's UI minimum, which OR will silently widen to
+ * anyway. The older `within=` param is no longer honoured.
  *
  * OpenRent's own URL doesn't include `propertyType` — left out here
  * to keep the URL clean. Property-type filtering on OR is parser-side.
@@ -285,14 +302,25 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
 export type OpenrentSearchUrlParams = PortalSearchParams & {
   /** Free-text `term=` value, e.g. "NW3" or "Camden Town". */
   term: string;
-  /** Radius around `term` in miles. */
-  withinMiles: number;
 };
+
+/** Miles per kilometre. Used to convert the user's miles pick → OR's km. */
+const KM_PER_MILE = 1.609344;
+
+/**
+ * Convert the user's miles radius to a km integer suitable for
+ * OpenRent's `area=` param. Floored at 2 (OR's UI minimum — anything
+ * below silently widens to 2 server-side, so we make the URL honest).
+ */
+function milesToOpenrentAreaKm(miles: number): number {
+  const km = Math.round(miles * KM_PER_MILE);
+  return Math.max(2, km);
+}
 
 export function openrentSearchUrl(params: OpenrentSearchUrlParams): string {
   const usp = new URLSearchParams();
   usp.set("term", params.term);
-  usp.set("within", String(params.withinMiles));
+  usp.set("area", String(milesToOpenrentAreaKm(params.radiusMiles)));
   usp.set("isLive", "true");
   if (typeof params.minPrice === "number") {
     usp.set("prices_min", String(params.minPrice));

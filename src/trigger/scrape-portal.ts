@@ -84,6 +84,8 @@ type SearchFilters = {
   minPrice: number | null;
   maxPrice: number | null;
   propertyTypes: string[];
+  /** User-picked radius in miles. `0` = "this area only". */
+  radiusMiles: number;
 };
 
 /**
@@ -105,10 +107,13 @@ function buildSearchUrl(
     minPrice: search.minPrice,
     maxPrice: search.maxPrice,
     propertyTypes: search.propertyTypes,
+    radiusMiles: search.radiusMiles,
   };
   if (portal === "rightmove") {
     const ref = location.portalRefs.rightmove;
-    if (!ref) return null;
+    if (!ref) {
+      return null;
+    }
     return rightmoveSearchUrl({
       locationIdentifier: ref.locationIdentifier,
       ...filters,
@@ -117,14 +122,17 @@ function buildSearchUrl(
   }
   if (portal === "zoopla") {
     const ref = location.portalRefs.zoopla;
-    if (!ref) return null;
+    if (!ref) {
+      return null;
+    }
     return zooplaSearchUrl({ q: ref.q, ...filters });
   }
   const ref = location.portalRefs.openrent;
-  if (!ref) return null;
+  if (!ref) {
+    return null;
+  }
   return openrentSearchUrl({
     term: ref.term,
-    withinMiles: ref.withinMiles,
     ...filters,
   });
 }
@@ -157,7 +165,9 @@ function parsePortalHtml(portal: Portal, html: string): ListingSummary[] {
  * everything before the first space, uppercased.
  */
 function outcodeOf(postcode: string | undefined): string | null {
-  if (!postcode) return null;
+  if (!postcode) {
+    return null;
+  }
   const trimmed = postcode.trim().toUpperCase();
   const space = trimmed.indexOf(" ");
   return space === -1 ? trimmed : trimmed.slice(0, space);
@@ -208,10 +218,14 @@ function filterByExcludeLocations(
 
   return summaries.filter((s) => {
     const outcode = outcodeOf(s.postcode);
-    if (outcode && excludeOutcodes.has(outcode)) return false;
+    if (outcode && excludeOutcodes.has(outcode)) {
+      return false;
+    }
     if (typeof s.lat === "number" && typeof s.lng === "number") {
       for (const b of boundsList) {
-        if (pointInBounds(s.lat, s.lng, b)) return false;
+        if (pointInBounds(s.lat, s.lng, b)) {
+          return false;
+        }
       }
     }
     return true;
@@ -500,6 +514,9 @@ export const scrapePortalTask = task({
         minPrice: search.minPrice,
         maxPrice: search.maxPrice,
         propertyTypes: search.propertyTypes,
+        // Drizzle `numeric` round-trips as string; parse here so the
+        // URL builders can format it numerically.
+        radiusMiles: Number(search.radiusMiles),
       },
       maxDaysSinceAdded
     );
@@ -509,10 +526,11 @@ export const scrapePortalTask = task({
       // resolver failure. Skip the portal cleanly; the run finishes
       // with zero listings and a clear warning, and the user can
       // re-save the search via the form to repair.
-      logger.warn(
-        "scrape-portal: no portalRef for this portal; skipping",
-        { portal, searchId, locationName: location.name }
-      );
+      logger.warn("scrape-portal: no portalRef for this portal; skipping", {
+        portal,
+        searchId,
+        locationName: location.name,
+      });
       return {
         runId,
         costUsd: 0,

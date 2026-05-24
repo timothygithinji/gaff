@@ -253,42 +253,10 @@ describe("resolveOpenrent", () => {
     expect(ref.term).toBe("Camden Town");
   });
 
-  it("derives within-miles from bounds and clamps to [1, 5]", () => {
-    // Camden Town (~1km half-diagonal) snaps to the minimum 1mi.
-    const camden = resolveOpenrent(
-      makeLocation({
-        name: "Camden Town",
-        formattedAddress: "Camden Town, London NW1, UK",
-        type: "sublocality",
-        lat: 51.539,
-        lng: -0.143,
-        bounds: {
-          ne: { lat: 51.549, lng: -0.131 },
-          sw: { lat: 51.5345, lng: -0.15 },
-        },
-      })
-    );
-    expect(camden.withinMiles).toBeGreaterThanOrEqual(1);
-    expect(camden.withinMiles).toBeLessThanOrEqual(5);
-
-    // A wider bounds (Manchester metro, ~30mi diagonal) clamps at 5.
-    const manchester = resolveOpenrent(
-      makeLocation({
-        name: "Manchester",
-        formattedAddress: "Manchester, UK",
-        type: "locality",
-        lat: 53.481,
-        lng: -2.244,
-        bounds: {
-          ne: { lat: 53.7, lng: -2.0 },
-          sw: { lat: 53.3, lng: -2.5 },
-        },
-      })
-    );
-    expect(manchester.withinMiles).toBe(5);
-  });
-
-  it("falls back to within=1 when bounds are null", () => {
+  it("ignores bounds — radius is user-driven and applied at URL-build time", () => {
+    // The resolver no longer derives a radius from the place viewport;
+    // that decision lives on `searches.radiusMiles` and is consumed by
+    // `openrentSearchUrl`. The resolver only needs the term.
     const ref = resolveOpenrent(
       makeLocation({
         name: "NW3",
@@ -296,6 +264,6 @@ describe("resolveOpenrent", () => {
         type: "postal_code",
       })
     );
-    expect(ref.withinMiles).toBe(1);
+    expect(ref).toEqual({ term: "NW3" });
   });
 });

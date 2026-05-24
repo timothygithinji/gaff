@@ -1,0 +1,1 @@
+ALTER TABLE "searches" ADD COLUMN "radius_miles" numeric(5, 2) DEFAULT '0' NOT NULL;
