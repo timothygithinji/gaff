@@ -4,21 +4,25 @@
  * Powers `/listings/$clusterId` — the deep-dive page the user lands on
  * after tapping a card on Review or Shortlist. Aggregates every listing
  * row belonging to one cluster, picks the cheapest as the headline,
- * surfaces the per-portal price spread (the "+£50" deltas in the
- * design), pulls AI enrichment for the floorplan / small-print, and
- * folds in the user's + their household partners' swipe outcomes so
- * the sticky bottom CTA can branch on state.
+ * surfaces the per-portal price spread, pulls AI enrichment for the
+ * `highlights` / `watchouts` / `summary` v2 schema, and folds in the
+ * user's + their household partners' swipe outcomes so the sticky
+ * bottom CTA can branch on state.
+ *
+ * v2 wire-shape: the legacy `smallPrint` field has been retired in
+ * favour of `highlights` + `watchouts`. Old enrichment rows under
+ * PROMPT_VERSION=v1.0.0 don't carry these arrays — for those rows
+ * `highlights` and `watchouts` default to []. Once each listing
+ * re-enriches under v2.0.0 the new arrays populate.
+ *
+ * The "Public records" section now sources broadband, crime, amenities,
+ * and flood from the typed `enrichments.broadband / crime / amenities /
+ * flood` JSONB columns written by the sibling cluster enrichment tasks.
+ * The legacy "AI broadband string" fallback is gone — if the cluster
+ * task hasn't run yet, the row renders as "Pending".
  *
  * Authorisation: the cluster must have at least one listing belonging
  * to a search owned by the caller's household. Anything else 404s.
- * Mirrors the household scoping in `review.ts` and `shortlist.ts`.
- *
- * Public records: postcodes.io is the only typed external client we
- * use here. It gives us the admin district + police-force area (a
- * coarse "crime area" label). Broadband + flood risk + amenity counts
- * are not in postcodes.io — broadband comes from AI enrichment when
- * available; the rest render as "pending" placeholders until we land a
- * dedicated client for them (deferred to v1.1).
  */
 import { createServerFn } from "@tanstack/react-start";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -33,9 +37,12 @@ import {
   swipes,
   user,
 } from "../../../db/schema";
-import type { Features } from "../../lib/ai/prompt";
-import { createPostcodesClient } from "../../lib/api-clients/postcodes-io";
-import { lookupPostcode } from "../../lib/api-clients/postcodes-io/generated";
+import type {
+  Features,
+  HighlightItem,
+  WatchoutItem,
+} from "../../lib/ai/prompt";
+import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { env as parsedEnv } from "../../lib/env";
 import { getCurrentUser } from "./session";
 
@@ -86,29 +93,63 @@ export type ListingDetailEpc = {
   expiresOn?: string;
 };
 
-export type ListingDetailSmallPrintItem = {
-  severity: "ok" | "caution" | "problem";
-  label: string;
-  note: string | null;
+/**
+ * Re-exported convenience aliases for the consumer side; the
+ * authoritative source is `src/lib/ai/prompt.ts`.
+ */
+export type ListingDetailHighlight = HighlightItem;
+export type ListingDetailWatchout = WatchoutItem;
+
+/**
+ * Closed-shape "fine print" lifted off `listing.rawJson` so the UI can
+ * surface a stable set of tenancy-relevant facts (deposit, fees,
+ * minimum term, available-from, agent contact, billsIncluded).
+ */
+export type ListingDetailFineprint = {
+  deposit: number | null;
+  feesText: string | null;
+  minimumTermMonths: number | null;
+  letType: string | null;
+  serviceChargeAnnual: number | null;
+  groundRentAnnual: number | null;
+  availableFrom: string | null;
+  agentName: string | null;
+  agentPhone: string | null;
+  agentBranchUrl: string | null;
+  billsIncluded: boolean | null;
+  councilTaxBand: string | null;
+  furnished: "furnished" | "unfurnished" | "part_furnished" | null;
+  sizeSqFt: number | null;
+  nearestStations: NearestStation[];
+};
+
+export type ListingDetailBroadband = {
+  technology: "FTTP" | "FTTC" | "ADSL" | null;
+  downloadMbps: number | null;
+  uploadMbps: number | null;
+  fttpAvailable: boolean;
+};
+
+export type ListingDetailCrime = {
+  month: string;
+  total: number;
+  topCategory: { category: string; count: number } | null;
+};
+
+export type ListingDetailAmenities = {
+  withinMeters: number;
+  counts: Record<string, number>;
+};
+
+export type ListingDetailFlood = {
+  riskLevel: "very-low" | "low" | "medium" | "high" | "unknown";
 };
 
 export type ListingDetailPublicRecords = {
-  /** "900 Mb FTTP" or similar; AI-extracted, may be undefined. */
-  broadband?: string;
-  /** Police force area (admin label) — the "where the crime stats apply". */
-  crime?: {
-    area: string;
-    rateLabel: string;
-    incidents12mo?: number;
-  };
-  /** "Very low" | "Low" | "Medium" | "High" — not wired in v1. */
-  floodRisk?: string;
-  within500m?: {
-    gp?: number;
-    cafes?: number;
-    parks?: number;
-    pubs?: number;
-  };
+  broadband?: ListingDetailBroadband;
+  crime?: ListingDetailCrime;
+  amenities?: ListingDetailAmenities;
+  flood?: ListingDetailFlood;
 };
 
 export type ListingDetailPartnerSwipe = {
@@ -125,20 +166,16 @@ export type ListingDetailPayload = {
   photos: ListingDetailPhoto[];
   floorplan?: { url: string };
   features?: Features;
-  smallPrint: ListingDetailSmallPrintItem[];
+  summary: string | null;
+  highlights: ListingDetailHighlight[];
+  watchouts: ListingDetailWatchout[];
   epc?: ListingDetailEpc;
   commuteMinutes?: Record<string, number>;
   publicRecords?: ListingDetailPublicRecords;
+  fineprint: ListingDetailFineprint;
   mySwipe?: "keep" | "skip" | "shortlist";
   partnerSwipes: ListingDetailPartnerSwipe[];
-  /** Search id that owns the headline listing — needed for swipe writes. */
   searchId: string;
-  /**
-   * Google Maps Embed API key — surfaced through the server function so
-   * the route doesn't need to call `env()` (which only resolves
-   * server-side). The Embed API is referrer-restricted on the Google
-   * side, so leaking the key is fine for v1.
-   */
   googleMapsApiKey: string;
 };
 
@@ -154,7 +191,6 @@ const getListingDetailSchema = z.object({
 // Helpers
 // -----------------------------------------------------------------------------
 
-/** Coerce the polymorphic `features` jsonb to the Features shape. */
 function asFeatures(value: unknown): Features | undefined {
   if (!value || typeof value !== "object") {
     return;
@@ -162,40 +198,45 @@ function asFeatures(value: unknown): Features | undefined {
   return value as Features;
 }
 
-/** Read agent name / email best-effort from a listings.rawJson blob. */
-function readAgentInfo(rawJson: unknown): {
-  name: string | null;
-  email: string | null;
-} {
+function readDetail(rawJson: unknown): ListingDetail | null {
   if (!rawJson || typeof rawJson !== "object") {
-    return { name: null, email: null };
+    return null;
   }
-  const obj = rawJson as Record<string, unknown>;
-  let name: string | null = null;
-  if (typeof obj.agentName === "string") {
-    name = obj.agentName;
-  } else if (typeof obj.agent_name === "string") {
-    name = obj.agent_name;
-  }
-  const emailCandidate = obj.agentEmail ?? obj.agent_email ?? obj.email;
-  const email =
-    typeof emailCandidate === "string" && emailCandidate.includes("@")
-      ? emailCandidate
-      : null;
-  return { name, email };
+  return rawJson as ListingDetail;
 }
 
-/** Read a `floorplanUrl` from raw_json (only set on ListingDetail blobs). */
+function readAgent(rawJson: unknown): {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  branchUrl: string | null;
+} {
+  if (!rawJson || typeof rawJson !== "object") {
+    return { name: null, email: null, phone: null, branchUrl: null };
+  }
+  const obj = rawJson as Record<string, unknown>;
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.length > 0 ? v : null;
+  const emailCandidate = obj.agentEmail ?? obj.agent_email ?? obj.email;
+  return {
+    name: str(obj.agentName) ?? str(obj.agent_name),
+    email:
+      typeof emailCandidate === "string" && emailCandidate.includes("@")
+        ? emailCandidate
+        : null,
+    phone: str(obj.agentPhone) ?? str(obj.agent_phone),
+    branchUrl: str(obj.agentBranchUrl),
+  };
+}
+
 function readFloorplanUrl(rawJson: unknown): string | null {
   if (!rawJson || typeof rawJson !== "object") {
     return null;
   }
-  const obj = rawJson as Record<string, unknown>;
-  const url = obj.floorplanUrl;
+  const url = (rawJson as Record<string, unknown>).floorplanUrl;
   return typeof url === "string" && url.length > 0 ? url : null;
 }
 
-/** Coerce the polymorphic `epc` jsonb into the wire shape (optional fields). */
 function asEpc(value: unknown): ListingDetailEpc | undefined {
   if (!value || typeof value !== "object") {
     return;
@@ -229,11 +270,112 @@ function asCommuteMinutes(value: unknown): Record<string, number> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/**
- * Resolve the caller's household + every member's user id. Throws on
- * no-session / no-household. Mirrors `requireHouseholdScope` in
- * shortlist.ts.
- */
+function asBroadband(value: unknown): ListingDetailBroadband | undefined {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  const b = value as Record<string, unknown>;
+  return {
+    technology:
+      b.technology === "FTTP" ||
+      b.technology === "FTTC" ||
+      b.technology === "ADSL"
+        ? b.technology
+        : null,
+    downloadMbps: typeof b.downloadMbps === "number" ? b.downloadMbps : null,
+    uploadMbps: typeof b.uploadMbps === "number" ? b.uploadMbps : null,
+    fttpAvailable: b.fttpAvailable === true,
+  };
+}
+
+function asCrime(value: unknown): ListingDetailCrime | undefined {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  const c = value as Record<string, unknown>;
+  const month = typeof c.month === "string" ? c.month : null;
+  const total = typeof c.total === "number" ? c.total : null;
+  if (!(month && total !== null)) {
+    return;
+  }
+  const byCategory =
+    c.byCategory && typeof c.byCategory === "object"
+      ? (c.byCategory as Record<string, number>)
+      : {};
+  const top = Object.entries(byCategory)
+    .filter(([, n]) => typeof n === "number")
+    .sort(([, a], [, b]) => b - a)[0];
+  return {
+    month,
+    total,
+    topCategory: top ? { category: top[0], count: top[1] } : null,
+  };
+}
+
+function asAmenities(value: unknown): ListingDetailAmenities | undefined {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  const a = value as Record<string, unknown>;
+  const withinMeters = typeof a.withinMeters === "number" ? a.withinMeters : 0;
+  const counts =
+    a.counts && typeof a.counts === "object"
+      ? Object.fromEntries(
+          Object.entries(a.counts as Record<string, unknown>).filter(
+            ([, v]) => typeof v === "number"
+          ) as Array<[string, number]>
+        )
+      : {};
+  if (Object.keys(counts).length === 0) {
+    return;
+  }
+  return { withinMeters, counts };
+}
+
+function asFlood(value: unknown): ListingDetailFlood | undefined {
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  const f = value as Record<string, unknown>;
+  const rl = f.riskLevel;
+  if (
+    rl === "very-low" ||
+    rl === "low" ||
+    rl === "medium" ||
+    rl === "high" ||
+    rl === "unknown"
+  ) {
+    return { riskLevel: rl };
+  }
+  return;
+}
+
+function buildFineprint(
+  headline: typeof listings.$inferSelect
+): ListingDetailFineprint {
+  const d = readDetail(headline.rawJson);
+  const agent = readAgent(headline.rawJson);
+  return {
+    deposit: d?.deposit ?? null,
+    feesText: d?.feesText ?? null,
+    minimumTermMonths: d?.minimumTermMonths ?? null,
+    letType: d?.letType ?? null,
+    serviceChargeAnnual: d?.serviceChargeAnnual ?? null,
+    groundRentAnnual: d?.groundRentAnnual ?? null,
+    availableFrom:
+      d?.availableFrom ?? headline.availableFrom?.toISOString() ?? null,
+    agentName: agent.name,
+    agentPhone: agent.phone,
+    agentBranchUrl: agent.branchUrl,
+    billsIncluded:
+      typeof d?.billsIncluded === "boolean" ? d.billsIncluded : null,
+    councilTaxBand: d?.councilTaxBand ?? headline.councilTaxBand ?? null,
+    furnished: d?.furnished ?? null,
+    sizeSqFt: d?.sizeSqFt ?? headline.sizeSqFt ?? null,
+    nearestStations: Array.isArray(d?.nearestStations) ? d.nearestStations : [],
+  };
+}
+
 async function requireHouseholdScope(): Promise<{
   householdId: string;
   memberUserIds: string[];
@@ -262,101 +404,18 @@ async function requireHouseholdScope(): Promise<{
 }
 
 // -----------------------------------------------------------------------------
-// Public-records enrichment
-// -----------------------------------------------------------------------------
-
-/**
- * In-isolate cache for postcodes.io lookups. The Worker reuses isolates
- * across requests so a household viewing several listings in the same
- * outcode only pays the round-trip once.
- *
- * Keyed by uppercase postcode-with-no-space ("NW34QT").
- */
-const postcodeCache = new Map<string, ListingDetailPublicRecords | null>();
-
-/**
- * Hits postcodes.io for one postcode and returns the slice of
- * public-records data we surface in the UI. Returns null when the
- * postcode is missing / un-resolvable.
- *
- * Today the only field we can populate from postcodes.io is the
- * "crime area" label — postcodes.io exposes `pfa` (police force area)
- * and `admin_district`. Crime counts live on the police.uk API which
- * we don't speak yet (v1.1).
- *
- * Marked `export` so tests can hit it directly without the server-fn
- * wrapper, but it's a plain async function — no `createServerFn` call.
- */
-export async function enrichPublicRecords(args: {
-  postcode: string | null;
-}): Promise<ListingDetailPublicRecords | null> {
-  if (!args.postcode) {
-    return null;
-  }
-  const cleaned = args.postcode.replace(/\s+/g, "").toUpperCase();
-  if (postcodeCache.has(cleaned)) {
-    return postcodeCache.get(cleaned) ?? null;
-  }
-
-  try {
-    const client = createPostcodesClient();
-    const res = await lookupPostcode({
-      client,
-      path: { postcode: args.postcode },
-    });
-    if (!res.data?.result) {
-      postcodeCache.set(cleaned, null);
-      return null;
-    }
-    const r = res.data.result as {
-      admin_district?: unknown;
-      pfa?: unknown;
-    };
-    const adminDistrict =
-      typeof r.admin_district === "string" ? r.admin_district : null;
-    const pfa = typeof r.pfa === "string" ? r.pfa : null;
-    const area = pfa ?? adminDistrict;
-
-    if (!area) {
-      postcodeCache.set(cleaned, null);
-      return null;
-    }
-
-    const payload: ListingDetailPublicRecords = {
-      crime: {
-        area,
-        // Without the police.uk numbers we can't classify vs the city
-        // average — surface a neutral label so the UI still renders.
-        rateLabel: "See police.uk",
-      },
-    };
-    postcodeCache.set(cleaned, payload);
-    return payload;
-  } catch {
-    // postcodes.io is unauthenticated + free; transient failures
-    // shouldn't tank the page. Cache the null so we don't retry on
-    // every refresh.
-    postcodeCache.set(cleaned, null);
-    return null;
-  }
-}
-
-// -----------------------------------------------------------------------------
 // Server function
 // -----------------------------------------------------------------------------
 
 export const getListingDetail = createServerFn({ method: "GET" })
   .inputValidator(getListingDetailSchema)
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: 8-step aggregation handler — each step is small and labelled with a comment; splitting would obscure the data flow.
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: 8-step aggregation handler — each step is small and labelled; splitting would obscure the data flow.
   .handler(async ({ data }): Promise<ListingDetailPayload> => {
     const { householdId, memberUserIds, currentUserId } =
       await requireHouseholdScope();
     const db = getDb();
 
-    // Step 1: pull the household's active searches; we only ever
-    // surface listings tied to one of these. (An inactive search's
-    // historical listings stay visible — but a search that was never
-    // owned by this household never does.)
+    // Step 1: pull the household's active searches.
     const householdSearches = await db
       .select({ id: searches.id })
       .from(searches)
@@ -366,8 +425,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       throw new Error("not_found");
     }
 
-    // Step 2: load the cluster + every listing in it that belongs to
-    // one of this household's searches.
+    // Step 2: load the cluster + listings.
     const cluster = await db.query.propertyClusters.findFirst({
       where: (c, { eq: eqOp }) => eqOp(c.id, data.clusterId),
     });
@@ -386,14 +444,9 @@ export const getListingDetail = createServerFn({ method: "GET" })
       );
 
     if (clusterListings.length === 0) {
-      // The cluster exists, but no listing on it is owned by this
-      // household → treat as 404 (same as if the cluster were
-      // unknown).
       throw new Error("not_found");
     }
 
-    // Cheapest-first ordering. NULL prices sink to the bottom; stable
-    // tie-break by id to keep the order deterministic across refreshes.
     const sortedListings = [...clusterListings].sort((a, b) => {
       if (a.priceMonthly == null && b.priceMonthly == null) {
         return a.id.localeCompare(b.id);
@@ -417,15 +470,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
 
     const headlinePrice = headlineListing.priceMonthly;
 
-    // Step 3: portal spread — every distinct portal listing in the
-    // cluster, in cheapest-first order. We dedupe by
-    // `(portal, portalListingId)` because the listings table is keyed
-    // by (search_id, portal, portal_listing_id), so the *same* physical
-    // listing can have multiple rows when more than one of the
-    // household's searches scraped it. Without this, a single Rightmove
-    // listing picked up by two overlapping searches would render twice.
-    // We keep the first occurrence — `sortedListings` is cheapest-first
-    // so duplicates would carry identical prices anyway.
+    // Step 3: dedup portal spread.
     const seenPortalListings = new Set<string>();
     const dedupedListings = sortedListings.filter((l) => {
       const key = `${l.portal}::${l.portalListingId}`;
@@ -437,7 +482,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
     });
 
     const portalSpread: ListingDetailPortalRow[] = dedupedListings.map((l) => {
-      const agent = readAgentInfo(l.rawJson);
+      const agent = readAgent(l.rawJson);
       const delta =
         l.priceMonthly != null && headlinePrice != null
           ? l.priceMonthly - headlinePrice
@@ -452,8 +497,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       };
     });
 
-    // Step 4: photos for the headline listing only. Fall back to the
-    // portal URL when no R2 mirror exists.
+    // Step 4: photos for the headline listing.
     const photoRows = await db
       .select()
       .from(listingPhotos)
@@ -466,10 +510,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       position: p.position,
     }));
 
-    // Step 5: a floorplan URL might be on any listing's raw_json — we
-    // surface the first one we find. Today only Rightmove + OpenRent
-    // capture this; Zoopla does on detail pages but the parser uses
-    // ListingSummary by default.
+    // Step 5: floorplan URL — first available across listings.
     let floorplanUrl: string | null = null;
     for (const l of sortedListings) {
       const u = readFloorplanUrl(l.rawJson);
@@ -479,11 +520,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       }
     }
 
-    // Step 6: enrichment — latest prompt version. We attach the
-    // headline listing's enrichment row. Other portals' enrichments
-    // are deliberately ignored — the headline is the canonical source
-    // of truth for AI output (one cluster, one extracted features
-    // payload).
+    // Step 6: enrichment — latest prompt version.
     const enrichmentRows = await db
       .select()
       .from(enrichments)
@@ -492,14 +529,22 @@ export const getListingDetail = createServerFn({ method: "GET" })
       .limit(1);
     const enrichment = enrichmentRows[0];
     const features = asFeatures(enrichment?.features);
-    const smallPrint = features?.smallPrint ?? [];
+    const highlights = Array.isArray(features?.highlights)
+      ? features.highlights
+      : [];
+    const watchouts = Array.isArray(features?.watchouts)
+      ? features.watchouts
+      : [];
+    const summary =
+      typeof features?.summary === "string" ? features.summary : null;
     const epc = asEpc(enrichment?.epc);
     const commuteMinutes = asCommuteMinutes(enrichment?.commuteMinutes);
+    const broadband = asBroadband(enrichment?.broadband);
+    const crime = asCrime(enrichment?.crime);
+    const amenities = asAmenities(enrichment?.amenities);
+    const flood = asFlood(enrichment?.flood);
 
-    // Step 7: swipe state for every household member on this cluster.
-    // We surface the caller's own outcome separately from the
-    // partners'. The UI uses this to drive the sticky CTA copy
-    // (see `src/components/listing-detail/detail-cta.tsx`).
+    // Step 7: swipe state for every household member.
     const swipeRows = await db
       .select({
         userId: swipes.userId,
@@ -535,26 +580,28 @@ export const getListingDetail = createServerFn({ method: "GET" })
 
     const mySwipe = swipeByUser.get(currentUserId) ?? undefined;
 
-    // Step 8: public records — postcodes.io fills the crime area. The
-    // rest of the section is fed by AI broadband (if present) and
-    // pending placeholders for flood / amenities.
-    const postcode = headlineListing.postcode ?? cluster.postcode;
-    const postcodesData = await enrichPublicRecords({ postcode });
-
+    // Step 8: public records — broadband / crime / amenities / flood
+    // from the typed enrichment columns. The legacy postcodes.io
+    // crime-area lookup is gone — data.police.uk via `enrich-crime.ts`
+    // gives us actual counts.
     const publicRecords: ListingDetailPublicRecords | undefined = (() => {
-      const broadband =
-        typeof features?.broadband === "string"
-          ? features.broadband
-          : undefined;
-      const crime = postcodesData?.crime;
-      if (!(broadband || crime)) {
-        return;
+      const out: ListingDetailPublicRecords = {};
+      if (broadband) {
+        out.broadband = broadband;
       }
-      return {
-        ...(broadband ? { broadband } : {}),
-        ...(crime ? { crime } : {}),
-      };
+      if (crime) {
+        out.crime = crime;
+      }
+      if (amenities) {
+        out.amenities = amenities;
+      }
+      if (flood) {
+        out.flood = flood;
+      }
+      return Object.keys(out).length > 0 ? out : undefined;
     })();
+
+    const fineprint = buildFineprint(headlineListing);
 
     return {
       cluster: {
@@ -580,10 +627,13 @@ export const getListingDetail = createServerFn({ method: "GET" })
       photos,
       ...(floorplanUrl ? { floorplan: { url: floorplanUrl } } : {}),
       ...(features ? { features } : {}),
-      smallPrint,
+      summary,
+      highlights,
+      watchouts,
       ...(epc ? { epc } : {}),
       ...(commuteMinutes ? { commuteMinutes } : {}),
       ...(publicRecords ? { publicRecords } : {}),
+      fineprint,
       ...(mySwipe ? { mySwipe } : {}),
       partnerSwipes,
       searchId: headlineListing.searchId,

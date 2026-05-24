@@ -1,38 +1,32 @@
 /**
- * "What's in the small print" — list of AI-extracted lease / bills /
- * restriction items, each with a severity-driven icon:
+ * "Watch-outs" — AI-extracted negatives a renter should know.
  *
- *   ok      — green check chip
+ * Each entry has a severity:
  *   caution — amber dot chip
  *   problem — red exclamation chip
  *
- * Rendered from `enrichments.features.smallPrint`. Falls back to a
- * gentle placeholder when the AI hasn't run yet (so the section is
- * never simply absent — the design surfaces "Reading description…"
- * to communicate that more detail is coming).
+ * Rendered from `enrichments.features.watchouts` (v2 schema). When the
+ * AI hasn't run yet, falls back to a gentle placeholder so the section
+ * is never simply absent.
+ *
+ * The component name + file path are preserved from v1 (`SmallPrint`)
+ * to keep the listing-detail layout file untouched; the eyebrow + h2
+ * copy still reads "What's in the small print" — that's the user-facing
+ * label we settled on for these negatives.
  */
-import {
-  Alert01Icon,
-  SparklesIcon,
-  Tick02Icon,
-} from "@hugeicons/core-free-icons";
+import { Alert01Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ListingDetailSmallPrintItem } from "../../server/functions/listing-detail";
+import type { ListingDetailWatchout } from "../../server/functions/listing-detail";
 
 type Props = {
-  items: ListingDetailSmallPrintItem[];
+  items: ListingDetailWatchout[];
 };
 
 function SeverityChip({
   severity,
-}: { severity: "ok" | "caution" | "problem" }) {
-  if (severity === "ok") {
-    return (
-      <div className="mt-px flex size-[18px] shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700">
-        <HugeiconsIcon icon={Tick02Icon} size={12} strokeWidth={2.5} />
-      </div>
-    );
-  }
+}: {
+  severity: "caution" | "problem";
+}) {
   if (severity === "caution") {
     return (
       <div className="mt-px flex size-[18px] shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
@@ -69,7 +63,7 @@ export function SmallPrint({ items }: Props) {
 
       {items.length === 0 ? (
         <p className="rounded-2xl bg-muted p-5 text-center text-muted-foreground text-sm">
-          Reading the description… smallprint will appear here once enrichment
+          Reading the description… watch-outs will appear here once enrichment
           runs.
         </p>
       ) : (
@@ -84,9 +78,9 @@ export function SmallPrint({ items }: Props) {
                 <p className="font-medium text-[14px] text-foreground leading-[135%]">
                   {item.label}
                 </p>
-                {item.note ? (
+                {item.detail ? (
                   <p className="text-[12px] text-muted-foreground leading-[140%]">
-                    {item.note}
+                    {item.detail}
                   </p>
                 ) : null}
               </div>

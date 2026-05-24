@@ -27,7 +27,6 @@ import {
   MinusSignIcon,
   PlusSignIcon,
   Share05Icon,
-  StarIcon,
   Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -41,10 +40,11 @@ import {
 } from "../../lib/listing-origin";
 import { cn } from "../../lib/utils";
 import type {
+  ListingDetailHighlight,
   ListingDetailPayload,
   ListingDetailPortalRow,
   ListingDetailPublicRecords,
-  ListingDetailSmallPrintItem,
+  ListingDetailWatchout,
 } from "../../server/functions/listing-detail";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
@@ -61,7 +61,6 @@ type Props = {
   data: ListingDetailPayload;
   disabled?: boolean;
   from?: ListingFromOrigin;
-  onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
   pendingAction?: ListingDetailPendingAction;
@@ -71,7 +70,6 @@ export function DesktopListingDetail({
   data,
   disabled,
   from,
-  onKeep,
   onSkip,
   onShortlist,
   pendingAction = null,
@@ -84,7 +82,6 @@ export function DesktopListingDetail({
         <InfoColumn
           data={data}
           disabled={disabled}
-          onKeep={onKeep}
           onShortlist={onShortlist}
           onSkip={onSkip}
           pendingAction={pendingAction}
@@ -184,7 +181,7 @@ function TopBar({
 /* ---------------- Media column ---------------- */
 
 function MediaColumn({ data }: { data: ListingDetailPayload }) {
-  const { photos, headline, features, floorplan, commuteMinutes } = data;
+  const { photos, headline, floorplan, commuteMinutes, fineprint } = data;
   const photoCount = Math.max(photos.length, 1);
 
   const canPaginate = photos.length > 1;
@@ -236,7 +233,10 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
           photos={photos}
         />
       ) : null}
-      <FloorplanCard features={features} floorplanUrl={floorplan?.url} />
+      <FloorplanCard
+        floorplanUrl={floorplan?.url}
+        sizeSqFt={fineprint.sizeSqFt}
+      />
       <LocationCard
         apiKey={data.googleMapsApiKey}
         commuteMinutes={commuteMinutes}
@@ -401,44 +401,27 @@ function PhotoStrip({
 }
 
 function FloorplanCard({
-  features,
+  sizeSqFt,
   floorplanUrl,
 }: {
-  features?: ListingDetailPayload["features"];
+  sizeSqFt?: number | null;
   floorplanUrl?: string;
 }) {
-  const giaSqm = features?.floorplan?.giaSqm;
-  const listedSqft = giaSqm ? Math.round((giaSqm * 10.7639) / 10) * 10 : null;
   const [open, setOpen] = useState(false);
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
       <header className="flex items-end justify-between px-6 pt-5 pb-3.5">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5">
-            <HugeiconsIcon
-              className="text-primary"
-              icon={AiMagicIcon}
-              size={12}
-              strokeWidth={2}
-            />
-            <Eyebrow tone="primary">Floor plan read</Eyebrow>
-          </div>
+          <Eyebrow tone="primary">Floor plan</Eyebrow>
           <h2 className="font-serif text-[22px] text-foreground">
-            What we see
+            How it lays out
           </h2>
         </div>
-        <div className="flex items-center gap-2">
-          {giaSqm ? (
-            <span className="inline-flex items-center rounded-full bg-bone px-2.5 py-1.5 font-semibold text-[11px] text-primary">
-              {Math.round(giaSqm)} m² GIA
-            </span>
-          ) : null}
-          {listedSqft ? (
-            <span className="inline-flex items-center rounded-full bg-[#FBEDDC] px-2.5 py-1.5 font-semibold text-[#B26B3F] text-[11px]">
-              vs {listedSqft} sqft listed
-            </span>
-          ) : null}
-        </div>
+        {sizeSqFt ? (
+          <span className="inline-flex items-center rounded-full bg-bone px-2.5 py-1.5 font-semibold text-[11px] text-primary">
+            {sizeSqFt.toLocaleString("en-GB")} sq ft
+          </span>
+        ) : null}
       </header>
       <div className="mx-6 mb-6 flex h-[280px] items-center justify-center overflow-hidden rounded-xl border border-bone bg-[#FBF6EA]">
         {floorplanUrl ? (
@@ -639,14 +622,12 @@ function LocationCard({
 function InfoColumn({
   data,
   disabled,
-  onKeep,
   onSkip,
   onShortlist,
   pendingAction,
 }: {
   data: ListingDetailPayload;
   disabled?: boolean;
-  onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
   pendingAction?: ListingDetailPendingAction;
@@ -654,12 +635,15 @@ function InfoColumn({
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-3.5">
       <PriceCard data={data} />
-      <AiCard items={data.smallPrint} />
+      <AiCard
+        highlights={data.highlights}
+        summary={data.summary}
+        watchouts={data.watchouts}
+      />
       <RecordsCard epc={data.epc} publicRecords={data.publicRecords} />
       <DecisionBar
         disabled={disabled}
         mySwipe={data.mySwipe}
-        onKeep={onKeep}
         onShortlist={onShortlist}
         onSkip={onSkip}
         partnerNames={data.partnerSwipes
@@ -759,12 +743,20 @@ function PortalRow({
   );
 }
 
-function AiCard({ items }: { items: ListingDetailSmallPrintItem[] }) {
-  if (items.length === 0) {
+function AiCard({
+  highlights,
+  watchouts,
+  summary,
+}: {
+  highlights: ListingDetailHighlight[];
+  watchouts: ListingDetailWatchout[];
+  summary: string | null;
+}) {
+  if (highlights.length === 0 && watchouts.length === 0 && !summary) {
     return null;
   }
   return (
-    <article className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-6 py-5">
+    <article className="flex flex-col gap-4 rounded-2xl border border-border bg-card px-6 py-5">
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-1.5">
           <HugeiconsIcon
@@ -776,31 +768,39 @@ function AiCard({ items }: { items: ListingDetailSmallPrintItem[] }) {
           <Eyebrow tone="primary">Description read</Eyebrow>
         </div>
         <h2 className="font-serif text-[20px] text-foreground">
-          What's in the small print
+          What stands out
         </h2>
       </header>
-      <ul className="flex flex-col gap-3">
-        {items.map((item) => (
-          <SmallPrintRow item={item} key={item.label} />
-        ))}
-      </ul>
+      {summary ? (
+        <p className="text-[13px] text-muted-foreground leading-[145%]">
+          {summary}
+        </p>
+      ) : null}
+      {highlights.length > 0 ? (
+        <ul className="flex flex-col gap-3">
+          {highlights.map((item, idx) => (
+            <HighlightRow item={item} key={`h:${item.label}:${idx}`} />
+          ))}
+        </ul>
+      ) : null}
+      {watchouts.length > 0 ? (
+        <ul className="flex flex-col gap-3 border-bone border-t pt-3.5">
+          {watchouts.map((item, idx) => (
+            <WatchoutRow item={item} key={`w:${item.label}:${idx}`} />
+          ))}
+        </ul>
+      ) : null}
     </article>
   );
 }
 
-function SmallPrintRow({ item }: { item: ListingDetailSmallPrintItem }) {
-  const positive = item.severity === "ok";
+function HighlightRow({ item }: { item: ListingDetailHighlight }) {
   return (
     <li className="flex items-start gap-2.5">
-      <span
-        className={cn(
-          "mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full",
-          positive ? "bg-[#E3EBD7]" : "bg-[#FBEDDC]"
-        )}
-      >
+      <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[#E3EBD7]">
         <HugeiconsIcon
-          className={positive ? "text-[#5D7A4A]" : "text-[#B26B3F]"}
-          icon={positive ? Tick01Icon : Alert01Icon}
+          className="text-[#5D7A4A]"
+          icon={Tick01Icon}
           size={10}
           strokeWidth={2.2}
         />
@@ -809,9 +809,40 @@ function SmallPrintRow({ item }: { item: ListingDetailSmallPrintItem }) {
         <p className="font-semibold text-[13px] text-foreground">
           {item.label}
         </p>
-        {item.note ? (
+        {item.detail ? (
           <p className="text-[12px] text-muted-foreground leading-4">
-            {item.note}
+            {item.detail}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function WatchoutRow({ item }: { item: ListingDetailWatchout }) {
+  const isProblem = item.severity === "problem";
+  return (
+    <li className="flex items-start gap-2.5">
+      <span
+        className={cn(
+          "mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full",
+          isProblem ? "bg-destructive/15" : "bg-[#FBEDDC]"
+        )}
+      >
+        <HugeiconsIcon
+          className={isProblem ? "text-destructive" : "text-[#B26B3F]"}
+          icon={Alert01Icon}
+          size={10}
+          strokeWidth={2.2}
+        />
+      </span>
+      <div className="flex flex-col gap-0.5">
+        <p className="font-semibold text-[13px] text-foreground">
+          {item.label}
+        </p>
+        {item.detail ? (
+          <p className="text-[12px] text-muted-foreground leading-4">
+            {item.detail}
           </p>
         ) : null}
       </div>
@@ -868,7 +899,6 @@ function RecordsCard({
 function DecisionBar({
   disabled,
   mySwipe,
-  onKeep,
   onSkip,
   onShortlist,
   partnerNames,
@@ -876,21 +906,21 @@ function DecisionBar({
 }: {
   disabled?: boolean;
   mySwipe?: Outcome;
-  onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
   partnerNames: string[];
   pendingAction?: ListingDetailPendingAction;
 }) {
   const headline = decisionHeadline(mySwipe, partnerNames);
+  const iKept = mySwipe === "keep" || mySwipe === "shortlist";
   return (
     <article className="flex items-center gap-2.5 rounded-2xl bg-foreground px-5 py-4">
       <DecisionBarButton
-        ariaLabel="Keep"
-        className="bg-primary text-bone"
+        ariaLabel="Shortlist"
+        className={iKept ? "bg-bone text-primary" : "bg-primary text-bone"}
         icon={FavouriteIcon}
-        loading={pendingAction === "keep"}
-        onClick={onKeep}
+        loading={pendingAction === "shortlist"}
+        onClick={onShortlist}
         disabled={disabled}
       />
       <div className="flex flex-1 flex-col gap-0.5">
@@ -898,7 +928,7 @@ function DecisionBar({
         <span className="text-[11px] text-white/55">
           {partnerNames.length > 0
             ? `${partnerNames.join(" & ")} hasn't seen this yet · expect a reply soon`
-            : "Your call only — keep, skip, or star to revisit"}
+            : "Your call only — shortlist or skip"}
         </span>
       </div>
       <DecisionBarButton
@@ -907,18 +937,6 @@ function DecisionBar({
         icon={Cancel01Icon}
         loading={pendingAction === "skip"}
         onClick={onSkip}
-        disabled={disabled}
-      />
-      <DecisionBarButton
-        ariaLabel="Star"
-        className={
-          mySwipe === "shortlist"
-            ? "bg-bone text-primary"
-            : "bg-white/10 text-white"
-        }
-        icon={StarIcon}
-        loading={pendingAction === "shortlist"}
-        onClick={onShortlist}
         disabled={disabled}
       />
     </article>
@@ -1051,19 +1069,21 @@ function buildRecordRows(
   if (epcRow) {
     rows.push(epcRow);
   }
-  if (publicRecords?.broadband) {
-    rows.push({ label: "Broadband", value: publicRecords.broadband });
+  const broadband = broadbandRecordRow(publicRecords?.broadband);
+  if (broadband) {
+    rows.push(broadband);
   }
   const crimeRow = crimeRecordRow(publicRecords?.crime);
   if (crimeRow) {
     rows.push(crimeRow);
   }
-  if (publicRecords?.floodRisk) {
-    rows.push({ label: "Flood risk", value: publicRecords.floodRisk });
+  const flood = floodRecordRow(publicRecords?.flood);
+  if (flood) {
+    rows.push(flood);
   }
-  const within = within500mRecordRow(publicRecords?.within500m);
-  if (within) {
-    rows.push(within);
+  const amenities = amenitiesRecordRow(publicRecords?.amenities);
+  if (amenities) {
+    rows.push(amenities);
   }
   return rows;
 }
@@ -1079,45 +1099,107 @@ function epcRecordRow(epc: ListingDetailPayload["epc"]): RecordRow | null {
   };
 }
 
+function broadbandRecordRow(
+  bb: ListingDetailPublicRecords["broadband"]
+): RecordRow | null {
+  if (!bb) {
+    return null;
+  }
+  const tech = bb.technology ?? "Unknown";
+  const speed = bb.downloadMbps ? `${bb.downloadMbps} Mbps` : "Speed pending";
+  return {
+    label: "Broadband",
+    value: `${tech} · ${speed}`,
+    meta: bb.fttpAvailable ? "Full-fibre available" : undefined,
+  };
+}
+
 function crimeRecordRow(
   crime: ListingDetailPublicRecords["crime"]
 ): RecordRow | null {
   if (!crime) {
     return null;
   }
-  const meta = crime.incidents12mo
-    ? `${crime.incidents12mo} incidents`
-    : crime.area;
-  return { label: "Crime · last 12mo", value: crime.rateLabel, meta };
+  const meta = crime.topCategory
+    ? `${humaniseCategory(crime.topCategory.category)} · ${crime.topCategory.count}`
+    : undefined;
+  return {
+    label: `Crime · ${crime.month}`,
+    value: `${crime.total} in 1mi`,
+    meta,
+  };
 }
 
-function within500mRecordRow(
-  w: ListingDetailPublicRecords["within500m"]
+function floodRecordRow(
+  flood: ListingDetailPublicRecords["flood"]
 ): RecordRow | null {
-  if (!w) {
+  if (!flood) {
     return null;
   }
-  const parts = [
-    w.parks ? `${w.parks} park` : null,
-    w.cafes ? `${w.cafes} cafés` : null,
-    w.gp ? "GP" : null,
-    w.pubs ? `${w.pubs} pubs` : null,
-  ].filter((s): s is string => Boolean(s));
-  if (parts.length === 0) {
+  const value = flood.riskLevel
+    .split("-")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+  return { label: "Flood risk", value, meta: "Environment Agency" };
+}
+
+function amenitiesRecordRow(
+  amenities: ListingDetailPublicRecords["amenities"]
+): RecordRow | null {
+  if (!amenities) {
     return null;
   }
-  return { label: "Within 500m", value: parts.join(" · ") };
+  const total = Object.values(amenities.counts).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    return null;
+  }
+  const top = Object.entries(amenities.counts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([k, v]) => `${humaniseCategory(k)} ${v}`)
+    .join(" · ");
+  return {
+    label: "Amenities nearby",
+    value: `${total} within ${Math.round(amenities.withinMeters)}m`,
+    meta: top || undefined,
+  };
+}
+
+const DLD_CATEGORY_LABELS: Record<string, string> = {
+  cafe: "Cafés",
+  restaurant: "Restaurants",
+  pub: "Pubs",
+  bar: "Bars",
+  gym: "Gyms",
+  fitness_centre: "Gyms",
+  school: "Schools",
+  supermarket: "Supermarkets",
+  pharmacy: "Pharmacies",
+  doctors: "GPs",
+  hospital: "Hospitals",
+  park: "Parks",
+  bus_stop: "Bus stops",
+  station: "Stations",
+  bicycle_parking: "Bike parking",
+};
+
+function humaniseCategory(key: string): string {
+  if (DLD_CATEGORY_LABELS[key]) {
+    return DLD_CATEGORY_LABELS[key];
+  }
+  return key.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function decisionHeadline(
   mySwipe: Outcome | undefined,
   partnerNames: string[]
 ): string {
-  if (mySwipe === "keep" && partnerNames.length > 0) {
-    return `Kept · waiting on ${partnerNames.join(" & ")}`;
+  const iKept = mySwipe === "keep" || mySwipe === "shortlist";
+  if (iKept && partnerNames.length > 0) {
+    return `Shortlisted · waiting on ${partnerNames.join(" & ")}`;
   }
-  if (mySwipe === "shortlist") {
-    return "Starred · plan a viewing";
+  if (iKept) {
+    return "Shortlisted · plan a viewing";
   }
   if (mySwipe === "skip") {
     return "Skipped · still here if you change your mind";

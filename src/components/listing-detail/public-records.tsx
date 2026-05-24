@@ -1,28 +1,20 @@
 /**
- * "Public records" — the data grid showing EPC, broadband, and crime.
- * Each row has an icon, label, and right-aligned headline + secondary
- * sub.
+ * "Public records" — the data grid showing EPC, broadband, crime,
+ * amenities, and flood risk.
  *
- * Missing-data handling:
- *   - EPC + Broadband: "Pending" rows when the enrichment hasn't run
- *     yet. Honest placeholder because both WILL be populated by the
- *     enrichment pipeline.
- *   - Crime: postcodes.io always gives us the area label when the
- *     postcode resolves; the rate is "See police.uk" until a future
- *     PR wires police.uk numbers.
+ * v2: every row now sources from a typed enrichment column, not the
+ * legacy AI-extracted broadband string + postcodes.io crime-area
+ * fallback. If an enrichment hasn't run yet, the row renders as
+ * "Pending".
  *
- * Flood risk + Within-500m amenities used to live here as static
- * "Pending" rows; they had no external client wired and never
- * populated. Removed until those data sources land — re-add the rows
- * then.
- *
- * If none of the rows have *any* data (no enrichment, no postcode
- * resolved), the whole section is hidden so we don't paint a wall of
- * "Pending" labels.
+ * Hidden entirely when there's no data of any kind — refusing to paint
+ * a wall of "Pending" placeholders.
  */
 import {
   FlashIcon,
+  LocationIcon,
   Shield01Icon,
+  TsunamiIcon,
   Wifi01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -62,25 +54,105 @@ function epcRow(epc: ListingDetailEpc | undefined): Row {
   };
 }
 
-function broadbandRow(broadband?: string): Row {
+function broadbandRow(broadband: ListingDetailPublicRecords["broadband"]): Row {
+  if (!broadband) {
+    return {
+      icon: Wifi01Icon,
+      label: "Broadband",
+      headline: "Pending",
+      sub: "Enrichment not yet run",
+    };
+  }
+  const speed = broadband.downloadMbps
+    ? `${broadband.downloadMbps} Mbps`
+    : "Speed pending";
+  const tech = broadband.technology ?? "Unknown";
   return {
     icon: Wifi01Icon,
     label: "Broadband",
-    headline: broadband ?? "Pending",
-    sub: broadband ? null : "Enrichment not yet run",
+    headline: `${tech} · ${speed}`,
+    sub: broadband.fttpAvailable ? "Full-fibre available" : null,
   };
 }
 
-function crimeRow(crime?: ListingDetailPublicRecords["crime"]): Row | null {
+function crimeRow(crime: ListingDetailPublicRecords["crime"]): Row | null {
   if (!crime) {
     return null;
   }
+  const top = crime.topCategory
+    ? `${humaniseCategory(crime.topCategory.category)} · ${crime.topCategory.count}`
+    : null;
   return {
     icon: Shield01Icon,
-    label: "Crime · last 12mo",
-    headline: crime.rateLabel,
-    sub: crime.area,
+    label: `Crime · ${crime.month}`,
+    headline: `${crime.total} in 1mi`,
+    sub: top,
   };
+}
+
+function amenitiesRow(
+  amenities: ListingDetailPublicRecords["amenities"]
+): Row | null {
+  if (!amenities) {
+    return null;
+  }
+  const total = Object.values(amenities.counts).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    return null;
+  }
+  const headline = `${total} within ${Math.round(amenities.withinMeters)}m`;
+  const top = Object.entries(amenities.counts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([k, v]) => `${humaniseCategory(k)} ${v}`)
+    .join(" · ");
+  return {
+    icon: LocationIcon,
+    label: "Amenities nearby",
+    headline,
+    sub: top || null,
+  };
+}
+
+function floodRow(flood: ListingDetailPublicRecords["flood"]): Row | null {
+  if (!flood) {
+    return null;
+  }
+  const headline = flood.riskLevel
+    .split("-")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+  return {
+    icon: TsunamiIcon,
+    label: "Flood risk",
+    headline,
+    sub: "Environment Agency",
+  };
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  cafe: "Cafés",
+  restaurant: "Restaurants",
+  pub: "Pubs",
+  bar: "Bars",
+  gym: "Gyms",
+  fitness_centre: "Gyms",
+  school: "Schools",
+  supermarket: "Supermarkets",
+  pharmacy: "Pharmacies",
+  doctors: "GPs",
+  hospital: "Hospitals",
+  park: "Parks",
+  bus_stop: "Bus stops",
+  station: "Stations",
+  bicycle_parking: "Bike parking",
+};
+
+function humaniseCategory(key: string): string {
+  if (CATEGORY_LABELS[key]) {
+    return CATEGORY_LABELS[key];
+  }
+  return key.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function PublicRecords({ epc, publicRecords }: Props) {
@@ -88,6 +160,14 @@ export function PublicRecords({ epc, publicRecords }: Props) {
   const crime = crimeRow(publicRecords?.crime);
   if (crime) {
     rows.push(crime);
+  }
+  const amenities = amenitiesRow(publicRecords?.amenities);
+  if (amenities) {
+    rows.push(amenities);
+  }
+  const flood = floodRow(publicRecords?.flood);
+  if (flood) {
+    rows.push(flood);
   }
 
   return (

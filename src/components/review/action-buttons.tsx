@@ -1,14 +1,17 @@
 /**
- * Five-button action row beneath the review card.
+ * Four-button action row beneath the review card.
  *
- *   Undo  (ghost circle)         — pop the last swipe off the stack
- *   Skip  (X circle)             — outcome="skip"
- *   Info  (i circle)             — navigates to /listings/$clusterId
- *   Keep  (big copper heart)     — outcome="keep" (primary)
- *   Star  (ghost circle)         — outcome="shortlist"
+ *   Undo       (ghost circle)         — pop the last swipe off the stack
+ *   Skip       (X circle)             — outcome="skip"
+ *   Info       (i circle)             — navigates to /listings/$clusterId
+ *   Shortlist  (big copper heart)     — outcome="shortlist" (primary)
  *
- * All five take `disabled` while a mutation is pending so the user
- * can't double-tap-fire two swipes in flight at once.
+ * The old separate "Keep" + "Shortlist" buttons collapsed to a single
+ * positive outcome. The household-mutual-match rule already treats
+ * keep + shortlist identically (see DetailCta's `isKept`), so two
+ * buttons meant the same thing — the third button only added cognitive
+ * load. Existing `outcome="keep"` rows in the DB are untouched and
+ * still count as "kept" for mutual-match math.
  */
 import {
   ArrowReloadHorizontalIcon,
@@ -16,7 +19,6 @@ import {
   FavouriteIcon,
   InformationCircleIcon,
   Loading03Icon,
-  StarIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "@tanstack/react-router";
@@ -27,12 +29,7 @@ import { Button } from "../../components/ui/button";
  * spinner so the user sees instant feedback even when the network
  * hasn't returned yet. `null` means nothing pending.
  */
-export type ActionButtonsPending =
-  | "keep"
-  | "skip"
-  | "shortlist"
-  | "undo"
-  | null;
+export type ActionButtonsPending = "shortlist" | "skip" | "undo" | null;
 
 type Props = {
   clusterId: string;
@@ -40,7 +37,6 @@ type Props = {
   pendingAction?: ActionButtonsPending;
   onUndo: () => void;
   onSkip: () => void;
-  onKeep: () => void;
   onShortlist: () => void;
 };
 
@@ -50,7 +46,6 @@ export function ActionButtons({
   pendingAction = null,
   onUndo,
   onSkip,
-  onKeep,
   onShortlist,
 }: Props) {
   return (
@@ -115,37 +110,19 @@ export function ActionButtons({
       </Button>
 
       <Button
-        aria-busy={pendingAction === "keep" || undefined}
-        aria-label="Keep"
-        className="size-16 rounded-full shadow-lg"
-        disabled={disabled}
-        onClick={onKeep}
-        size="icon"
-        type="button"
-      >
-        <HugeiconsIcon
-          className={pendingAction === "keep" ? "animate-spin" : undefined}
-          icon={pendingAction === "keep" ? Loading03Icon : FavouriteIcon}
-          size={28}
-          strokeWidth={2}
-        />
-      </Button>
-
-      <Button
         aria-busy={pendingAction === "shortlist" || undefined}
         aria-label="Shortlist"
-        className="size-13 rounded-full border-border bg-card text-muted-foreground hover:bg-muted"
+        className="size-16 rounded-full shadow-lg"
         disabled={disabled}
         onClick={onShortlist}
         size="icon"
         type="button"
-        variant="outline"
       >
         <HugeiconsIcon
           className={pendingAction === "shortlist" ? "animate-spin" : undefined}
-          icon={pendingAction === "shortlist" ? Loading03Icon : StarIcon}
-          size={20}
-          strokeWidth={1.8}
+          icon={pendingAction === "shortlist" ? Loading03Icon : FavouriteIcon}
+          size={28}
+          strokeWidth={2}
         />
       </Button>
     </div>

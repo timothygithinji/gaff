@@ -52,7 +52,10 @@ import {
 } from "../server/functions/review";
 import { listSearches } from "../server/functions/searches";
 
-type SwipeOutcome = "keep" | "skip" | "shortlist";
+// "keep" stays in the swipe_outcome DB enum for back-compat with rows
+// written before B1 collapsed Keep + Shortlist. The UI only ever writes
+// "shortlist" or "skip" now.
+type SwipeOutcome = "shortlist" | "skip";
 type PendingAction = SwipeOutcome | "undo" | null;
 
 // `searchId` filter and the explicit `clusterId` selection both live
@@ -307,17 +310,6 @@ function ReviewPage() {
 
   const pending = pendingAction !== null;
 
-  const doKeep = useCallback(() => {
-    if (!card || pending) {
-      return;
-    }
-    swipe.mutate({
-      clusterId: card.cluster.id,
-      searchId: card.searchId,
-      outcome: "keep",
-    });
-  }, [card, pending, swipe]);
-
   const doSkip = useCallback(() => {
     if (!card || pending) {
       return;
@@ -392,7 +384,7 @@ function ReviewPage() {
     });
   }, [currentQueueIdx, queueItems, navigate]);
 
-  // Review-screen shortcuts: S Skip · K Keep · L Shortlist (Like) · Z Undo · I Details.
+  // Review-screen shortcuts: S Skip · L Shortlist · Z Undo · I Details.
   // Plus ↑/↓ to step through the queue rail, and ←/→ to cycle the hero photos
   // (the latter registered inside HeroPhoto where the embla instance lives).
   // Disabled while the photo lightbox owns the keyboard (so its ArrowLeft/Right
@@ -403,10 +395,6 @@ function ReviewPage() {
   useHotkey("S", doSkip, {
     enabled: reviewKeysEnabled,
     meta: { category: "Review", description: "Skip listing" },
-  });
-  useHotkey("K", doKeep, {
-    enabled: reviewKeysEnabled,
-    meta: { category: "Review", description: "Keep listing" },
   });
   useHotkey("L", doShortlist, {
     enabled: reviewKeysEnabled,
@@ -459,7 +447,6 @@ function ReviewPage() {
         pending,
         pendingAction,
         queryError,
-        doKeep,
         doSkip,
         doShortlist,
         doUndo,
@@ -479,7 +466,6 @@ function ReviewPage() {
           isCardLoading,
           pending,
           pendingAction,
-          doKeep,
           doSkip,
           doShortlist,
           doUndo,
@@ -537,7 +523,10 @@ function applyOptimisticStatsBump(
   }
   qc.setQueryData<TodayReviewStats>(key, {
     reviewed: previousStats.reviewed + 1,
-    kept: previousStats.kept + (outcome === "keep" ? 1 : 0),
+    // `kept` is the legacy bucket for outcome="keep"; nothing in the UI
+    // writes that today (B1) but the field stays on the wire for the
+    // admin dashboards that still count historical rows.
+    kept: previousStats.kept,
     skipped: previousStats.skipped + (outcome === "skip" ? 1 : 0),
     shortlisted: previousStats.shortlisted + (outcome === "shortlist" ? 1 : 0),
   });
@@ -591,7 +580,6 @@ function renderDesktopHero(args: {
   pending: boolean;
   pendingAction: PendingAction;
   queryError: string | null;
-  doKeep: () => void;
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
@@ -607,7 +595,6 @@ function renderDesktopHero(args: {
           selectedSearchId: args.searchId,
         })}
         disabled={args.pending}
-        onKeep={args.doKeep}
         onLightboxOpenChange={args.setLightboxOpen}
         onOpenDetail={args.doOpenDetail}
         onSelectCluster={(nextClusterId) => {
@@ -652,7 +639,6 @@ function renderMobileHero(args: {
   isCardLoading: boolean;
   pending: boolean;
   pendingAction: PendingAction;
-  doKeep: () => void;
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
@@ -664,7 +650,6 @@ function renderMobileHero(args: {
         <ActionButtons
           clusterId={args.card.cluster.id}
           disabled={args.pending}
-          onKeep={args.doKeep}
           onShortlist={args.doShortlist}
           onSkip={args.doSkip}
           onUndo={args.doUndo}
@@ -870,7 +855,13 @@ function MobileReviewSkeleton() {
 }
 
 function buildHeroData(card: ReviewCard): DesktopReviewData["hero"] {
-  const { headlineListing, portalsAlsoOn, features, epcRating } = card;
+  const {
+    headlineListing,
+    portalsAlsoOn,
+    features,
+    epcRating,
+    commuteMinutes,
+  } = card;
   const photos =
     headlineListing.photos.length > 0
       ? headlineListing.photos
@@ -890,8 +881,9 @@ function buildHeroData(card: ReviewCard): DesktopReviewData["hero"] {
     spec: buildSpec({
       bedrooms: headlineListing.bedrooms,
       bathrooms: headlineListing.bathrooms,
-      giaSqm: features?.floorplan?.giaSqm ?? null,
+      sizeSqFt: headlineListing.sizeSqFt,
       epc: epcRating ?? null,
+      commuteMinutes,
     }),
     verdicts: buildVerdicts(features),
   };
@@ -967,20 +959,20 @@ function prettyPortal(portal: string): string {
 function buildSpec(args: {
   bedrooms: number | null;
   bathrooms: number | null;
-  giaSqm: number | null;
+  sizeSqFt: number | null;
   epc: string | null;
+  commuteMinutes: number | null;
 }): DesktopReviewData["hero"]["spec"] {
-  const sqftValue =
-    args.giaSqm != null ? Math.round(args.giaSqm * 10.7639) : null;
   return [
     { label: "Beds", value: specValue(args.bedrooms) },
     { label: "Baths", value: specValue(args.bathrooms) },
-    { label: "Sq ft", value: specValue(sqftValue) },
+    { label: "Sq ft", value: specValue(args.sizeSqFt) },
     { label: "EPC", value: args.epc ?? "—" },
-    // Commute isn't computed yet — `getListingDetail` has the
-    // postcodes.io address lookup but no transit-time provider wired
-    // in. Surface a placeholder dash until that lands.
-    { label: "Commute", value: "—", suffix: undefined },
+    {
+      label: "Commute",
+      value: args.commuteMinutes != null ? `${args.commuteMinutes}` : "—",
+      suffix: args.commuteMinutes != null ? "min" : undefined,
+    },
   ];
 }
 
@@ -989,11 +981,12 @@ function specValue(value: number | null): string {
 }
 
 /**
- * Mirrors `FeaturePills` (the mobile equivalent) but flattens its three
- * tones onto the two the desktop hero supports: `positive` stays
- * positive, `caution`/`problem` both fold into `caution`. Floorplan
- * room sizes are not shown on this surface — too dense for the hero —
- * they live in the listing-detail page.
+ * Mirrors `FeaturePills` (the mobile equivalent) but flattens watchout
+ * severities onto the single `caution` tone the desktop hero supports.
+ * Highlights stay as `positive`. Both lists come from the v2 features
+ * schema (`highlights[]` + `watchouts[]`) — earlier v1 enrichment rows
+ * lacking these arrays render no verdicts (will repopulate once their
+ * v2 enrichment runs).
  */
 function buildVerdicts(
   features: ReviewCard["features"]
@@ -1003,31 +996,13 @@ function buildVerdicts(
   }
   const out: DesktopReviewData["hero"]["verdicts"] = [];
 
-  if (features.hasGarden === true) {
-    out.push({ label: "Garden", tone: "positive" });
+  for (const h of features.highlights ?? []) {
+    out.push({ label: h.label, tone: "positive" });
   }
-  if (features.hasParking === true) {
-    out.push({ label: "Parking", tone: "positive" });
+  for (const w of features.watchouts ?? []) {
+    out.push({ label: w.label, tone: "caution" });
   }
-  if (features.hasWasher === true) {
-    out.push({ label: "Washer", tone: "positive" });
-  }
-  if (features.allowsPets === true) {
-    out.push({ label: "Pets OK", tone: "positive" });
-  }
-  if (features.isFurnished === true) {
-    out.push({ label: "Furnished", tone: "positive" });
-  }
-  if (features.floorplan?.layout === "separate") {
-    out.push({ label: "Separate kitchen", tone: "positive" });
-  }
-  for (const sp of features.smallPrint ?? []) {
-    if (sp.severity === "ok") {
-      continue;
-    }
-    out.push({ label: sp.label, tone: "caution" });
-  }
-  return out;
+  return out.slice(0, 6);
 }
 
 function buildQueueData(
