@@ -1,0 +1,5 @@
+procs:
+  web:
+    shell: "bun run dev:web"
+  trigger:
+    shell: "bun run trigger:dev"
