@@ -537,14 +537,18 @@ function HeroPhoto({
 
   if (photoCount === 0) {
     return (
-      <div className="relative flex min-h-[280px] w-full flex-1 items-center justify-center bg-muted">
+      <div className="relative flex min-h-0 w-full flex-1 items-center justify-center bg-muted">
         <span className="text-muted-foreground text-xs">No photos</span>
       </div>
     );
   }
 
   return (
-    <div className="group relative min-h-[280px] w-full flex-1 select-none">
+    // `min-h-0` (not a fixed floor) lets the photo absorb vertical
+    // overflow: when the verdict chips wrap to a second row the content
+    // block grows, and the photo yields space so the shrink-0 action
+    // footer below is never clipped by the card's overflow-hidden.
+    <div className="group relative min-h-0 w-full flex-1 select-none">
       <div className="h-full w-full overflow-hidden" ref={emblaRef}>
         <div className="flex h-full touch-pan-y">
           {photos.map((src, i) => (
@@ -826,7 +830,7 @@ function HeroVerdicts({ verdicts }: { verdicts: VerdictChip[] }) {
           size={12}
           strokeWidth={2}
         />
-        <Eyebrow tone="primary">Floor plan read</Eyebrow>
+        <Eyebrow tone="primary">What stands out</Eyebrow>
       </div>
       <div className="flex flex-wrap gap-2">
         {verdicts.map((v) => (

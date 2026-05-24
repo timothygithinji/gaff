@@ -30,6 +30,7 @@ export const queryKeys = {
   shortlistMutual: () => ["shortlist", "mutual"] as const,
   shortlistMine: () => ["shortlist", "mine"] as const,
   shortlistMember: (userId: string) => ["shortlist", "member", userId] as const,
+  shortlistPipeline: () => ["shortlist", "pipeline"] as const,
   matches: () => ["matches", "list"] as const,
   listingDetail: (clusterId: string) => ["listings", clusterId] as const,
 } as const;

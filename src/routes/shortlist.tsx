@@ -1,25 +1,34 @@
 /**
  * `/shortlist` — the Shortlist screen.
  *
- * Composes mutual matches (the view's output) with each individual
- * member's keep/shortlist picks. The tab row is parameterised by
- * household size:
+ * v2 (pipeline): the "Mutual" tab has been replaced by "Pipeline" —
+ * mutually-shortlisted clusters render as a kanban (desktop) or stage-
+ * tab list (mobile). The remaining tabs (Yours / per-member) keep the
+ * pre-pipeline featured-banner-plus-card-grid layout because they list
+ * not-yet-mutual picks — there's no pipeline status to surface there.
  *
- *   1 member  → no tabs; one list (the user's own picks).
- *   2 members → Mutual · Yours · <other>'s
- *   N members → Mutual · Yours · <each other member>'s
+ *   1 member  → no tabs; pipeline is the whole screen.
+ *   2 members → Pipeline · Yours · <other>'s
+ *   N members → Pipeline · Yours · <each other member>'s
  *
- * Mutual tab gets a featured card + "Other mutual picks" list. The
- * other tabs render a single flat list. Sort dropdown switches between
- * cheapest (default) and newest.
+ * Card moves and archives flow through `setPipelineStatus`. Notes are
+ * a v2.1 add — the schema column exists, but the UI for editing notes
+ * isn't wired here yet.
  */
-import { useQueries, useQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { BottomNav } from "../components/layout/bottom-nav";
 import { DesktopShortlist } from "../components/shortlist/desktop-shortlist";
 import { MatchCard, usePlanViewing } from "../components/shortlist/match-card";
 import { MatchRow } from "../components/shortlist/match-row";
+import { PipelineKanban } from "../components/shortlist/pipeline-kanban";
+import { PipelineMobile } from "../components/shortlist/pipeline-mobile";
 import {
   SortDropdown,
   type SortKey,
@@ -27,17 +36,26 @@ import {
 import { type ShortlistTab, ShortlistTabs } from "../components/shortlist/tabs";
 import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
+import {
+  type PipelineArchivedReason,
+  type PipelineStatus,
+} from "../lib/pipeline-status";
 import { queryKeys } from "../lib/query-keys";
+import {
+  type PipelineColumns,
+  listPipeline,
+  setPipelineStatus,
+} from "../server/functions/pipeline";
 import {
   type MutualMatch,
   listMemberOutcomes,
-  listMutualMatches,
   listMyOutcomes,
+  markMatchesSeen,
 } from "../server/functions/shortlist";
 
-const mutualQueryOptions = {
-  queryKey: queryKeys.shortlistMutual(),
-  queryFn: () => listMutualMatches(),
+const pipelineQueryOptions = {
+  queryKey: queryKeys.shortlistPipeline(),
+  queryFn: () => listPipeline(),
   staleTime: 15_000,
 };
 
@@ -54,11 +72,13 @@ export const Route = createFileRoute("/shortlist")({
   },
   loader: ({ context }) =>
     Promise.all([
-      context.queryClient.ensureQueryData(mutualQueryOptions),
+      context.queryClient.ensureQueryData(pipelineQueryOptions),
       context.queryClient.ensureQueryData(myQueryOptions),
     ]),
   component: ShortlistPage,
 });
+
+const PIPELINE_TAB_ID = "pipeline";
 
 /** Pretty "time ago" — coarse buckets, en-GB. */
 function timeAgo(date: Date): string {
@@ -108,10 +128,6 @@ function sortMatches(matches: MutualMatch[], by: SortKey): MutualMatch[] {
 
 const WHITESPACE_RE = /\s+/;
 
-/**
- * First name of a member (best-effort — splits on whitespace). Falls
- * back to the email local-part for users who haven't filled in a name.
- */
 function firstNameOf(member: { name: string; email: string }): string {
   const head = (member.name || "").trim().split(WHITESPACE_RE)[0];
   if (head) {
@@ -121,17 +137,42 @@ function firstNameOf(member: { name: string; email: string }): string {
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
+function totalPipelineCount(columns: PipelineColumns): number {
+  return (
+    columns.shortlisted.length +
+    columns.contacted.length +
+    columns.viewing_booked.length +
+    columns.offer_made.length +
+    columns.archived.length
+  );
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: this is the route component; it composes tabs + pipeline + member lists + mutations into one screen and splitting it up would scatter the state.
 function ShortlistPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { memberCount, otherMembers, members, currentUserId } = useHousehold();
 
-  const { data: mutual = [] } = useQuery(mutualQueryOptions);
+  const { data: pipeline } = useQuery(pipelineQueryOptions);
   const { data: mine = [] } = useQuery(myQueryOptions);
+  const columns: PipelineColumns = pipeline ?? {
+    shortlisted: [],
+    contacted: [],
+    viewing_booked: [],
+    offer_made: [],
+    archived: [],
+  };
 
-  // Per-other-member outcome lists. We use `useQueries` so the number
-  // of underlying queries can vary with household composition without
-  // tripping React's rules-of-hooks. TanStack Query dedupes shared
-  // keys; each response is small.
+  // Clear the unread-matches badge on first paint — the user landed on
+  // the screen that supersedes /matches, so anything new is "seen". We
+  // fire-and-forget; no consumer cares about the result.
+  useState(() => {
+    markMatchesSeen().catch(() => {
+      // ignore; the badge will still clear on next refresh
+    });
+    return null;
+  });
+
   const otherMemberResults = useQueries({
     queries: otherMembers.map((m) => ({
       queryKey: queryKeys.shortlistMember(m.userId),
@@ -152,7 +193,11 @@ function ShortlistPage() {
       return [];
     }
     const base: ShortlistTab[] = [
-      { id: "mutual", label: "Mutual", count: mutual.length },
+      {
+        id: PIPELINE_TAB_ID,
+        label: "Pipeline",
+        count: totalPipelineCount(columns),
+      },
       { id: "mine", label: "Yours", count: mine.length },
     ];
     for (const { member, query } of otherMemberQueries) {
@@ -163,23 +208,48 @@ function ShortlistPage() {
       });
     }
     return base;
-    // We intentionally re-derive on every render; the inputs are cheap
-    // refs. (useMemo is here to stabilise the array identity for child
-    // memoisation in the future.)
-  }, [memberCount, mutual.length, mine.length, otherMemberQueries]);
+  }, [columns, memberCount, mine.length, otherMemberQueries]);
 
-  const [activeTab, setActiveTab] = useState<string>("mutual");
+  const [activeTab, setActiveTab] = useState<string>(PIPELINE_TAB_ID);
   const [sort, setSort] = useState<SortKey>("cheapest");
+  const [pendingMove, setPendingMove] = useState<{
+    clusterId: string;
+    to: PipelineStatus;
+  } | null>(null);
+  const [mobileStatus, setMobileStatus] =
+    useState<PipelineStatus>("shortlisted");
 
   const me = members.find((m) => m.userId === currentUserId);
 
-  // Resolve which list is currently visible.
-  const visible = useMemo<MutualMatch[]>(() => {
+  // Mutation: move a card to a different stage (or archive with reason).
+  const moveMutation = useMutation({
+    mutationFn: (input: {
+      clusterId: string;
+      to: PipelineStatus;
+      archivedReason?: PipelineArchivedReason;
+    }) =>
+      setPipelineStatus({
+        data: {
+          clusterId: input.clusterId,
+          status: input.to,
+          ...(input.archivedReason
+            ? { archivedReason: input.archivedReason }
+            : {}),
+        },
+      }),
+    onMutate: (input) => {
+      setPendingMove({ clusterId: input.clusterId, to: input.to });
+    },
+    onSettled: () => {
+      setPendingMove(null);
+      qc.invalidateQueries({ queryKey: queryKeys.shortlistPipeline() });
+    },
+  });
+
+  // Non-pipeline tabs (Yours / Per-member) keep the legacy list view.
+  const visibleMatches = useMemo<MutualMatch[]>(() => {
     if (memberCount <= 1) {
-      return sortMatches(mine, sort);
-    }
-    if (activeTab === "mutual") {
-      return sortMatches(mutual, sort);
+      return [];
     }
     if (activeTab === "mine") {
       return sortMatches(mine, sort);
@@ -188,13 +258,9 @@ function ShortlistPage() {
       (q) => `member:${q.member.userId}` === activeTab
     );
     return sortMatches(m?.query?.data ?? [], sort);
-  }, [activeTab, memberCount, mine, mutual, otherMemberQueries, sort]);
+  }, [activeTab, memberCount, mine, otherMemberQueries, sort]);
 
   const { toast, planViewing } = usePlanViewing();
-
-  const featured =
-    activeTab === "mutual" && memberCount > 1 ? visible[0] : null;
-  const rows = featured ? visible.slice(1) : visible;
 
   function openCluster(clusterId: string) {
     navigate({
@@ -206,6 +272,7 @@ function ShortlistPage() {
 
   const otherForLabel = otherMembers[0];
   const partnerLabel = otherForLabel ? firstNameOf(otherForLabel) : null;
+  const isPipeline = activeTab === PIPELINE_TAB_ID || memberCount <= 1;
   const sectionLabel = sectionLabelFor(
     activeTab,
     memberCount,
@@ -213,12 +280,28 @@ function ShortlistPage() {
     me?.name
   );
 
+  const pipelineKanban = (
+    <PipelineKanban
+      columns={columns}
+      disabled={moveMutation.isPending}
+      onArchive={(clusterId, reason) =>
+        moveMutation.mutate({
+          clusterId,
+          to: "archived",
+          archivedReason: reason,
+        })
+      }
+      onMove={(clusterId, to) => moveMutation.mutate({ clusterId, to })}
+      onOpenCluster={openCluster}
+    />
+  );
+
   return (
     <>
       <DesktopShortlist
         activeTab={activeTab}
-        featured={featured}
-        featuredAgeLabel={featured ? timeAgo(featured.matchedAt) : undefined}
+        bodySlot={isPipeline ? pipelineKanban : undefined}
+        featured={null}
         memberCount={memberCount}
         onOpen={(clusterId) => openCluster(clusterId)}
         onPlanViewing={(m) => planViewing(m.headline)}
@@ -226,7 +309,7 @@ function ShortlistPage() {
         onTabChange={setActiveTab}
         partnerLabel={partnerLabel}
         rowAgeLabel={(m) => timeAgo(m.matchedAt)}
-        rows={rows}
+        rows={visibleMatches}
         sectionLabel={sectionLabel}
         sortKey={sort}
         tabs={tabs}
@@ -248,56 +331,47 @@ function ShortlistPage() {
           </h1>
         </header>
 
-        <ShortlistTabs
-          activeId={activeTab}
-          onChange={setActiveTab}
-          tabs={tabs}
-        />
-
-        {featured ? (
-          <MatchCard
-            ageLabel={timeAgo(featured.matchedAt)}
-            match={featured}
-            memberCount={memberCount}
-            onOpen={() => openCluster(featured.clusterId)}
-            onPlanViewing={() => planViewing(featured.headline)}
+        {memberCount > 1 ? (
+          <ShortlistTabs
+            activeId={activeTab}
+            onChange={setActiveTab}
+            tabs={tabs}
           />
         ) : null}
 
-        <div className="flex items-center justify-between px-6 pb-3">
-          <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-            {sectionLabelFor(
-              activeTab,
-              memberCount,
-              otherMemberQueries,
-              me?.name
-            )}
-          </span>
-          <SortDropdown onChange={setSort} value={sort} />
-        </div>
+        {isPipeline ? (
+          <PipelineMobile
+            active={mobileStatus}
+            columns={columns}
+            disabled={moveMutation.isPending}
+            onActiveChange={setMobileStatus}
+            onArchive={(clusterId, reason) =>
+              moveMutation.mutate({
+                clusterId,
+                to: "archived",
+                archivedReason: reason,
+              })
+            }
+            onMove={(clusterId, to) => moveMutation.mutate({ clusterId, to })}
+            onOpenCluster={openCluster}
+            pendingMove={pendingMove}
+          />
+        ) : (
+          <MemberOutcomesMobile
+            matches={visibleMatches}
+            memberCount={memberCount}
+            onOpen={openCluster}
+            onPlanViewing={(m) => planViewing(m.headline)}
+            onSortChange={setSort}
+            sectionLabel={sectionLabel}
+            sort={sort}
+          />
+        )}
 
-        <div className="flex flex-col gap-2.5 px-4">
-          {rows.length === 0 ? (
-            <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
-              Nothing here yet. Keep swiping on the Review screen — picks land
-              here as you (and your household) hit Keep.
-            </p>
-          ) : (
-            rows.map((m) => (
-              <MatchRow
-                ageLabel={timeAgo(m.matchedAt)}
-                key={`${m.clusterId}:${m.searchId}`}
-                match={m}
-                memberCount={memberCount}
-                onOpen={() => openCluster(m.clusterId)}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Settings link sneaks into the empty-state corner — keeps the
-          screen self-contained when there's nothing to look at. */}
-        {rows.length === 0 && !featured ? (
+        {/* Settings link for the empty-state corner — pipeline tab with
+            no entries is the most likely scenario, so we surface a
+            useful next step. */}
+        {isPipeline && totalPipelineCount(columns) === 0 ? (
           <div className="mt-6 px-6 text-center">
             <Link className="text-primary text-xs" to="/searches">
               Manage your searches →
@@ -311,6 +385,64 @@ function ShortlistPage() {
   );
 }
 
+function MemberOutcomesMobile({
+  matches,
+  memberCount,
+  sectionLabel,
+  sort,
+  onSortChange,
+  onOpen,
+  onPlanViewing,
+}: {
+  matches: MutualMatch[];
+  memberCount: number;
+  sectionLabel: string;
+  sort: SortKey;
+  onSortChange: (s: SortKey) => void;
+  onOpen: (clusterId: string) => void;
+  onPlanViewing: (m: MutualMatch) => void;
+}) {
+  const featured = matches[0] ?? null;
+  const rows = featured ? matches.slice(1) : matches;
+  return (
+    <div className="flex flex-col">
+      {featured ? (
+        <MatchCard
+          ageLabel={timeAgo(featured.matchedAt)}
+          match={featured}
+          memberCount={memberCount}
+          onOpen={() => onOpen(featured.clusterId)}
+          onPlanViewing={() => onPlanViewing(featured)}
+        />
+      ) : null}
+      <div className="flex items-center justify-between px-6 pb-3">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+          {sectionLabel}
+        </span>
+        <SortDropdown onChange={onSortChange} value={sort} />
+      </div>
+      <div className="flex flex-col gap-2.5 px-4">
+        {rows.length === 0 && !featured ? (
+          <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
+            Nothing here yet. Keep swiping on the Review screen — picks land
+            here as you (and your household) hit Keep.
+          </p>
+        ) : (
+          rows.map((m) => (
+            <MatchRow
+              ageLabel={timeAgo(m.matchedAt)}
+              key={`${m.clusterId}:${m.searchId}`}
+              match={m}
+              memberCount={memberCount}
+              onOpen={() => onOpen(m.clusterId)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function sectionLabelFor(
   activeTab: string,
   memberCount: number,
@@ -321,9 +453,6 @@ function sectionLabelFor(
 ): string {
   if (memberCount <= 1) {
     return "Your picks";
-  }
-  if (activeTab === "mutual") {
-    return "Other mutual picks";
   }
   if (activeTab === "mine") {
     return myName

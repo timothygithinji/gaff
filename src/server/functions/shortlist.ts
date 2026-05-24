@@ -10,8 +10,8 @@
  * Three list shapes:
  *
  *   listMutualMatches   — clusters every household member has kept-or-
- *     shortlisted. Powers both the Shortlist screen's "Mutual" tab AND
- *     the dedicated `/matches` route.
+ *     shortlisted. Powers the legacy Mutual surface and is still used
+ *     by the pipeline kanban's data layer indirectly.
  *   listMyOutcomes      — clusters the current user has personally swiped
  *     into ('keep' or 'shortlist'). Powers the "Yours" tab.
  *   listMemberOutcomes  — same but for ANOTHER household member. Powers
@@ -24,21 +24,21 @@
  *     all mutual matches count) when no `user_state` row exists.
  *   markMatchesSeen     — upserts the caller's `last_seen_matches`
  *     timestamp; clears the badge.
+ *
+ * Plain helpers (`hydrateClusterSummary`, `requireHouseholdScope`) live
+ * in `./shortlist-helpers.server.ts` — the `.server.ts` suffix keeps the
+ * client bundle from chasing their import graph (which transitively
+ * pulls in `cloudflare:workers` via `session.ts`).
  */
 import { createServerFn } from "@tanstack/react-start";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
+import { swipes, userState, vMutualMatches } from "../../../db/schema";
 import {
-  householdMembers,
-  listingPhotos,
-  listings,
-  swipes,
-  user,
-  userState,
-  vMutualMatches,
-} from "../../../db/schema";
-import { getCurrentUser } from "./session";
+  hydrateClusterSummary,
+  requireHouseholdScope,
+} from "./shortlist-helpers.server";
 
 const outcomeFilterSchema = z.enum(["keep", "shortlist", "keep_or_shortlist"]);
 
@@ -90,188 +90,6 @@ export type MutualMatch = {
   portalSpread: ShortlistPortalSpread[];
   members: ShortlistMember[];
 };
-
-// -----------------------------------------------------------------------------
-// Shared helpers
-// -----------------------------------------------------------------------------
-
-/**
- * Pluck a string-typed `agentEmail` (or close variants) from the
- * polymorphic `listings.rawJson` blob. Returns null when the portal
- * parser didn't capture one. Today's parsers don't all surface this —
- * the helper keeps the call sites tolerant.
- */
-function readAgentEmail(rawJson: unknown): string | null {
-  if (!rawJson || typeof rawJson !== "object") {
-    return null;
-  }
-  const obj = rawJson as Record<string, unknown>;
-  const candidate = obj.agentEmail ?? obj.agent_email ?? obj.email;
-  if (typeof candidate === "string" && candidate.includes("@")) {
-    return candidate;
-  }
-  return null;
-}
-
-/** First grapheme of an email address, upper-cased for avatar initials. */
-function initialOf(email: string): string {
-  return (email[0] ?? "?").toUpperCase();
-}
-
-type ClusterSummaryInput = {
-  clusterId: string;
-  searchId: string;
-  matchedAt: Date;
-  householdMemberUserIds: string[];
-};
-
-/**
- * Hydrate one cluster into the wire shape. Pulls the cheapest listing
- * for the cluster (across all portals), the price spread, the
- * cheapest's first photo, and the household members who voted into the
- * cluster.
- *
- * Returns `null` when the cluster has no listings backing it (this can
- * happen briefly during scrape / cluster churn).
- */
-async function hydrateClusterSummary(
-  db: ReturnType<typeof getDb>,
-  input: ClusterSummaryInput
-): Promise<MutualMatch | null> {
-  const clusterListings = await db
-    .select()
-    .from(listings)
-    .where(eq(listings.clusterId, input.clusterId));
-
-  if (clusterListings.length === 0) {
-    return null;
-  }
-
-  // Cheapest-first. NULL prices sink. Stable secondary sort by id so
-  // we never flip between rows with identical prices.
-  const sortedListings = [...clusterListings].sort((a, b) => {
-    if (a.priceMonthly == null && b.priceMonthly == null) {
-      return a.id.localeCompare(b.id);
-    }
-    if (a.priceMonthly == null) {
-      return 1;
-    }
-    if (b.priceMonthly == null) {
-      return -1;
-    }
-    if (a.priceMonthly === b.priceMonthly) {
-      return a.id.localeCompare(b.id);
-    }
-    return a.priceMonthly - b.priceMonthly;
-  });
-
-  const headlineListing = sortedListings[0];
-  if (!headlineListing) {
-    return null;
-  }
-
-  const headlinePhotos = await db
-    .select({ url: listingPhotos.url, r2Key: listingPhotos.r2Key })
-    .from(listingPhotos)
-    .where(eq(listingPhotos.listingId, headlineListing.id))
-    .orderBy(listingPhotos.position)
-    .limit(1);
-  const headlinePhoto = headlinePhotos[0];
-  const photoUrl = headlinePhoto
-    ? (headlinePhoto.r2Key ?? headlinePhoto.url)
-    : null;
-
-  const portalSpread: ShortlistPortalSpread[] = sortedListings
-    .filter((l) => l.id !== headlineListing.id)
-    .map((l) => ({
-      portal: l.portal,
-      priceMonthly: l.priceMonthly,
-      url: l.url,
-    }));
-
-  // Members who voted keep/shortlist on this cluster. The view already
-  // proved every member agreed for a mutual match, but `listMyOutcomes`
-  // / `listMemberOutcomes` also hydrate through here for shape parity —
-  // so we still scope the query to the cluster's actual voters.
-  const voterRows = await db
-    .select({
-      userId: swipes.userId,
-      name: user.name,
-      email: user.email,
-    })
-    .from(swipes)
-    .innerJoin(user, eq(user.id, swipes.userId))
-    .where(
-      and(
-        eq(swipes.clusterId, input.clusterId),
-        inArray(swipes.userId, input.householdMemberUserIds),
-        inArray(swipes.outcome, ["keep", "shortlist"])
-      )
-    );
-  const dedupedVoters = new Map<string, ShortlistMember>();
-  for (const row of voterRows) {
-    if (!dedupedVoters.has(row.userId)) {
-      dedupedVoters.set(row.userId, {
-        userId: row.userId,
-        name: row.name,
-        emailInitial: initialOf(row.email),
-      });
-    }
-  }
-
-  return {
-    clusterId: input.clusterId,
-    searchId: input.searchId,
-    matchedAt: input.matchedAt,
-    headline: {
-      listingId: headlineListing.id,
-      addressRaw: headlineListing.addressRaw,
-      priceMonthly: headlineListing.priceMonthly,
-      bedrooms: headlineListing.bedrooms,
-      bathrooms: headlineListing.bathrooms,
-      propertyType: headlineListing.propertyType,
-      postcode: headlineListing.postcode,
-      photoUrl,
-      portal: headlineListing.portal,
-      url: headlineListing.url,
-      agentEmail: readAgentEmail(headlineListing.rawJson),
-    },
-    portalSpread,
-    members: [...dedupedVoters.values()],
-  };
-}
-
-/**
- * Resolve the caller's household + every member's user id. Throws when
- * there's no session or no household — mirrors the pattern in
- * `review.ts`'s `requireHouseholdMembers`.
- */
-async function requireHouseholdScope(): Promise<{
-  householdId: string;
-  memberUserIds: string[];
-  currentUserId: string;
-}> {
-  const session = await getCurrentUser();
-  if (!session) {
-    throw new Error("unauthorized");
-  }
-  const db = getDb();
-  const myMembership = await db.query.householdMembers.findFirst({
-    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
-  });
-  if (!myMembership) {
-    throw new Error("no_household");
-  }
-  const members = await db
-    .select({ userId: householdMembers.userId })
-    .from(householdMembers)
-    .where(eq(householdMembers.householdId, myMembership.householdId));
-  return {
-    householdId: myMembership.householdId,
-    memberUserIds: members.map((m) => m.userId),
-    currentUserId: session.userId,
-  };
-}
 
 // -----------------------------------------------------------------------------
 // Reads
