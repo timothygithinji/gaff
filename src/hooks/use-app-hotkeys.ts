@@ -37,9 +37,12 @@ export function useAppHotkeys(onShowHelp: () => void): void {
     enabled,
     meta: { category: "Navigation", description: "Go to Shortlist" },
   });
-  useHotkeySequence(["G", "M"], () => navigate({ to: "/matches" }), {
+  // G,M used to land on /matches; the dedicated Matches route is gone
+  // (collapsed into Shortlist's pipeline). Keep the binding alive so
+  // muscle memory still works — it now navigates to /shortlist.
+  useHotkeySequence(["G", "M"], () => navigate({ to: "/shortlist" }), {
     enabled,
-    meta: { category: "Navigation", description: "Go to Matches" },
+    meta: { category: "Navigation", description: "Go to Shortlist (mutual)" },
   });
   useHotkeySequence(["G", "H"], () => navigate({ to: "/settings/household" }), {
     enabled,

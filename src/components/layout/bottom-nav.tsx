@@ -1,20 +1,19 @@
 /**
  * Mobile bottom nav. Hidden on `md+` where the AdminSidebar takes
- * over. Always shows the four primary tabs (Review · Shortlist ·
- * Searches · Matches) so the layout stays consistent across household
- * sizes — solo users land on the Matches screen's empty state rather
- * than discovering the tab only after a partner joins.
+ * over. Always shows the three primary tabs (Review · Shortlist ·
+ * Searches) so the layout stays consistent across household sizes —
+ * solo users land on the Shortlist screen's empty state rather than
+ * discovering the kanban only after a partner joins.
  *
- * Matches shows an unread badge driven by `unreadMatchCount` — the
- * underlying query stays gated to multi-member households so we don't
- * poll for nothing. Tapping the route clears the badge via
- * `markMatchesSeen`.
+ * The unread-mutual-match badge now sits on the Shortlist tab — the
+ * `/matches` route was retired in favour of the Shortlist pipeline's
+ * "Shortlisted" column. The underlying query stays gated to multi-
+ * member households so solo users don't poll for nothing.
  */
 import {
   Search01Icon,
   StarIcon,
   SwipeRight03Icon,
-  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -43,19 +42,15 @@ const TABS: Tab[] = [
     to: "/shortlist",
     label: "Shortlist",
     icon: StarIcon,
-    match: (p) => p.startsWith("/shortlist"),
+    // Matches the legacy `/matches` URL too so deep-links during the
+    // redirect window still highlight the right tab.
+    match: (p) => p.startsWith("/shortlist") || p.startsWith("/matches"),
   },
   {
     to: "/searches",
     label: "Searches",
     icon: Search01Icon,
     match: (p) => p.startsWith("/searches"),
-  },
-  {
-    to: "/matches",
-    label: "Matches",
-    icon: UserGroupIcon,
-    match: (p) => p.startsWith("/matches"),
   },
 ];
 
@@ -81,11 +76,11 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-border border-t bg-card md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-border border-t bg-card md:hidden"
     >
       {TABS.map((tab) => {
         const active = tab.match(pathname);
-        const isMatches = tab.to === "/matches";
+        const isShortlist = tab.to === "/shortlist";
         return (
           <Link
             className={cn(
@@ -103,7 +98,7 @@ export function BottomNav() {
             <span className="font-medium text-[11px] tracking-wide">
               {tab.label}
             </span>
-            {isMatches && unreadCount > 0 ? (
+            {isShortlist && unreadCount > 0 ? (
               <Badge
                 aria-label={`${unreadCount} unread match${unreadCount === 1 ? "" : "es"}`}
                 className="absolute top-1 right-[26%] h-4 min-w-4 rounded-full px-1 font-bold text-[9px] tabular-nums"

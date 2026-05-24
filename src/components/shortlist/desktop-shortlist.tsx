@@ -48,6 +48,12 @@ type Props = {
   memberCount: number;
   onOpen: (clusterId: string) => void;
   onPlanViewing: (match: MutualMatch) => void;
+  /**
+   * Optional body override — when provided, replaces the featured banner
+   * + section head + card grid. The pipeline tab feeds the kanban
+   * through here so the page chrome stays consistent across tabs.
+   */
+  bodySlot?: ReactNode;
 };
 
 /* ---------------- Component ---------------- */
@@ -67,12 +73,14 @@ export function DesktopShortlist({
   memberCount,
   onOpen,
   onPlanViewing,
+  bodySlot,
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
       <Header
         onSortChange={onSortChange}
         partnerLabel={partnerLabel}
+        showSort={!bodySlot}
         sortKey={sortKey}
       />
       {tabs.length > 0 ? (
@@ -85,21 +93,27 @@ export function DesktopShortlist({
         </div>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col gap-5 px-10 py-7">
-        {featured ? (
-          <FeaturedBanner
-            ageLabel={featuredAgeLabel ?? ""}
-            match={featured}
-            onOpen={() => onOpen(featured.clusterId)}
-            onPlanViewing={() => onPlanViewing(featured)}
-          />
-        ) : null}
-        <SectionHead label={sectionLabel} rowCount={rows.length} />
-        <CardGrid
-          memberCount={memberCount}
-          onOpen={onOpen}
-          rowAgeLabel={rowAgeLabel}
-          rows={rows}
-        />
+        {bodySlot ? (
+          bodySlot
+        ) : (
+          <>
+            {featured ? (
+              <FeaturedBanner
+                ageLabel={featuredAgeLabel ?? ""}
+                match={featured}
+                onOpen={() => onOpen(featured.clusterId)}
+                onPlanViewing={() => onPlanViewing(featured)}
+              />
+            ) : null}
+            <SectionHead label={sectionLabel} rowCount={rows.length} />
+            <CardGrid
+              memberCount={memberCount}
+              onOpen={onOpen}
+              rowAgeLabel={rowAgeLabel}
+              rows={rows}
+            />
+          </>
+        )}
       </div>
     </AdminSidebar>
   );
@@ -111,10 +125,12 @@ function Header({
   partnerLabel,
   sortKey,
   onSortChange,
+  showSort = true,
 }: {
   partnerLabel: string | null;
   sortKey: SortKey;
   onSortChange: (k: SortKey) => void;
+  showSort?: boolean;
 }) {
   return (
     <header className="flex items-end justify-between px-10 pt-9 pb-4">
@@ -128,7 +144,9 @@ function Header({
           Shortlist
         </h1>
       </div>
-      <SortDropdown onChange={onSortChange} value={sortKey} />
+      {showSort ? (
+        <SortDropdown onChange={onSortChange} value={sortKey} />
+      ) : null}
     </header>
   );
 }
