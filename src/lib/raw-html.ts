@@ -13,8 +13,16 @@
  * load-bearing.
  */
 
+import { gzipSync } from "node:zlib";
 import { env } from "./env";
 import { r2Put } from "./r2-s3";
+
+// `node:zlib.gzipSync` is universal across the Trigger.dev Node worker
+// runtime (and Bun for local probes). The Web Streams `CompressionStream`
+// alternative isn't reliably present: Node 20.x doesn't expose it as a
+// global, Bun's `node:stream/web` lists it but exports `undefined`, and
+// only workerd / Node 21+ have it. Raw-html.ts is imported only from
+// Trigger tasks, which never run in workerd, so the node: dep is safe.
 
 export type StoreRawHtmlInput = {
   portal: string;
@@ -52,7 +60,7 @@ export async function storeRawHtml(
   const safeScope = input.scope.replace(/[^A-Za-z0-9_-]/g, "");
   const key = `raw-html/${safePortal}/${safeScope}/${input.runId}.html.gz`;
 
-  const gzipped = await gzip(input.html);
+  const gzipped = gzip(input.html);
   await r2Put({
     creds: {
       accountId: R2_ACCOUNT_ID,
@@ -71,13 +79,6 @@ export async function storeRawHtml(
   return { key, gzipBytes: gzipped.byteLength };
 }
 
-async function gzip(text: string): Promise<Uint8Array> {
-  const stream = new Response(text).body?.pipeThrough(
-    new CompressionStream("gzip")
-  );
-  if (!stream) {
-    throw new Error("CompressionStream not available in this runtime");
-  }
-  const buf = await new Response(stream).arrayBuffer();
-  return new Uint8Array(buf);
+function gzip(text: string): Uint8Array {
+  return new Uint8Array(gzipSync(Buffer.from(text, "utf8")));
 }
