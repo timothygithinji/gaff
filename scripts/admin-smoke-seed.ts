@@ -48,8 +48,29 @@ async function main() {
       householdId: hh.id,
       name: "Smoke search",
       portals: ["rightmove", "zoopla", "openrent"],
-      outcodes: ["NW3"],
-      excludeOutcodes: [],
+      // Smoke search uses NW3 as a hand-built SearchLocation. Real
+      // searches go through Google Places autocomplete; here we
+      // hard-code centroid + bounds + the Rightmove locationIdentifier
+      // resolved offline (NW3 → OUTCODE^1859) so the smoke run doesn't
+      // need network access at seed time.
+      location: {
+        placeId: "",
+        name: "NW3",
+        formattedAddress: "NW3, UK",
+        type: "postal_code",
+        lat: 51.554,
+        lng: -0.178,
+        bounds: {
+          ne: { lat: 51.575, lng: -0.155 },
+          sw: { lat: 51.535, lng: -0.205 },
+        },
+        portalRefs: {
+          rightmove: { locationIdentifier: "OUTCODE^1859" },
+          zoopla: { q: "NW3, UK" },
+          openrent: { term: "NW3", withinMiles: 1 },
+        },
+      },
+      excludeLocations: [],
       minBedrooms: 1,
       maxBedrooms: 3,
       minPrice: 1500,

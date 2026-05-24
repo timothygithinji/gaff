@@ -98,13 +98,16 @@ function EditSearchPage() {
       const beds = bedOptionFor(values.bedsId);
       const baths = bathOptionFor(values.bathsId);
       const cadence = findCadenceById(values.cadenceId);
+      if (!values.location) {
+        throw new Error("location is required");
+      }
       return updateSearch({
         data: {
           id: params.id,
           name: values.name,
           portals: values.portals,
-          outcodes: values.outcodesInclude,
-          excludeOutcodes: values.outcodesExclude,
+          location: values.location,
+          excludeLocations: values.excludeLocations,
           minBedrooms: beds.min,
           maxBedrooms: beds.max,
           minBathrooms: baths.min,
@@ -271,8 +274,8 @@ function buildPatch(
   return {
     name: values.name,
     portals: values.portals,
-    outcodes: values.outcodesInclude.map((o) => o.trim().toUpperCase()),
-    excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
+    location: values.location ?? existing.location,
+    excludeLocations: values.excludeLocations,
     minBedrooms: beds.min,
     maxBedrooms: beds.max,
     minBathrooms: baths.min,
@@ -310,8 +313,8 @@ function toFormValues(
 
   return {
     name: search.name,
-    outcodesInclude: search.outcodes,
-    outcodesExclude: search.excludeOutcodes,
+    location: search.location,
+    excludeLocations: search.excludeLocations,
     minPrice: search.minPrice ?? DEFAULT_FORM_VALUES.minPrice,
     maxPrice: search.maxPrice ?? DEFAULT_FORM_VALUES.maxPrice,
     bedsId,

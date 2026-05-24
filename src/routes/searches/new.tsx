@@ -46,12 +46,16 @@ function NewSearchPage() {
       const beds = bedOptionFor(values.bedsId);
       const baths = bathOptionFor(values.bathsId);
       const cadence = findCadenceById(values.cadenceId);
+      if (!values.location) {
+        // canSubmit gates this, but TypeScript needs the narrow.
+        throw new Error("location is required");
+      }
       return createSearch({
         data: {
           name: values.name,
           portals: values.portals,
-          outcodes: values.outcodesInclude,
-          excludeOutcodes: values.outcodesExclude,
+          location: values.location,
+          excludeLocations: values.excludeLocations,
           minBedrooms: beds.min,
           maxBedrooms: beds.max,
           minBathrooms: baths.min,
@@ -131,13 +135,26 @@ function synthesizeSearchRow(values: SearchFormValues): SearchRow {
   const baths = bathOptionFor(values.bathsId);
   const cadence = findCadenceById(values.cadenceId);
   const now = new Date();
+  // canSubmit gates the mutation; if values.location is null here it
+  // means the mutation was triggered programmatically — synthesise a
+  // placeholder so the cache row doesn't crash the list render.
+  const location = values.location ?? {
+    placeId: "",
+    name: "—",
+    formattedAddress: "—",
+    type: "postal_code" as const,
+    lat: 0,
+    lng: 0,
+    bounds: null,
+    portalRefs: {},
+  };
   return {
     id: `tmp-${nanoid()}`,
     householdId: "",
     name: values.name,
     portals: values.portals,
-    outcodes: values.outcodesInclude.map((o) => o.trim().toUpperCase()),
-    excludeOutcodes: values.outcodesExclude.map((o) => o.trim().toUpperCase()),
+    location,
+    excludeLocations: values.excludeLocations,
     minBedrooms: beds.min,
     maxBedrooms: beds.max,
     minBathrooms: baths.min,

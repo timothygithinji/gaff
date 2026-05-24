@@ -1,10 +1,10 @@
 /**
  * Re-scrape cadence picker.
  *
- * Renders the current pick as a single-line card (matching the design)
- * with the friendly label + "Est. cost · $X / day" beneath. Tapping
- * opens a shadcn Dialog with the full preset list so the picker doesn't
- * dominate the form's vertical rhythm.
+ * Renders the current pick as a single-line card with the friendly
+ * label only — the cost estimate lives in the sticky footer, not here,
+ * so the picker stays uncluttered. Tapping opens a shadcn Dialog with
+ * the full preset list.
  */
 import {
   ArrowRight01Icon,
@@ -20,7 +20,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { formatUsd } from "../../lib/cost-estimate";
 import {
   CADENCE_PRESETS,
   type CadencePreset,
@@ -30,11 +29,9 @@ import {
 type Props = {
   selectedId: string;
   onChange: (id: string) => void;
-  /** $ per day for the currently selected cadence — drives the sub-label. */
-  perDayUsd: number;
 };
 
-export function CadencePicker({ selectedId, onChange, perDayUsd }: Props) {
+export function CadencePicker({ selectedId, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const selected = findCadenceById(selectedId);
 
@@ -45,16 +42,7 @@ export function CadencePicker({ selectedId, onChange, perDayUsd }: Props) {
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary">
             <HugeiconsIcon icon={Clock02Icon} size={18} strokeWidth={1.8} />
           </span>
-          <span>
-            <span className="block text-foreground text-sm">
-              {labelFor(selected)}
-            </span>
-            <span className="block text-muted-foreground text-xs">
-              {selected.cron === null
-                ? "No scraping — paused"
-                : `Est. cost · ${formatUsd(perDayUsd)} / day`}
-            </span>
-          </span>
+          <span className="text-foreground text-sm">{labelFor(selected)}</span>
         </span>
         <HugeiconsIcon
           className="text-muted-foreground"

@@ -14,15 +14,23 @@
  * they live on Trigger.dev. v1 surfaces a coarse "Active" / "Paused"
  * eyebrow and defers a cadence-resolution step to a later pass.
  */
-import { Add01Icon, Edit02Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  Loading03Icon,
+  Refresh01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useRealtimeRunsWithTag } from "@trigger.dev/react-hooks";
+import { type ReactNode, useEffect, useState } from "react";
+import { queryKeys } from "../../lib/query-keys";
 import { cn } from "../../lib/utils";
-import type {
-  SearchRow,
-  SearchesPerSearchStats,
-  SearchesPortfolio,
+import {
+  runSearchNow,
+  type SearchRow,
+  type SearchesPerSearchStats,
+  type SearchesPortfolio,
 } from "../../server/functions/searches";
 import { AdminSidebar } from "../layout/admin-sidebar";
 
@@ -186,8 +194,64 @@ function SearchCard({
   cadenceLabel: string | null;
 }) {
   const paused = !search.active;
-  const visibleOutcodes = search.outcodes.slice(0, 4);
-  const overflow = search.outcodes.length - visibleOutcodes.length;
+  const qc = useQueryClient();
+
+  // The realtime subscription is keyed by a tag + access token returned
+  // from runSearchNow. We store the latest active subscription here and
+  // clear it once every spawned run reaches a terminal state. Re-clicks
+  // overwrite this with a fresh tag, so the spinner never shows stale
+  // status from a previous click.
+  const [subscription, setSubscription] = useState<{
+    tag: string;
+    token: string;
+  } | null>(null);
+
+  // Each card owns its own pending state so spinners scope correctly
+  // when several cards are clicked in quick succession.
+  const runNow = useMutation({
+    mutationFn: () => runSearchNow({ data: { id: search.id } }),
+    onSuccess: (data) => {
+      setSubscription({ tag: data.tag, token: data.publicAccessToken });
+    },
+  });
+
+  // Subscribe to the tagged runs via Trigger.dev Realtime. The hook is
+  // always mounted (rules of hooks) but `enabled: false` keeps it
+  // dormant until the user actually clicks.
+  const realtime = useRealtimeRunsWithTag(subscription?.tag ?? "", {
+    accessToken: subscription?.token,
+    enabled: Boolean(subscription),
+  });
+
+  // Treat the spawned batch as "active" until every run that's appeared
+  // is in a terminal state. We also wait until at least one run shows
+  // up so the spinner doesn't flicker off in the gap between mutation
+  // success and the first realtime push.
+  const TERMINAL: ReadonlySet<string> = new Set([
+    "COMPLETED",
+    "FAILED",
+    "CANCELED",
+    "CRASHED",
+    "INTERRUPTED",
+    "SYSTEM_FAILURE",
+    "TIMED_OUT",
+    "EXPIRED",
+  ]);
+  const expectedRunCount = search.portals.length;
+  const runs = realtime.runs ?? [];
+  const allLanded =
+    runs.length >= expectedRunCount && runs.every((r) => TERMINAL.has(r.status));
+
+  // Drop the subscription once everything finishes so the hook stops
+  // streaming. Also invalidate the portfolio query so stats refresh.
+  useEffect(() => {
+    if (subscription && allLanded) {
+      setSubscription(null);
+      qc.invalidateQueries({ queryKey: queryKeys.searches() });
+    }
+  }, [subscription, allLanded, qc]);
+
+  const scraping = runNow.isPending || subscription !== null;
   return (
     <Link
       className={cn(
@@ -208,24 +272,38 @@ function SearchCard({
             {search.name}
           </h2>
         </div>
-        <span
-          aria-hidden="true"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground"
+        {/* Run-now button. Stays in the "scraping" state from the
+            moment the user clicks until every spawned per-portal run
+            reaches a terminal status (subscribed live via
+            useRealtimeRunsWithTag). The card itself is a <Link>, so
+            onClick must stop propagation + preventDefault so clicking
+            the button doesn't also navigate to the edit page. */}
+        <button
+          aria-label={scraping ? "Scrape in progress" : "Run scrape now"}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground disabled:opacity-100"
+          disabled={scraping}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            runNow.mutate();
+          }}
+          type="button"
         >
           <HugeiconsIcon
-            icon={paused ? PlayIcon : Edit02Icon}
+            className={scraping ? "animate-spin text-primary" : undefined}
+            icon={scraping ? Loading03Icon : Refresh01Icon}
             size={13}
             strokeWidth={1.6}
           />
-        </span>
+        </button>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {visibleOutcodes.map((code) => (
-          <OutcodeChip key={code}>{code}</OutcodeChip>
+        <OutcodeChip>{search.location.name}</OutcodeChip>
+        {search.excludeLocations.map((loc) => (
+          <OutcodeChip key={loc.placeId || loc.name} muted>
+            ~{loc.name}
+          </OutcodeChip>
         ))}
-        {overflow > 0 ? (
-          <OutcodeChip muted>+{overflow} more</OutcodeChip>
-        ) : null}
       </div>
       <div className="flex items-center gap-3.5">
         <span className="font-serif text-[16px] text-foreground">

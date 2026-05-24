@@ -7,11 +7,18 @@
  * row); the household-scoping rule means a user can never see / edit
  * another household's search.
  *
- * Excluded outcodes are stored as a top-level `exclude_outcodes` text[]
- * column; commute and transport targets each get their own jsonb array
- * column (`commute_targets`, `transport_targets`). There is no AI-rules
- * column — feature extraction lives in the prompt itself, not as
- * per-search toggles.
+ * The "where" lives on `searches.location` as a SearchLocation jsonb
+ * (see `src/lib/search-location.ts`) — Google place + cached per-portal
+ * tokens. Excluded places live as a jsonb array under
+ * `exclude_locations`. Commute and transport targets each get their
+ * own jsonb array column (`commute_targets`, `transport_targets`).
+ * There is no AI-rules column — feature extraction lives in the prompt
+ * itself, not as per-search toggles.
+ *
+ * Per-portal tokens (Rightmove locationIdentifier, Zoopla `q`, OpenRent
+ * term+radius) are resolved at form-submit via `stampPortalRefs` and
+ * cached on `location.portalRefs`. Resolution failures surface as
+ * structured errors the form can render inline.
  *
  * Scrape cadence lives on Trigger.dev, not in our DB:
  *
@@ -27,12 +34,14 @@
  * `cron: null` is the explicit "Off" sentinel — write the row with
  * `active=false` and skip schedule creation entirely.
  *
- * Outcodes are validated client-side via `lookupOutcode` against the
- * typed postcodes.io client before the form ever submits, so the schema
- * here only enforces shape (uppercase, trimmed, non-empty).
+ * Place selection happens client-side via Google's Places autocomplete
+ * (UK-restricted, primary types limited to postcode/locality/sublocality/
+ * neighborhood). The schema here only checks the shape — the resolver
+ * stack is what surfaces "no Rightmove match" etc.
  */
 import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
+import { auth, tasks } from "@trigger.dev/sdk";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -46,6 +55,15 @@ import {
   searches,
   swipes,
 } from "../../../db/schema";
+import {
+  resolveOpenrent,
+  resolveRightmove,
+  resolveZoopla,
+} from "../../lib/portal-locations";
+import {
+  type SearchLocation,
+  searchLocationSchema,
+} from "../../lib/search-location";
 import {
   createSchedule,
   deactivateSchedule,
@@ -127,10 +145,8 @@ const baseSearchSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     portals: z.array(portalSchema).min(1, "At least one portal required"),
-    outcodes: z
-      .array(z.string().trim().min(1).max(8))
-      .min(1, "At least one outcode required"),
-    excludeOutcodes: z.array(z.string().trim().min(1).max(8)).default([]),
+    location: searchLocationSchema,
+    excludeLocations: z.array(searchLocationSchema).default([]),
     minBedrooms: z.number().int().min(0).max(10).nullable(),
     maxBedrooms: z.number().int().min(0).max(10).nullable(),
     minBathrooms: z.number().int().min(0).max(10).nullable(),
@@ -245,6 +261,55 @@ export const getSearch = createServerFn({ method: "GET" })
   });
 
 // -----------------------------------------------------------------------------
+// Resolve helpers
+// -----------------------------------------------------------------------------
+
+/**
+ * Resolve per-portal tokens for the selected portals and stamp them
+ * onto `location.portalRefs`. Only portals listed on the search get
+ * resolved — saving an OpenRent-only search shouldn't fail because
+ * Rightmove can't index the place. A resolver throwing
+ * `PortalResolveError` aborts the whole save with a structured message
+ * the form can render inline.
+ *
+ * Excludes are NOT resolved per-portal: excludes are filter-time, not
+ * URL-time. We strip any portalRefs the client might have sent on
+ * exclude locations for the same reason.
+ */
+async function stampPortalRefs(
+  location: SearchLocation,
+  portals: ("rightmove" | "zoopla" | "openrent")[]
+): Promise<SearchLocation> {
+  const portalRefs: SearchLocation["portalRefs"] = {};
+
+  // Run independent resolvers in parallel — Rightmove's is the only
+  // one that does network I/O, but the shape stays consistent if we
+  // ever add a portal whose resolver also fetches.
+  const tasks: Array<Promise<void>> = [];
+  if (portals.includes("rightmove")) {
+    tasks.push(
+      resolveRightmove(location).then((ref) => {
+        portalRefs.rightmove = ref;
+      })
+    );
+  }
+  if (portals.includes("zoopla")) {
+    // Sync resolver — wrapped in a promise so the array stays uniform.
+    portalRefs.zoopla = resolveZoopla(location);
+  }
+  if (portals.includes("openrent")) {
+    portalRefs.openrent = resolveOpenrent(location);
+  }
+  await Promise.all(tasks);
+
+  return { ...location, portalRefs };
+}
+
+function stripExcludeRefs(excludes: SearchLocation[]): SearchLocation[] {
+  return excludes.map((loc) => ({ ...loc, portalRefs: {} }));
+}
+
+// -----------------------------------------------------------------------------
 // Writes
 // -----------------------------------------------------------------------------
 
@@ -260,10 +325,8 @@ export const createSearch = createServerFn({ method: "POST" })
     const db = getDb();
 
     const id = nanoid();
-    const outcodes = data.outcodes.map((o) => o.trim().toUpperCase());
-    const excludeOutcodes = data.excludeOutcodes.map((o) =>
-      o.trim().toUpperCase()
-    );
+    const location = await stampPortalRefs(data.location, data.portals);
+    const excludeLocations = stripExcludeRefs(data.excludeLocations);
     const isOff = data.cron === null;
 
     const inserted = await db
@@ -273,8 +336,8 @@ export const createSearch = createServerFn({ method: "POST" })
         householdId,
         name: data.name,
         portals: data.portals,
-        outcodes,
-        excludeOutcodes,
+        location,
+        excludeLocations,
         minBedrooms: data.minBedrooms ?? null,
         maxBedrooms: data.maxBedrooms ?? null,
         minBathrooms: data.minBathrooms ?? null,
@@ -333,10 +396,8 @@ export const updateSearch = createServerFn({ method: "POST" })
       throw new Error("not_found");
     }
 
-    const outcodes = data.outcodes.map((o) => o.trim().toUpperCase());
-    const excludeOutcodes = data.excludeOutcodes.map((o) =>
-      o.trim().toUpperCase()
-    );
+    const location = await stampPortalRefs(data.location, data.portals);
+    const excludeLocations = stripExcludeRefs(data.excludeLocations);
     const isOff = data.cron === null;
 
     const updated = await db
@@ -344,8 +405,8 @@ export const updateSearch = createServerFn({ method: "POST" })
       .set({
         name: data.name,
         portals: data.portals,
-        outcodes,
-        excludeOutcodes,
+        location,
+        excludeLocations,
         minBedrooms: data.minBedrooms ?? null,
         maxBedrooms: data.maxBedrooms ?? null,
         minBathrooms: data.minBathrooms ?? null,
@@ -440,6 +501,68 @@ export const archiveSearch = createServerFn({ method: "POST" })
       await deactivateSchedule({ data: { id: schedule.id } });
     }
     return { ok: true };
+  });
+
+/**
+ * Trigger an on-demand scrape for a single search. Bypasses the
+ * Trigger.dev schedule and fans out directly to `scrape-portal` per
+ * selected portal — same fan-out shape the scheduled `scrape-search`
+ * task uses, just kicked off manually.
+ *
+ * Tags every spawned run with a unique `run-now:<searchId>:<ts>` tag
+ * and mints a short-lived public access token scoped to that tag, so
+ * the client can subscribe via `useRealtimeRunsWithTag` to keep the
+ * spinner active until every per-portal run is in a terminal state.
+ *
+ * Works even when the search is paused (`active=false`) — the user
+ * explicitly asked us to scrape, so we don't gate on the schedule
+ * state.
+ */
+export type RunSearchNowResult = {
+  /** Tag attached to every spawned run; the client subscribes to it. */
+  tag: string;
+  runIds: string[];
+  /** Public access token scoped to the tag, valid for 1 hour. */
+  publicAccessToken: string;
+};
+
+export const runSearchNow = createServerFn({ method: "POST" })
+  .inputValidator(idSchema)
+  .handler(async ({ data }): Promise<RunSearchNowResult> => {
+    const householdId = await requireHouseholdId();
+    const db = getDb();
+    const search = await db.query.searches.findFirst({
+      where: (s, { eq: eqOp, and: andOp }) =>
+        andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
+    });
+    if (!search) {
+      throw new Error("not_found");
+    }
+    if (search.portals.length === 0) {
+      throw new Error("no_portals_selected");
+    }
+    // Unique per-click tag — same searchId triggered twice in a row
+    // should yield two distinct subscribe-able batches so the UI never
+    // confuses an old run's status with a new click's.
+    const tag = `run-now:${search.id}:${Date.now()}`;
+    const handles = await Promise.all(
+      search.portals.map((portal) =>
+        tasks.trigger(
+          "scrape-portal",
+          { searchId: search.id, portal },
+          { tags: [tag] }
+        )
+      )
+    );
+    const publicAccessToken = await auth.createPublicToken({
+      scopes: { read: { tags: [tag] } },
+      expirationTime: "1h",
+    });
+    return {
+      tag,
+      runIds: handles.map((h) => h.id),
+      publicAccessToken,
+    };
   });
 
 // -----------------------------------------------------------------------------

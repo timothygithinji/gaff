@@ -55,7 +55,7 @@ export const scrapeSearchTask = schedules.task({
     logger.log("scrape-search: dispatching per-portal runs", {
       searchId,
       portals,
-      outcodeCount: search.outcodes.length,
+      location: search.location.name,
     });
 
     // v4: batchTriggerAndWait. Returns a BatchResult whose `runs` is a

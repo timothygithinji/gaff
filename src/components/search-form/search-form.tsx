@@ -9,9 +9,10 @@
  * authoritatively).
  *
  * The layout mirrors the "Search create" Paper artboard:
- * eyebrow + tap-to-edit headline → Postcodes (INCLUDE + EXCLUDE chips)
- * → Price slider + Bed/Bath pills → Commute targets → Transport targets
- * → Portals → Re-scrape cadence → sticky CTA footer.
+ * eyebrow + tap-to-edit headline → Where (single place + exclude
+ * list, both via Google Places autocomplete) → Price slider + Bed/Bath
+ * pills → Commute targets → Transport targets → Portals → Re-scrape
+ * cadence → sticky CTA footer.
  *
  * Sub-components remain plain controlled inputs that take `value` +
  * `onChange` — `form.Field` adapts cleanly to that shape so we don't
@@ -20,7 +21,7 @@
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm, useStore } from "@tanstack/react-form";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { type Portal, estimateCost } from "../../lib/cost-estimate";
 import { findCadenceById } from "../../lib/cron-presets";
@@ -38,7 +39,8 @@ import { CostEstimate } from "./cost-estimate";
 import { type ExclusionValue, ExclusionsToggles } from "./exclusions-toggles";
 import { FurnishedPicker, type FurnishedValue } from "./furnished-picker";
 import { type MustHaveValue, MustHavesToggles } from "./must-haves-toggles";
-import { OutcodeChips } from "./outcode-chips";
+import type { SearchLocation } from "../../lib/search-location";
+import { LocationsList, SingleLocationPicker } from "./location-picker";
 import { PortalToggles } from "./portal-toggles";
 import { PriceSlider } from "./price-slider";
 import { PropertyTypePills } from "./property-type-pills";
@@ -49,8 +51,8 @@ import {
 
 export type SearchFormValues = {
   name: string;
-  outcodesInclude: string[];
-  outcodesExclude: string[];
+  location: SearchLocation | null;
+  excludeLocations: SearchLocation[];
   minPrice: number;
   maxPrice: number;
   bedsId: string;
@@ -66,9 +68,12 @@ export type SearchFormValues = {
 };
 
 export const DEFAULT_FORM_VALUES: SearchFormValues = {
-  name: "A flat in North London",
-  outcodesInclude: [],
-  outcodesExclude: [],
+  // Name is left blank by default so the form auto-fills it from the
+  // picked location on create. The placeholder ("A flat in North
+  // London") shows until either auto-fill or user typing populates it.
+  name: "",
+  location: null,
+  excludeLocations: [],
   minPrice: 0,
   maxPrice: 2800,
   bedsId: "2+",
@@ -104,9 +109,6 @@ export function bathOptionFor(id: string): BathOption {
 // user is still inside the form.
 
 const nameSchema = z.string().trim().min(1, "Give the search a name");
-const outcodesIncludeSchema = z
-  .array(z.string())
-  .min(1, "Pick at least one outcode");
 const portalsSchema = z
   .array(z.enum(["rightmove", "zoopla", "openrent"]))
   .min(1, "Pick at least one portal");
@@ -155,7 +157,7 @@ export function SearchForm({
   // Live-derived values via TanStack Form's `useStore`. Each selector
   // returns a primitive (or stable reference) so React's bailouts kick
   // in when unrelated parts of the form change.
-  const outcodesInclude = useStore(form.store, (s) => s.values.outcodesInclude);
+  const location = useStore(form.store, (s) => s.values.location);
   const portals = useStore(form.store, (s) => s.values.portals);
   const cadenceId = useStore(form.store, (s) => s.values.cadenceId);
   const minPrice = useStore(form.store, (s) => s.values.minPrice);
@@ -170,15 +172,26 @@ export function SearchForm({
     onValuesChange?.(allValues);
   }, [allValues, onValuesChange]);
 
+  // Auto-mirror the picked location into the search name until the user
+  // takes ownership by typing. Initialised true on edit mode (where the
+  // saved name is already meaningful) and on any create with a
+  // pre-populated name, so we never clobber human input.
+  const userTouchedName = useRef<boolean>(defaults.name.trim().length > 0);
+  useEffect(() => {
+    if (location && !userTouchedName.current) {
+      form.setFieldValue("name", location.name);
+    }
+  }, [location, form]);
+
   const cadence = findCadenceById(cadenceId);
   const cost = estimateCost({
-    outcodeCount: outcodesInclude.length,
+    outcodeCount: location ? 1 : 0,
     portals,
     scrapesPerDay: cadence.scrapesPerDay,
   });
 
   const canSubmit =
-    outcodesInclude.length > 0 &&
+    location !== null &&
     portals.length > 0 &&
     name.trim().length > 0 &&
     minPrice <= maxPrice;
@@ -197,7 +210,13 @@ export function SearchForm({
               isDesktop ? "text-5xl" : "text-4xl"
             }`}
             onBlur={field.handleBlur}
-            onChange={(e) => field.handleChange(e.target.value)}
+            onChange={(e) => {
+              // Mark the name as user-owned so the location → name
+              // auto-mirror stops. Stays true for the rest of this
+              // form instance even if the user clears the field.
+              userTouchedName.current = true;
+              field.handleChange(e.target.value);
+            }}
             placeholder="A flat in North London"
             type="text"
             value={field.state.value}
@@ -212,38 +231,24 @@ export function SearchForm({
 
   const postcodesSection = (
     <section className="space-y-4">
-      <h2 className="font-serif text-2xl text-foreground">Postcodes</h2>
+      <h2 className="font-serif text-2xl text-foreground">Where</h2>
       <p className="-mt-3 text-muted-foreground text-sm">
-        Include what you want, kill what you don't.
+        Pick the postcode, area, or town you want — and any places to
+        skip inside it.
       </p>
-      <form.Field
-        name="outcodesInclude"
-        validators={{ onChange: outcodesIncludeSchema }}
-      >
+      <form.Field name="location">
         {(field) => (
-          <OutcodeChips
-            countLabel={
-              field.state.value.length > 0
-                ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
-                : undefined
-            }
+          <SingleLocationPicker
             onChange={(next) => field.handleChange(next)}
-            values={field.state.value}
-            variant="include"
+            value={field.state.value}
           />
         )}
       </form.Field>
-      <form.Field name="outcodesExclude">
+      <form.Field name="excludeLocations">
         {(field) => (
-          <OutcodeChips
-            countLabel={
-              field.state.value.length > 0
-                ? `${field.state.value.length} ${field.state.value.length === 1 ? "AREA" : "AREAS"}`
-                : undefined
-            }
+          <LocationsList
             onChange={(next) => field.handleChange(next)}
             values={field.state.value}
-            variant="exclude"
           />
         )}
       </form.Field>
@@ -410,11 +415,11 @@ export function SearchForm({
 
   const cadenceSection = (
     <section className="space-y-3">
+      <h2 className="font-serif text-2xl text-foreground">Scrape schedule</h2>
       <form.Field name="cadenceId">
         {(field) => (
           <CadencePicker
             onChange={(id) => field.handleChange(id)}
-            perDayUsd={cost.perDayUsd}
             selectedId={field.state.value}
           />
         )}
@@ -457,34 +462,36 @@ export function SearchForm({
             </button>
           </div>
 
-          {/* Two-column field grid. Postcodes own the wider left column
-              (they're the heaviest input — INCLUDE + EXCLUDE chip rows
-              + the map affordance). The right column carries price, the
-              two location-targeting sections (commute + transport), then
-              portals and cadence. */}
-          {/* Criteria grid — two balanced columns grouped by intent.
-              Left = "where & how you get places" (geography + access).
-              Right = "what the place is" (price + shape + dealbreakers).
-              Portals + cadence are operational concerns and live below
-              the criteria in their own full-width footer grid. */}
+          {/* Operational row sits ABOVE the criteria grid so the
+              cadence picker (most-tweaked setting) is visible without
+              a scroll. Portals + cadence are set-once-then-forget for
+              most users — surfacing them upfront also frames the cost
+              estimate before the user dives into criteria. */}
+          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
+            {portalsSection}
+            {cadenceSection}
+          </div>
+
+          {/* Criteria grid — two columns, kept roughly height-balanced
+              so the left doesn't stall out halfway down. Left reads as
+              "where you'll live and what it'll cost" (location + price
+              + how you get places); right is "what the place itself
+              is" (shape + furnishings + dealbreakers). Price sits on
+              the left because it's adjacent to "Where" in users' minds
+              — and putting it there evens the visual weight (4 vs 4). */}
           <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
             <div className="space-y-10">
               {postcodesSection}
+              {priceSizeSection}
               {commuteSection}
               {transportSection}
             </div>
             <div className="space-y-10">
-              {priceSizeSection}
               {propertyTypeSection}
               {furnishedSection}
               {mustHavesSection}
               {exclusionsSection}
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
-            {portalsSection}
-            {cadenceSection}
           </div>
         </div>
 

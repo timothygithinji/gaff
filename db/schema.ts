@@ -25,6 +25,7 @@ export {
 } from "./auth-schema";
 import { account, session, user } from "./auth-schema";
 import type { verification } from "./auth-schema";
+import type { SearchLocation } from "../src/lib/search-location";
 
 // -----------------------------------------------------------------------------
 // Gaff domain enums
@@ -100,7 +101,15 @@ export const searches = pgTable(
       }),
     name: text("name").notNull(),
     portals: text("portals").array().notNull(),
-    outcodes: text("outcodes").array().notNull(),
+    /**
+     * Canonical "where" the user wants to search. Replaces the older
+     * single-outcode column. Shape is {@link SearchLocation} (see
+     * `src/lib/search-location.ts`) — Google place_id + centroid + bounds
+     * + pre-resolved per-portal tokens (Rightmove locationIdentifier,
+     * Zoopla q string, OpenRent term+radius). Resolution happens at
+     * form-submit; scrape-portal reads the cached refs directly.
+     */
+    location: jsonb("location").$type<SearchLocation>().notNull(),
     minBedrooms: integer("min_bedrooms"),
     maxBedrooms: integer("max_bedrooms"),
     minBathrooms: integer("min_bathrooms"),
@@ -108,10 +117,17 @@ export const searches = pgTable(
     minPrice: integer("min_price"),
     maxPrice: integer("max_price"),
     propertyTypes: text("property_types").array().notNull(),
-    excludeOutcodes: text("exclude_outcodes")
-      .array()
+    /**
+     * Places to subtract from the include scope. Same SearchLocation
+     * shape; portalRefs unused (excludes are filter-time, not URL-time).
+     * Postcode-type excludes drop listings by postcode-prefix match;
+     * non-postcode excludes drop listings whose lat/lng falls inside
+     * `bounds`. See `filterByExcludeLocations` in scrape-portal.ts.
+     */
+    excludeLocations: jsonb("exclude_locations")
+      .$type<SearchLocation[]>()
       .notNull()
-      .default(sql`'{}'::text[]`),
+      .default(sql`'[]'::jsonb`),
     /**
      * Furnishing preference. `null` means "no filter".
      * Stored as plain text (not an enum) to keep the migration trivial;
