@@ -4,7 +4,10 @@
  * Replaces the older single-outcode model. A SearchLocation is anchored
  * on a Google Places `place_id` plus the place's centroid + viewport
  * bounds, and carries pre-resolved portal-specific tokens (Rightmove
- * locationIdentifier, Zoopla `q` string, OpenRent term+radius).
+ * locationIdentifier, Zoopla `q` string, OpenRent `term`). The
+ * user-picked search radius lives on the `searches` row itself
+ * (`radiusMiles`), not here — it's a property of the search, not the
+ * location.
  *
  * The portalRefs are resolved at form-submit time by `resolvePortals`
  * in `portal-locations.ts` and stored on the row so scrape-portal can
@@ -53,8 +56,6 @@ export type ZooplaLocationRef = {
 export type OpenrentLocationRef = {
   /** Free-text `term=` value. Usually the place's display name. */
   term: string;
-  /** Radius around `term` in miles. Derived from bounds, capped sanely. */
-  withinMiles: number;
 };
 
 export type SearchLocationPortalRefs = {
@@ -107,7 +108,6 @@ const zooplaRefSchema = z.object({
 
 const openrentRefSchema = z.object({
   term: z.string().trim().min(1),
-  withinMiles: z.number().finite().min(0).max(50),
 });
 
 const portalRefsSchema = z.object({

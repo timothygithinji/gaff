@@ -67,7 +67,7 @@ async function main() {
         portalRefs: {
           rightmove: { locationIdentifier: "OUTCODE^1859" },
           zoopla: { q: "NW3, UK" },
-          openrent: { term: "NW3", withinMiles: 1 },
+          openrent: { term: "NW3" },
         },
       },
       excludeLocations: [],

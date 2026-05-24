@@ -23,9 +23,9 @@ export {
   user,
   verification,
 } from "./auth-schema";
+import type { SearchLocation } from "../src/lib/search-location";
 import { account, session, user } from "./auth-schema";
 import type { verification } from "./auth-schema";
-import type { SearchLocation } from "../src/lib/search-location";
 
 // -----------------------------------------------------------------------------
 // Gaff domain enums
@@ -49,6 +49,33 @@ export const jobStatusEnum = pgEnum("job_status", [
   "running",
   "success",
   "failure",
+]);
+
+/**
+ * Pipeline stages a household moves a mutually-shortlisted cluster
+ * through. The default "shortlisted" stage is derived from
+ * `v_mutual_matches` — only stages beyond that need an explicit row in
+ * `shortlist_pipeline`. See `listPipeline` for the merge logic.
+ */
+export const pipelineStatusEnum = pgEnum("pipeline_status", [
+  "shortlisted",
+  "contacted",
+  "viewing_booked",
+  "offer_made",
+  "archived",
+]);
+
+/**
+ * Reasons a household archives a cluster from the pipeline. Free-form
+ * enough that we don't burn a migration adding values; tight enough
+ * that the UI can label the most common cases distinctly.
+ */
+export const pipelineArchivedReasonEnum = pgEnum("pipeline_archived_reason", [
+  "accepted",
+  "passed",
+  "let_to_someone_else",
+  "withdrawn",
+  "other",
 ]);
 
 // -----------------------------------------------------------------------------
@@ -116,6 +143,20 @@ export const searches = pgTable(
     maxBathrooms: integer("max_bathrooms"),
     minPrice: integer("min_price"),
     maxPrice: integer("max_price"),
+    /**
+     * User-picked search radius around `location`, in miles. The UI
+     * slider exposes Rightmove's vocab — 0, 0.25, 0.5, 1, 3, 5, 10, 15,
+     * 20, 30, 40 — where 0 means "this area only" (no buffer).
+     *
+     * Applied at scrape-portal URL-build time:
+     *   - Rightmove: emitted as `radius=<n>` (decimal miles).
+     *   - Zoopla: emitted as `radius=<n>` (decimal miles).
+     *   - OpenRent: converted to km integer with a floor of 2 (OR's
+     *     UI minimum). See `openrentSearchUrl` in `src/lib/portal-urls.ts`.
+     */
+    radiusMiles: numeric("radius_miles", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
     propertyTypes: text("property_types").array().notNull(),
     /**
      * Places to subtract from the include scope. Same SearchLocation
@@ -426,6 +467,81 @@ export const swipes = pgTable(
   ]
 );
 
+/**
+ * Pipeline state for clusters a household has mutually shortlisted.
+ *
+ * The "shortlisted" stage is derived from `v_mutual_matches` (every
+ * member has kept-or-shortlisted the cluster); we ONLY write a row
+ * here once the household moves the cluster forward (or archives it).
+ * That keeps the table small and sidesteps the "backfill mutual
+ * matches" question — the kanban's "Shortlisted" column always shows
+ * the live derived list, augmented (subtracted) by any rows here that
+ * have advanced to a later stage.
+ *
+ * Keyed on (household_id, cluster_id) — pipeline is a property of the
+ * household, not of any one search. If the same cluster appears in two
+ * searches the household is running, there's still one pipeline state.
+ */
+export const shortlistPipeline = pgTable(
+  "shortlist_pipeline",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    clusterId: text("cluster_id")
+      .notNull()
+      // Restrict — household decisions are durable; we don't want a
+      // cluster delete to silently wipe "we made an offer on this".
+      .references(() => propertyClusters.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    status: pipelineStatusEnum("status").notNull(),
+    /**
+     * Why the row landed in `archived`. NULL for non-archived rows. The
+     * enum is small + closed-set today; if more reasons emerge we add
+     * via migration.
+     */
+    archivedReason: pipelineArchivedReasonEnum("archived_reason"),
+    /**
+     * Free-text notes visible to every household member. Optional —
+     * deliberately not threaded; one shared scratchpad per card keeps
+     * the v1 surface area small.
+     */
+    notes: text("notes"),
+    /**
+     * Audit columns — who last moved it and when. Drives the
+     * "Moved 2 days ago by Alice" line on each kanban card so the
+     * household can see who's pushing things forward.
+     */
+    lastMovedAt: timestamp("last_moved_at").defaultNow().notNull(),
+    lastMovedByUserId: text("last_moved_by_user_id")
+      .notNull()
+      .references(() => user.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("shortlist_pipeline_household_cluster_uniq").on(
+      t.householdId,
+      t.clusterId
+    ),
+    index("shortlist_pipeline_household_status_idx").on(
+      t.householdId,
+      t.status
+    ),
+  ]
+);
+
 export const scrapeRuns = pgTable("scrape_runs", {
   id: text("id").primaryKey(),
   searchId: text("search_id")
@@ -628,6 +744,24 @@ export const aiRunsRelations = relations(aiRuns, ({ one, many }) => ({
   enrichments: many(enrichments),
 }));
 
+export const shortlistPipelineRelations = relations(
+  shortlistPipeline,
+  ({ one }) => ({
+    household: one(households, {
+      fields: [shortlistPipeline.householdId],
+      references: [households.id],
+    }),
+    cluster: one(propertyClusters, {
+      fields: [shortlistPipeline.clusterId],
+      references: [propertyClusters.id],
+    }),
+    lastMovedBy: one(user, {
+      fields: [shortlistPipeline.lastMovedByUserId],
+      references: [user.id],
+    }),
+  })
+);
+
 // -----------------------------------------------------------------------------
 // Inferred types
 // -----------------------------------------------------------------------------
@@ -676,3 +810,6 @@ export type NewAiRun = typeof aiRuns.$inferInsert;
 
 export type UserState = typeof userState.$inferSelect;
 export type NewUserState = typeof userState.$inferInsert;
+
+export type ShortlistPipeline = typeof shortlistPipeline.$inferSelect;
+export type NewShortlistPipeline = typeof shortlistPipeline.$inferInsert;

@@ -25,6 +25,7 @@ import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { type Portal, estimateCost } from "../../lib/cost-estimate";
 import { findCadenceById } from "../../lib/cron-presets";
+import type { SearchLocation } from "../../lib/search-location";
 import {
   BATH_OPTIONS,
   BED_OPTIONS,
@@ -38,12 +39,12 @@ import { CommuteTargetsList } from "./commute-targets-list";
 import { CostEstimate } from "./cost-estimate";
 import { type ExclusionValue, ExclusionsToggles } from "./exclusions-toggles";
 import { FurnishedPicker, type FurnishedValue } from "./furnished-picker";
-import { type MustHaveValue, MustHavesToggles } from "./must-haves-toggles";
-import type { SearchLocation } from "../../lib/search-location";
 import { LocationsList, SingleLocationPicker } from "./location-picker";
+import { type MustHaveValue, MustHavesToggles } from "./must-haves-toggles";
 import { PortalToggles } from "./portal-toggles";
 import { PriceSlider } from "./price-slider";
 import { PropertyTypePills } from "./property-type-pills";
+import { RadiusSlider } from "./radius-slider";
 import {
   type TransportTarget,
   TransportTargetsList,
@@ -53,6 +54,7 @@ export type SearchFormValues = {
   name: string;
   location: SearchLocation | null;
   excludeLocations: SearchLocation[];
+  radiusMiles: number;
   minPrice: number;
   maxPrice: number;
   bedsId: string;
@@ -74,6 +76,9 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   name: "",
   location: null,
   excludeLocations: [],
+  // `0` = "this area only". Rightmove + Zoopla honour `radius=0`
+  // strictly; OpenRent's URL builder will floor to its 2km UI minimum.
+  radiusMiles: 0,
   minPrice: 0,
   maxPrice: 2800,
   bedsId: "2+",
@@ -184,7 +189,7 @@ export function SearchForm({
   }, [location, form]);
 
   const cadence = findCadenceById(cadenceId);
-  const cost = estimateCost({
+  const _cost = estimateCost({
     outcodeCount: location ? 1 : 0,
     portals,
     scrapesPerDay: cadence.scrapesPerDay,
@@ -233,12 +238,20 @@ export function SearchForm({
     <section className="space-y-4">
       <h2 className="font-serif text-2xl text-foreground">Where</h2>
       <p className="-mt-3 text-muted-foreground text-sm">
-        Pick the postcode, area, or town you want — and any places to
-        skip inside it.
+        Pick the postcode, area, or town you want — and any places to skip
+        inside it.
       </p>
       <form.Field name="location">
         {(field) => (
           <SingleLocationPicker
+            onChange={(next) => field.handleChange(next)}
+            value={field.state.value}
+          />
+        )}
+      </form.Field>
+      <form.Field name="radiusMiles">
+        {(field) => (
+          <RadiusSlider
             onChange={(next) => field.handleChange(next)}
             value={field.state.value}
           />

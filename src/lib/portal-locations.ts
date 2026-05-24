@@ -25,11 +25,11 @@
  *     correct, scoped results in every probe case. Bbox / lat-lng
  *     params on the property route are silently ignored.
  *
- *   - OpenRent: their search URL takes `term=` (free text) and
- *     `within=` (radius in miles). We pass the place name as the term
- *     and derive `within` from the viewport bounds — diagonal in miles
- *     from the centroid to a corner — clamped to [1, 5] so a chosen
- *     city doesn't accidentally scrape its whole metro.
+ *   - OpenRent: their search URL takes `term=` (free text). We pass
+ *     the place name as the term. The radius (`area=<km int>` in OR's
+ *     URL) is user-driven and lives on `searches.radiusMiles`; it gets
+ *     converted from miles → km and floored at 2km at URL-build time —
+ *     see `openrentSearchUrl` in `src/lib/portal-urls.ts`.
  */
 
 import type {
@@ -117,7 +117,9 @@ function scoreMatch(displayName: string, fmtTokens: Set<string>): number {
   const dispTokens = tokeniseForScoring(displayName);
   let score = 0;
   for (const t of dispTokens) {
-    if (fmtTokens.has(t)) score += 1;
+    if (fmtTokens.has(t)) {
+      score += 1;
+    }
   }
   return score;
 }
@@ -201,43 +203,12 @@ export function resolveZoopla(loc: SearchLocation): ZooplaLocationRef {
 // OpenRent
 // -----------------------------------------------------------------------------
 
-const EARTH_RADIUS_MILES = 3958.8;
-
-function toRadians(deg: number): number {
-  return (deg * Math.PI) / 180;
-}
-
-function haversineMiles(a: { lat: number; lng: number }, b: {
-  lat: number;
-  lng: number;
-}): number {
-  const dLat = toRadians(b.lat - a.lat);
-  const dLng = toRadians(b.lng - a.lng);
-  const lat1 = toRadians(a.lat);
-  const lat2 = toRadians(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_RADIUS_MILES * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
 /**
- * Diagonal radius (centroid → NE corner) clamped to [1, 5] miles.
- * Anything over 5 starts pulling in too much surrounding noise for a
- * within-N search; under 1 underfills for narrow places like single
- * outcodes. When bounds are absent (degenerate backfill) we fall back
- * to the OpenRent default radius of 1mi to match historic behaviour.
+ * OpenRent's resolver only needs the place name as the `term` — the
+ * search radius is user-driven (`searches.radiusMiles`) and applied at
+ * URL-build time in `openrentSearchUrl`, not derived from the place's
+ * viewport.
  */
-function withinMilesFromBounds(loc: SearchLocation): number {
-  if (!loc.bounds) return 1;
-  const centroid = { lat: loc.lat, lng: loc.lng };
-  const diag = haversineMiles(centroid, loc.bounds.ne);
-  return Math.max(1, Math.min(5, Math.round(diag)));
-}
-
 export function resolveOpenrent(loc: SearchLocation): OpenrentLocationRef {
-  return {
-    term: loc.name,
-    withinMiles: withinMilesFromBounds(loc),
-  };
+  return { term: loc.name };
 }

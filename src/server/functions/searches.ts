@@ -153,6 +153,15 @@ const baseSearchSchema = z
     maxBathrooms: z.number().int().min(0).max(10).nullable(),
     minPrice: z.number().int().min(0).max(20_000),
     maxPrice: z.number().int().min(0).max(20_000),
+    /**
+     * User-picked radius around the search location, in miles. The
+     * form's slider produces values from a fixed Rightmove-style vocab
+     * (`[0, 0.25, 0.5, 1, 3, 5, 10, 15, 20, 30, 40]`) but the server
+     * accepts any finite non-negative value ≤ 40 — drift in the
+     * front-end vocab shouldn't be a data-integrity failure. `0` =
+     * "this area only".
+     */
+    radiusMiles: z.number().finite().min(0).max(40).default(0),
     propertyTypes: z.array(z.string().trim().min(1)).default([]),
     /**
      * `null` = no furnishing filter. Closed set is enforced here so we
@@ -285,7 +294,7 @@ async function stampPortalRefs(
   // Run independent resolvers in parallel — Rightmove's is the only
   // one that does network I/O, but the shape stays consistent if we
   // ever add a portal whose resolver also fetches.
-  const tasks: Array<Promise<void>> = [];
+  const tasks: Promise<void>[] = [];
   if (portals.includes("rightmove")) {
     tasks.push(
       resolveRightmove(location).then((ref) => {
@@ -344,6 +353,9 @@ export const createSearch = createServerFn({ method: "POST" })
         maxBathrooms: data.maxBathrooms ?? null,
         minPrice: data.minPrice,
         maxPrice: data.maxPrice,
+        // Drizzle `numeric` is a string at the boundary; the column
+        // stores up to 2 decimal places (precision: 5, scale: 2).
+        radiusMiles: data.radiusMiles.toFixed(2),
         propertyTypes: data.propertyTypes,
         furnished: data.furnished ?? null,
         mustHaves: data.mustHaves,
@@ -413,6 +425,7 @@ export const updateSearch = createServerFn({ method: "POST" })
         maxBathrooms: data.maxBathrooms ?? null,
         minPrice: data.minPrice,
         maxPrice: data.maxPrice,
+        radiusMiles: data.radiusMiles.toFixed(2),
         propertyTypes: data.propertyTypes,
         furnished: data.furnished ?? null,
         mustHaves: data.mustHaves,
