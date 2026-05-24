@@ -8,11 +8,17 @@
  * Notes / quirks:
  *
  *   - Rightmove requires a numeric `locationIdentifier` (resolved upstream
- *     via `resolveRightmoveLocationIdentifier`). The plain outcode string
- *     does not work — Rightmove silently returns a "not found" page.
- *   - Zoopla's URL embeds the outcode as a path segment, lowercased.
- *   - OpenRent uses `term=` and resolves loosely; we keep the literal
- *     outcode string as-is.
+ *     via `resolveRightmove` in `portal-locations.ts`). The plain outcode
+ *     string does not work — Rightmove silently returns a "not found" page.
+ *   - Zoopla uses the free-text search route `/search/?section=to-rent&q=...`.
+ *     The path-based `/to-rent/property/<city>/<outcode>/` URL still
+ *     works but requires a city segment we don't have for arbitrary
+ *     locality picks (e.g. "Manchester", "Cambridge"). The free-text
+ *     route handles every place type with no slug derivation —
+ *     verified empirically: full parity vs path for postcodes, correct
+ *     scoping for cities and sublocalities.
+ *   - OpenRent uses `term=` and `within=<miles>`; we pass the place's
+ *     display name and a radius derived from the Place viewport.
  *   - `propertyTypes` maps to portal-specific tokens (Rightmove: comma
  *     joined; Zoopla: single `property_sub_type`; OpenRent: not supported
  *     in the URL — filtered downstream by the parser).
@@ -42,8 +48,13 @@ export type Furnished = "furnished" | "unfurnished";
 export type MustHave = "garden" | "parking" | "pets";
 export type Exclusion = "student" | "retirement" | "house_share";
 
+/**
+ * Shared filter params — every portal builder consumes some subset.
+ * The location-specific bits (Zoopla `q`, OpenRent `term`/`within`,
+ * Rightmove `locationIdentifier`) are passed via portal-specific
+ * params types because their shapes diverge.
+ */
 export type PortalSearchParams = {
-  outcode: string;
   minBedrooms?: number | null;
   maxBedrooms?: number | null;
   minBathrooms?: number | null;
@@ -89,7 +100,7 @@ export type RightmoveSearchUrlParams = Omit<PortalSearchParams, "outcode"> & {
   /**
    * Rightmove `locationIdentifier`, already resolved to its full form
    * (e.g. `OUTCODE^1668` for N11). Resolve via
-   * `resolveRightmoveLocationIdentifier` in `rightmove-location.ts`.
+   * `resolveRightmove` in `src/lib/portal-locations.ts`.
    */
   locationIdentifier: string;
   /**
@@ -158,25 +169,33 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
 // Zoopla
 // -----------------------------------------------------------------------------
 
+export type ZooplaSearchUrlParams = PortalSearchParams & {
+  /**
+   * Free-text query passed to Zoopla's `/search/` route, resolved
+   * server-side. We pass Google's `formattedAddress` so the place
+   * is unambiguous ("Camden Town, London NW1, UK" vs bare "Camden"
+   * which Zoopla bounces to a disambiguation page).
+   */
+  q: string;
+};
+
 /**
- * Zoopla's to-rent search URL embeds the outcode as a path segment
- * under `/to-rent/<category>/london/<outcode>/`. We always use the
- * `property` category — student-accommodation and retirement-homes
- * have their own paths, so "exclude student/retirement" is implicit
- * via path selection (no URL param needed).
+ * Zoopla's free-text search route accepts any human-readable place
+ * via `q=`. Confirmed equivalent to the legacy path-based URL for
+ * postcodes (`/london/nw3/`) and correctly scopes for cities and
+ * sublocalities. Bbox / lat-lng / radius params are silently ignored
+ * — only `q` drives the location.
  *
  * Must-haves use the `feature=<key>` pattern, REPEATED (not comma-
- * joined) for multiple features. `pets_allowed=true` is its own
- * top-level param, not under `feature=`. House-share is filtered via
- * `is_shared_accommodation=false` (default behaviour already excludes
- * shared, but we set explicitly when the user toggles "hide").
- *
- * The "london" segment is hard-coded — until we add a city resolver,
- * Zoopla searches outside London will misroute.
+ * joined). `pets_allowed=true` is its own top-level param. House-share
+ * exclusion is `is_shared_accommodation=false` (default already
+ * hides; we set explicitly so the intent is visible).
  */
-export function zooplaSearchUrl(params: PortalSearchParams): string {
-  const outcode = params.outcode.toLowerCase();
+export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
   const usp = new URLSearchParams();
+  usp.set("section", "to-rent");
+  usp.set("category", "residential");
+  usp.set("q", params.q);
   usp.set("price_frequency", "per_month");
   usp.set("results_sort", "newest_listings");
   usp.set("search_source", "to-rent");
@@ -233,7 +252,7 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
   if (params.exclusions?.includes("house_share")) {
     usp.set("is_shared_accommodation", "false");
   }
-  return `https://www.zoopla.co.uk/to-rent/property/london/${outcode}/?${usp.toString()}`;
+  return `https://www.zoopla.co.uk/search/?${usp.toString()}`;
 }
 
 // -----------------------------------------------------------------------------
@@ -256,15 +275,24 @@ export function zooplaSearchUrl(params: PortalSearchParams): string {
  *     on OR — nothing to hide.
  *
  * `isLive=true` is OpenRent's equivalent of "exclude let-agreed".
- * `within=1` caps the radius around the term at 1 mile.
+ * `within=<miles>` caps the radius around the term — derived from the
+ * Google place's viewport bounds by the resolver in
+ * `src/lib/portal-locations.ts` (clamped to [1, 5]).
  *
  * OpenRent's own URL doesn't include `propertyType` — left out here
  * to keep the URL clean. Property-type filtering on OR is parser-side.
  */
-export function openrentSearchUrl(params: PortalSearchParams): string {
+export type OpenrentSearchUrlParams = PortalSearchParams & {
+  /** Free-text `term=` value, e.g. "NW3" or "Camden Town". */
+  term: string;
+  /** Radius around `term` in miles. */
+  withinMiles: number;
+};
+
+export function openrentSearchUrl(params: OpenrentSearchUrlParams): string {
   const usp = new URLSearchParams();
-  usp.set("term", params.outcode);
-  usp.set("within", "1");
+  usp.set("term", params.term);
+  usp.set("within", String(params.withinMiles));
   usp.set("isLive", "true");
   if (typeof params.minPrice === "number") {
     usp.set("prices_min", String(params.minPrice));

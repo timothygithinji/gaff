@@ -177,7 +177,7 @@ function SearchList({
                 )}
               </div>
               <p className="mt-1 text-muted-foreground text-sm">
-                {s.outcodes.join(" · ")} · £{(s.minPrice ?? 0).toLocaleString()}
+                {s.location.name} · £{(s.minPrice ?? 0).toLocaleString()}
                 –£
                 {(s.maxPrice ?? 0).toLocaleString()}
               </p>
