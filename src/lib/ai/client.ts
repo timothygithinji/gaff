@@ -12,13 +12,12 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { ListingDetail } from "../parsers/types";
 import {
   AI_BUDGET,
   HAIKU_4_5_INPUT_USD_PER_MTOK,
   HAIKU_4_5_OUTPUT_USD_PER_MTOK,
 } from "./config";
-import type { Features } from "./prompt";
+import type { ExtractContext, Features } from "./prompt";
 import {
   EXTRACT_FEATURES_INPUT_SCHEMA,
   EXTRACT_FEATURES_TOOL_NAME,
@@ -28,7 +27,7 @@ import {
 } from "./prompt";
 
 export interface ExtractFeaturesInput {
-  listingDetail: ListingDetail;
+  context: ExtractContext;
   apiKey: string;
 }
 
@@ -57,25 +56,25 @@ export function computeCostUsd(input: {
 export async function extractFeatures(
   input: ExtractFeaturesInput
 ): Promise<ExtractFeaturesResult> {
-  const { listingDetail, apiKey } = input;
+  const { context, apiKey } = input;
 
   const client = new Anthropic({ apiKey });
 
-  const userMessage = buildUserMessage(listingDetail);
+  const userMessage = buildUserMessage(context);
 
   const response = await client.messages.create({
     model: AI_BUDGET.model,
-    // Generous ceiling — the tool payload is bounded by the schema's
-    // optional `rooms`/`smallPrint` arrays so the realistic worst case
-    // is well under 1k output tokens. We keep slack so a verbose
-    // floorplan listing doesn't get truncated mid-array.
+    // Generous ceiling — the schema caps highlights + watchouts at 6 each
+    // and the summary at one sentence, so the realistic worst case is
+    // well under 1k output tokens. We keep slack so dense properties
+    // don't truncate mid-array.
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     tools: [
       {
         name: EXTRACT_FEATURES_TOOL_NAME,
         description:
-          "Record the structured features extracted from a UK rental listing.",
+          "Record the highlights, watchouts, and summary for a UK rental listing.",
         // Cast: the SDK types the input_schema as a JSONSchema object;
         // our hand-written const satisfies it but TS widens `enum`
         // arrays to `string[]` rather than the tuple shape the SDK

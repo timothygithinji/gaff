@@ -26,4 +26,11 @@ export const AI_BUDGET = {
 export const HAIKU_4_5_INPUT_USD_PER_MTOK = 1.0;
 export const HAIKU_4_5_OUTPUT_USD_PER_MTOK = 5.0;
 
-export const PROMPT_VERSION = "v1.0.0" as const;
+/**
+ * v2.0.0 — schema rewrite. Drops duplicate boolean features (hasGarden,
+ * allowsPets, …) and the text-only floorplan readout in favour of
+ * grounded highlights[] / watchouts[] + a one-sentence summary. The
+ * prompt now receives the full structured + enriched context, not just
+ * description + key features. See `src/lib/ai/prompt.ts` for details.
+ */
+export const PROMPT_VERSION = "v2.0.0" as const;

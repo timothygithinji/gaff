@@ -33,7 +33,6 @@ import {
   FavouriteIcon,
   InformationCircleIcon,
   Loading03Icon,
-  StarIcon,
   Tick01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -114,18 +113,12 @@ export type DesktopReviewData = {
 /**
  * Which action is currently mid-flight. Drives the per-button spinner
  * in {@link HeroActions} so the user sees feedback the moment they
- * trigger keep/skip/shortlist/undo. `null` means nothing is pending.
+ * trigger shortlist/skip/undo. `null` means nothing is pending.
  */
-export type DesktopReviewPendingAction =
-  | "keep"
-  | "skip"
-  | "shortlist"
-  | "undo"
-  | null;
+export type DesktopReviewPendingAction = "skip" | "shortlist" | "undo" | null;
 
 type Props = {
   data?: DesktopReviewData;
-  onKeep?: () => void;
   onSkip?: () => void;
   onShortlist?: () => void;
   onUndo?: () => void;
@@ -154,7 +147,6 @@ type Props = {
 
 export function DesktopReview({
   data = DESKTOP_REVIEW_PLACEHOLDER,
-  onKeep,
   onSkip,
   onShortlist,
   onUndo,
@@ -177,7 +169,6 @@ export function DesktopReview({
         <HeroColumn
           disabled={disabled}
           hero={data.hero}
-          onKeep={onKeep}
           onLightboxOpenChange={onLightboxOpenChange}
           onOpenDetail={onOpenDetail}
           onShortlist={onShortlist}
@@ -423,7 +414,6 @@ function QueueRowTrailing({
 
 function HeroColumn({
   hero,
-  onKeep,
   onSkip,
   onShortlist,
   onUndo,
@@ -433,7 +423,6 @@ function HeroColumn({
   pendingAction,
 }: {
   hero: DesktopReviewData["hero"];
-  onKeep?: () => void;
   onSkip?: () => void;
   onShortlist?: () => void;
   onUndo?: () => void;
@@ -462,7 +451,6 @@ function HeroColumn({
         </div>
         <HeroActions
           disabled={disabled}
-          onKeep={onKeep}
           onOpenDetail={onOpenDetail}
           onShortlist={onShortlist}
           onSkip={onSkip}
@@ -887,7 +875,6 @@ function Verdict({
 }
 
 function HeroActions({
-  onKeep,
   onSkip,
   onShortlist,
   onUndo,
@@ -895,7 +882,6 @@ function HeroActions({
   disabled,
   pendingAction,
 }: {
-  onKeep?: () => void;
   onSkip?: () => void;
   onShortlist?: () => void;
   onUndo?: () => void;
@@ -936,18 +922,10 @@ function HeroActions({
           <ActionButton
             disabled={disabled}
             hint="L"
-            icon={StarIcon}
+            icon={FavouriteIcon}
             label="Shortlist"
             loading={pendingAction === "shortlist"}
             onClick={onShortlist}
-          />
-          <ActionButton
-            disabled={disabled}
-            hint="K"
-            icon={FavouriteIcon}
-            label="Keep"
-            loading={pendingAction === "keep"}
-            onClick={onKeep}
             variant="primary"
           />
         </div>

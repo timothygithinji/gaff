@@ -1,7 +1,7 @@
 /**
- * Locks the `FeaturesSchema` contract — what the model returns through
- * the `extract_features` tool MUST parse cleanly, and what the model
- * is allowed to omit MUST get sensible defaults.
+ * Locks the v2 `FeaturesSchema` contract — what the model returns
+ * through the `extract_features` tool MUST parse cleanly, and what the
+ * model is allowed to omit MUST get sensible defaults.
  *
  * We DO NOT call Anthropic. The "fake response" here is a JSON object
  * shaped like what a well-behaved model would put on
@@ -11,109 +11,136 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { FeaturesSchema, buildUserMessage } from "./prompt";
+import {
+  type ExtractContext,
+  FeaturesSchema,
+  buildUserMessage,
+} from "./prompt";
+
+const emptyContext: ExtractContext = {
+  listing: {
+    portal: "rightmove",
+    title: "Lovely flat",
+    addressRaw: "1 Test St, London",
+    postcode: "SW11 1AA",
+    priceMonthly: 2500,
+    bedrooms: 2,
+    bathrooms: 1,
+    propertyType: "Flat",
+    sizeSqFt: 720,
+    councilTaxBand: "C",
+    publishedAt: null,
+    description: "A flat with a garden and washing machine.",
+    keyFeatures: ["Garden", "Parking"],
+    tags: ["Featured"],
+    furnished: "unfurnished",
+    deposit: 2884,
+    minimumTermMonths: 12,
+    letType: "Long term",
+    billsIncluded: false,
+    serviceChargeAnnual: null,
+    groundRentAnnual: null,
+    feesText: null,
+    agentName: "Foxtons Battersea",
+    epcRatingFromPortal: "C",
+    floorplanUrl: "https://media.rightmove.co.uk/floorplan.jpg",
+    nearestStations: [
+      {
+        name: "Clapham Junction",
+        distanceMiles: 0.4,
+        types: ["NATIONAL_RAIL"],
+      },
+    ],
+    tenantPreferences: { petsAccepted: true },
+  },
+  enrichment: {
+    epcCurrent: "C",
+    epcPotential: "B",
+    commuteMinutes: { Liverpool_Street: 22 },
+    broadband: {
+      technology: "FTTP",
+      downloadMbps: 900,
+      uploadMbps: 110,
+      fttpAvailable: true,
+    },
+    crime: {
+      month: "2026-03",
+      total: 412,
+      topCategories: [{ category: "anti-social-behaviour", count: 95 }],
+    },
+    amenities: { withinMeters: 800, counts: { cafe: 8, supermarket: 3 } },
+    flood: { riskLevel: "very-low" },
+  },
+  portalSpread: [
+    { portal: "rightmove", priceMonthly: 2500, deltaFromCheapest: 0 },
+    { portal: "zoopla", priceMonthly: 2550, deltaFromCheapest: 50 },
+  ],
+};
 
 describe("FeaturesSchema", () => {
   it("accepts a fully-populated payload from the model", () => {
     const wellBehaved = {
-      hasGarden: true,
-      allowsPets: false,
-      hasParking: null,
-      hasWasher: true,
-      isFurnished: false,
-      furnishedDetail: "unfurnished" as const,
-      broadband: "900 Mb FTTP",
-      councilTaxBand: "C",
-      floorplan: {
-        layout: "separate" as const,
-        rooms: [
-          { name: "Kitchen", sqm: 12.5, notes: "Galley" },
-          { name: "Bed 1", sqm: 14, notes: "Fits a king" },
-        ],
-        giaSqm: 65,
-      },
-      smallPrint: [
+      summary:
+        "A 2-bed flat near Clapham Junction, suited to couples or sharers.",
+      highlights: [
+        { label: "Walk to Clapham Junction", detail: "8-min walk · 0.4 mi" },
+        { label: "FTTP available", detail: "900 Mbps download" },
+        { label: "Pets allowed", detail: null },
+      ],
+      watchouts: [
         {
           severity: "caution" as const,
-          label: "Bills excluded but boiler under 2 years",
-          note: null,
+          label: "Deposit slightly above 5 weeks",
+          detail: "£2,884 = 5.5 weeks' rent at £2,500/mo",
         },
       ],
     };
     expect(() => FeaturesSchema.parse(wellBehaved)).not.toThrow();
   });
 
-  it("fills in defaults when the model omits floorplan and smallPrint", () => {
-    const minimal = {
-      hasGarden: null,
-      allowsPets: null,
-      hasParking: null,
-      hasWasher: null,
-      isFurnished: null,
-      furnishedDetail: null,
-      broadband: null,
-      councilTaxBand: null,
-    };
+  it("fills in default empty arrays when the model omits them", () => {
+    const minimal = { summary: null };
     const parsed = FeaturesSchema.parse(minimal);
-    expect(parsed.smallPrint).toEqual([]);
-    expect(parsed.floorplan).toEqual({
-      layout: null,
-      rooms: [],
-      giaSqm: null,
-    });
+    expect(parsed.highlights).toEqual([]);
+    expect(parsed.watchouts).toEqual([]);
+    expect(parsed.summary).toBeNull();
   });
 
-  it("rejects an invalid smallPrint severity", () => {
+  it("rejects an invalid watchout severity", () => {
     const bad = {
-      hasGarden: null,
-      allowsPets: null,
-      hasParking: null,
-      hasWasher: null,
-      isFurnished: null,
-      furnishedDetail: null,
-      broadband: null,
-      councilTaxBand: null,
-      smallPrint: [{ severity: "danger", label: "x", note: null }],
+      summary: null,
+      watchouts: [{ severity: "danger", label: "x", detail: null }],
+    };
+    expect(() => FeaturesSchema.parse(bad)).toThrow();
+  });
+
+  it("rejects a non-string highlight label", () => {
+    const bad = {
+      summary: null,
+      highlights: [{ label: 42, detail: null }],
     };
     expect(() => FeaturesSchema.parse(bad)).toThrow();
   });
 });
 
 describe("buildUserMessage", () => {
-  it("includes the floorplan URL only for Rightmove", () => {
-    const base = {
-      portal: "rightmove" as const,
-      portalListingId: "1",
-      url: "https://x",
-      title: "Lovely flat",
-      addressRaw: "1 Test St, London",
-      photos: [],
-      description: "A flat",
-      keyFeatures: ["Garden", "Parking"],
-      floorplanUrl: "https://media.rightmove.co.uk/floorplan.jpg",
-    };
-    const rightmove = buildUserMessage(base);
-    expect(rightmove).toContain("floorplan.jpg");
-
-    const zoopla = buildUserMessage({
-      ...base,
-      portal: "zoopla",
-      floorplanUrl: "https://media.zoopla.co.uk/floorplan.jpg",
-    });
-    expect(zoopla).not.toContain("floorplan.jpg");
+  it("serialises the listing section into the user payload", () => {
+    const msg = buildUserMessage(emptyContext);
+    expect(msg).toContain("Clapham Junction");
+    expect(msg).toContain("FTTP");
+    expect(msg).toContain('"agentName":"Foxtons Battersea"');
   });
 
-  it("serialises keyFeatures even when description is missing", () => {
-    const msg = buildUserMessage({
-      portal: "openrent",
-      portalListingId: "1",
-      url: "https://x",
-      title: "Flat",
-      addressRaw: "1 Test St",
-      photos: [],
-      keyFeatures: ["Bills inc.", "Garden"],
-    });
-    expect(msg).toContain("Bills inc.");
-    expect(msg).toContain("Garden");
+  it("includes enrichment data so the model can ground watchouts", () => {
+    const msg = buildUserMessage(emptyContext);
+    expect(msg).toContain("downloadMbps");
+    expect(msg).toContain("topCategories");
+    expect(msg).toContain("commuteMinutes");
+  });
+
+  it("includes the portal spread so highlights can cite price deltas", () => {
+    const msg = buildUserMessage(emptyContext);
+    expect(msg).toContain("portalSpread");
+    expect(msg).toContain("deltaFromCheapest");
   });
 });

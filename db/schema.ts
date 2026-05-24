@@ -316,15 +316,23 @@ export const enrichments = pgTable(
         onUpdate: "cascade",
       }),
     promptVersion: text("prompt_version").notNull(),
+    /**
+     * AI-extracted features. v1 (`PROMPT_VERSION=v1.0.0`) stored boolean
+     * amenity flags + a fake floorplan readout — those columns are
+     * preserved on disk for already-enriched rows but new rows under
+     * v2.0.0+ use the shape declared here: a one-line summary plus
+     * highlights/watchouts arrays with `label` + `detail`. See
+     * `src/lib/ai/prompt.ts` for the live source of truth.
+     */
     features: jsonb("features")
       .$type<{
-        hasGarden?: boolean;
-        allowsPets?: boolean;
-        hasParking?: boolean;
-        hasWasher?: boolean;
-        isFurnished?: boolean;
-        broadband?: string;
-        councilTaxBand?: string;
+        summary?: string | null;
+        highlights?: Array<{ label: string; detail: string | null }>;
+        watchouts?: Array<{
+          severity: "caution" | "problem";
+          label: string;
+          detail: string | null;
+        }>;
         [key: string]: unknown;
       }>()
       .notNull(),

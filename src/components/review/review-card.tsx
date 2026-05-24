@@ -4,20 +4,18 @@
  *   - Full-bleed hero photo (R2 key if present, else portal URL).
  *   - "ALSO ON …" badge top-left over the hero.
  *   - Page indicator bottom-right (`1 / N`).
- *   - "Floor plan" pill bottom-left (opens features.floorplan link if any).
+ *   - "Floor plan" pill bottom-left — opens the scraped floor plan URL
+ *     in a new tab when one was parsed for this listing.
  *   - Price (`£2,450 /mo`) in Fraunces serif, big.
  *   - "CHEAPEST ON <portal>" right-aligned, copper.
  *   - Address: title + outcode/age sub.
  *   - Beds · Bath · Sqft three-column row.
- *   - Feature pills row.
- *   - Commute · Walk · EPC · Fibre four-column row.
- *
- * The component is presentational — swipe actions live on the parent
- * route which wires the mutations.
+ *   - Highlights + watch-outs pills (from v2 features schema).
+ *   - Commute · Walk · EPC · Fibre four-column row — every value
+ *     sources from a typed enrichment, NOT the AI text extraction.
  */
 import { FloorPlanIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { Features } from "../../lib/ai/prompt";
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
 import { FeaturePills } from "./feature-pills";
 import { InfoRow } from "./info-row";
@@ -39,19 +37,6 @@ function formatPrice(monthly: number | null): string {
   return `£${monthly.toLocaleString("en-GB")}`;
 }
 
-/**
- * `Features.floorplan.giaSqm` is in m². The design displays sq ft.
- * Convert; round to the nearest 10 sq ft so we don't surface a fake-
- * precise decimal.
- */
-function sqftFromGia(features?: Features): number | null {
-  const gia = features?.floorplan?.giaSqm;
-  if (!gia) {
-    return null;
-  }
-  return Math.round((gia * 10.7639) / 10) * 10;
-}
-
 /** Pretty portal name for badges and "CHEAPEST ON" tag. */
 function portalLabel(portal: string): string {
   if (portal === "rightmove") {
@@ -67,7 +52,15 @@ function portalLabel(portal: string): string {
 }
 
 export function ReviewCardView({ card }: Props) {
-  const { headlineListing: hl, portalsAlsoOn, features, epcRating } = card;
+  const {
+    headlineListing: hl,
+    portalsAlsoOn,
+    features,
+    epcRating,
+    commuteMinutes,
+    nearestStation,
+    broadband,
+  } = card;
   const heroPhoto = hl.photos[0];
   const photoCount = Math.max(hl.photos.length, 1);
 
@@ -77,14 +70,6 @@ export function ReviewCardView({ card }: Props) {
           .map((p) => portalLabel(p.portal).toUpperCase())
           .join(" · ")}`
       : null;
-
-  const sqft = sqftFromGia(features);
-
-  // Walk minutes / commute minutes / broadband all come from features
-  // when present. The schema's `commuteMinutes` is keyed by label so we
-  // peek at the first value — PR 9 will let the user select the target.
-  const commuteMinutes = pickFirstCommuteValue(features);
-  const broadbandMbps = parseBroadbandMbps(features?.broadband);
 
   return (
     <article className="mx-4 overflow-hidden rounded-2xl bg-card">
@@ -109,13 +94,17 @@ export function ReviewCardView({ card }: Props) {
         <span className="absolute right-3 bottom-3 rounded-full bg-foreground/60 px-3 py-1 text-[10px] text-primary-foreground backdrop-blur">
           1 / {photoCount}
         </span>
-        <button
-          className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1 font-medium text-[11px] text-foreground backdrop-blur"
-          type="button"
-        >
-          <HugeiconsIcon icon={FloorPlanIcon} size={12} strokeWidth={2} />
-          Floor plan
-        </button>
+        {hl.floorplanUrl ? (
+          <a
+            className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-card/90 px-3 py-1 font-medium text-[11px] text-foreground backdrop-blur"
+            href={hl.floorplanUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <HugeiconsIcon icon={FloorPlanIcon} size={12} strokeWidth={2} />
+            Floor plan
+          </a>
+        ) : null}
       </div>
 
       <div className="space-y-4 p-5">
@@ -146,47 +135,19 @@ export function ReviewCardView({ card }: Props) {
         <KeyStatsRow
           bathrooms={hl.bathrooms}
           bedrooms={hl.bedrooms}
-          sqft={sqft}
+          sqft={hl.sizeSqFt}
         />
 
         <FeaturePills features={features} />
 
         <InfoRow
-          broadbandMbps={broadbandMbps}
+          broadbandMbps={broadband?.downloadMbps ?? null}
           commuteMinutes={commuteMinutes}
           epcRating={epcRating ?? null}
-          walkMinutes={null}
+          stationName={nearestStation?.name ?? null}
+          walkMinutes={nearestStation?.walkMinutes ?? null}
         />
       </div>
     </article>
   );
-}
-
-/**
- * `enrichments.commuteMinutes` is `Record<string, number>` keyed by the
- * commute-target label. The review card receives features but not
- * commute minutes today — leave null until PR 9 plumbs it through.
- * `_features` is referenced in the signature to keep the function
- * documentation honest about where commute will eventually flow from.
- */
-function pickFirstCommuteValue(_features?: Features): number | null {
-  return null;
-}
-
-const BROADBAND_NUMBER_RE = /(\d+)/;
-
-/**
- * Parse a broadband string like "900 Mb FTTP" → 900. Falls back to
- * null when the AI returned something we can't parse.
- */
-function parseBroadbandMbps(broadband?: string | null): number | null {
-  if (!broadband) {
-    return null;
-  }
-  const match = broadband.match(BROADBAND_NUMBER_RE);
-  if (!match) {
-    return null;
-  }
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? n : null;
 }

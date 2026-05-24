@@ -1,16 +1,14 @@
 /**
- * Feature pill row.
+ * Highlights + watchouts pill row beneath the review card spec strip.
  *
- * Surfaces three buckets:
- *   - Positive matches (✓, copper background) — confirmed-good features.
- *   - Cautions (!, brass background) — small-print warnings from the
- *     AI extraction (`features.smallPrint[severity = "caution" | "problem"]`).
- *   - "+ FLOOR PLAN READ" eyebrow heading above the pills.
+ * Rebuilt for the v2 AI schema. Renders up to ~6 pills:
+ *   - Highlights (✓, copper background) — positives from
+ *     `features.highlights[]`.
+ *   - Watchouts (!, brass/destructive background) — negatives from
+ *     `features.watchouts[]`, coloured by severity.
  *
- * No per-search filtering — every extracted positive surfaces. The
- * previous `aiRules`-driven hide list went away when the rules editor
- * was removed; if we want display filters again they can come back as
- * an explicit `enabledKeys` prop rather than a stored toggle list.
+ * Capped to 6 total to keep the card dense but not overwhelming; the
+ * full list is on the listing-detail page.
  */
 import { Alert01Icon, Tick01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -26,22 +24,7 @@ type PillItem = {
   variant: "positive" | "caution" | "problem";
 };
 
-/**
- * Map a small handful of well-known feature keys onto display labels.
- * Anything not in this map is silently dropped — the design only
- * accommodates a row or two of pills, so we don't try to surface every
- * boolean from the schema.
- */
-const POSITIVE_LABELS: Array<{
-  key: keyof Features;
-  label: string;
-}> = [
-  { key: "hasGarden", label: "Garden" },
-  { key: "hasParking", label: "Parking" },
-  { key: "hasWasher", label: "Washer" },
-  { key: "allowsPets", label: "Pets OK" },
-  { key: "isFurnished", label: "Furnished" },
-];
+const MAX_PILLS = 6;
 
 export function FeaturePills({ features }: Props) {
   if (!features) {
@@ -50,41 +33,18 @@ export function FeaturePills({ features }: Props) {
 
   const pills: PillItem[] = [];
 
-  // Positive matches — only `true` boolean values surface as pills.
-  // `false` / `null` (unknown) stay quiet so we don't litter the card
-  // with "no garden", "no parking".
-  for (const entry of POSITIVE_LABELS) {
-    const value = features[entry.key];
-    if (value === true) {
-      pills.push({
-        key: `positive-${entry.key}`,
-        label: entry.label,
-        variant: "positive",
-      });
-    }
-  }
-
-  // Floorplan layout hint. "Separate kitchen" / "Dual-aspect living" are
-  // the design's flagship examples — surface a generic layout pill when
-  // the AI extracts a layout categorisation.
-  const layout = features.floorplan?.layout;
-  if (layout === "separate") {
+  for (const [idx, h] of (features.highlights ?? []).entries()) {
     pills.push({
-      key: "layout-separate",
-      label: "Separate kitchen",
+      key: `highlight-${idx}-${h.label}`,
+      label: h.label,
       variant: "positive",
     });
   }
-
-  // Small-print cautions.
-  for (const sp of features.smallPrint ?? []) {
-    if (sp.severity === "ok") {
-      continue;
-    }
+  for (const [idx, w] of (features.watchouts ?? []).entries()) {
     pills.push({
-      key: `sp-${sp.label}`,
-      label: sp.label,
-      variant: sp.severity === "problem" ? "problem" : "caution",
+      key: `watchout-${idx}-${w.label}`,
+      label: w.label,
+      variant: w.severity === "problem" ? "problem" : "caution",
     });
   }
 
@@ -92,13 +52,15 @@ export function FeaturePills({ features }: Props) {
     return null;
   }
 
+  const visible = pills.slice(0, MAX_PILLS);
+
   return (
     <section>
       <p className="font-medium text-[11px] text-primary uppercase tracking-wider">
-        + Floor plan read
+        + What stands out
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
-        {pills.map((p) => (
+        {visible.map((p) => (
           <FeaturePill key={p.key} label={p.label} variant={p.variant} />
         ))}
       </div>
@@ -109,7 +71,7 @@ export function FeaturePills({ features }: Props) {
 const PILL_PALETTE: Record<PillItem["variant"], string> = {
   positive: "border-primary/20 bg-primary/10 text-foreground",
   caution: "border-muted-foreground/30 bg-muted text-foreground",
-  problem: "border-primary/40 bg-primary/15 text-primary",
+  problem: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
 const PILL_ICON: Record<PillItem["variant"], typeof Tick01Icon> = {

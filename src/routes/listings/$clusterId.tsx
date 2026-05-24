@@ -37,7 +37,9 @@ import { z } from "zod";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
+import { Fineprint } from "../../components/listing-detail/fineprint";
 import { FloorplanAnalysis } from "../../components/listing-detail/floorplan-analysis";
+import { Highlights } from "../../components/listing-detail/highlights";
 import { PhotoGallery } from "../../components/listing-detail/photo-gallery";
 import { PortalCrossList } from "../../components/listing-detail/portal-cross-list";
 import { PublicRecords } from "../../components/listing-detail/public-records";
@@ -57,7 +59,10 @@ import {
 } from "../../server/functions/listing-detail";
 import { recordSwipe } from "../../server/functions/review";
 
-type SwipeOutcome = "keep" | "skip" | "shortlist";
+// "keep" remains in the swipe_outcome DB enum but the UI no longer
+// writes it (B1 collapsed Keep + Shortlist into one positive outcome).
+// Existing rows still count as "kept" for mutual-match math.
+type SwipeOutcome = "shortlist" | "skip";
 
 const listingDetailQueryOptions = (clusterId: string) =>
   ({
@@ -206,8 +211,10 @@ function ListingDetailPage() {
     portalSpread,
     photos,
     floorplan,
-    features,
-    smallPrint,
+    summary,
+    highlights,
+    watchouts,
+    fineprint,
     epc,
     commuteMinutes,
     publicRecords,
@@ -240,7 +247,6 @@ function ListingDetailPage() {
         data={data}
         disabled={swipe.isPending}
         from={from}
-        onKeep={() => swipe.mutate({ outcome: "keep" })}
         onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
         onSkip={() => swipe.mutate({ outcome: "skip" })}
         pendingAction={pendingAction}
@@ -345,11 +351,14 @@ function ListingDetailPage() {
         {/* Portal cross-list */}
         <PortalCrossList portals={portalSpread} />
 
-        {/* "What we see" — floorplan */}
-        <FloorplanAnalysis features={features} floorplan={floorplan} />
+        {/* "Why it's worth a look" — AI highlights + one-line summary */}
+        <Highlights items={highlights} summary={summary} />
 
-        {/* "What's in the small print" */}
-        <SmallPrint items={smallPrint} />
+        {/* "What's in the small print" — AI watch-outs */}
+        <SmallPrint items={watchouts} />
+
+        {/* Floor plan — image only, no AI room-slot fakery */}
+        <FloorplanAnalysis floorplan={floorplan} />
 
         {/* "Where it sits" — map + commute */}
         <WhereItSits
@@ -363,12 +372,14 @@ function ListingDetailPage() {
         {/* "Public records" */}
         <PublicRecords epc={epc} publicRecords={publicRecords} />
 
+        {/* Tenancy terms / agent contact / fees disclosure */}
+        <Fineprint fineprint={fineprint} />
+
         {/* Sticky bottom CTA */}
         <DetailCta
           disabled={swipe.isPending}
           memberCount={memberCount}
           mySwipe={mySwipe}
-          onKeep={() => swipe.mutate({ outcome: "keep" })}
           onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
           onSkip={() => swipe.mutate({ outcome: "skip" })}
           partnerSwipes={partnerSwipes}

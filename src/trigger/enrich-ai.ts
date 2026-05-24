@@ -3,51 +3,68 @@
  *
  * Triggered fire-and-forget from `scrapeDetailTask.onSuccess` once a
  * detail-page scrape has populated `listings.rawJson` with the rich
- * `ListingDetail` shape (description, key features, floorplan URL).
+ * `ListingDetail` shape (description, key features, floorplan URL, …).
+ *
+ * v2 (PROMPT_VERSION=v2.0.0) feeds the model far more than v1 did. The
+ * task now gathers, in addition to the listing's own row:
+ *
+ *   - The cluster's other listings on different portals (for cross-portal
+ *     price spread context).
+ *   - Any existing geo enrichments on the headline listing's enrichment
+ *     row (EPC, commute, broadband, crime, amenities, flood) so the model
+ *     can reason about commute time, fibre availability, crime counts,
+ *     etc. instead of guessing them from the description.
+ *
+ * The geo enrichments are written by sibling cluster tasks
+ * (`enrich-epc.ts`, `enrich-commute.ts`, `enrich-broadband.ts`,
+ * `enrich-crime.ts`, `enrich-amenities.ts`, `enrich-flood.ts`). They
+ * key on `(listing_id, prompt_version)` so we look them up under the
+ * v2 prompt version; if v2 is fresh and no row exists yet, we fall back
+ * to whatever exists at any version (best-effort — geo data is geo data
+ * regardless of which prompt is reading it).
  *
  * Flow:
  *
- *   1. Pre-flight `checkDailyBudget`. If we're at or over the $1/day
- *      cap, write an `ai_runs` row with `status='failure'` and
- *      `errorMessage='daily_budget_exceeded'` and return. This is the
- *      one path where a failure row exists with NO Anthropic call
- *      having been attempted — admin runs feed surfaces it explicitly.
+ *   1. Pre-flight `checkDailyBudget`. If at-or-over the $1/day cap,
+ *      write a failure ai_runs row and return.
  *
- *   2. Load the listing + its detail blob from `listings.rawJson`. If
- *      the row doesn't exist or the description is empty, write a
- *      failure row (the AI has nothing to ground against — calling it
- *      anyway would burn budget on a no-op).
+ *   2. Load the listing + its raw JSON. If the row is missing or has
+ *      no description, write a failure row (no grounding text → no point
+ *      calling the model).
  *
- *   3. INSERT an `ai_runs` row with `status='running'`, model,
- *      promptVersion. Keyed on `ctx.run.id` so onFailure can find it
- *      without needing run-body state.
+ *   3. Gather context: cluster listings (for portal spread + cheapest)
+ *      and any existing enrichment row for geo data.
  *
- *   4. Call `extractFeatures`. The tool-call path validates the
- *      payload with Zod inside the client wrapper; a schema-violating
- *      response throws here and routes to onFailure.
+ *   4. INSERT ai_runs row in `running` state. Keyed on `ctx.run.id` so
+ *      onFailure can finalise it.
  *
- *   5. INSERT an `enrichments` row keyed on
- *      `(listing_id, prompt_version)`. `ON CONFLICT DO NOTHING` — if
- *      we've already enriched this listing at the current prompt
- *      version, skip silently (re-runs are idempotent).
+ *   5. Call `extractFeatures`. Zod-validates the tool response.
  *
- *   6. UPDATE `ai_runs` with status=success, cost, tokens, finished_at.
+ *   6. UPSERT enrichments row keyed on `(listing_id, prompt_version)`.
+ *      Sets `features` + `aiRunId`. Existing geo fields stay untouched
+ *      because we only set the columns we own here.
  *
- * EPC enrichment lives in a sibling task (`enrich-epc.ts`) and fires
- * per-cluster from `clusterTask.onSuccess`. AI fires per-listing
- * because the inputs (description, key features) are listing-scoped,
- * not building-scoped — two portal listings for the same flat will
- * have different copy.
+ *   7. UPDATE ai_runs with status=success, cost, tokens, finished_at.
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { checkDailyBudget } from "../lib/ai/budget";
 import { extractFeatures } from "../lib/ai/client";
 import { AI_BUDGET, PROMPT_VERSION } from "../lib/ai/config";
+import type {
+  AmenitiesInput,
+  CrimeInput,
+  EnrichmentInput,
+  ExtractContext,
+  FloodInput,
+  NearestStation,
+  PortalSpreadRow,
+  TenantPreferences,
+} from "../lib/ai/prompt";
 import { env } from "../lib/env";
 import type { ListingDetail } from "../lib/parsers/types";
 import { scrapeQueue } from "./queues";
@@ -69,8 +86,7 @@ export type EnrichAiOutput = {
  * Cast the JSONB blob written by scrape-detail back to ListingDetail.
  * scrape-detail writes the parser output into `listings.rawJson`, so
  * this is structurally safe — the cast is purely a TypeScript
- * convenience. If a future migration changes the shape of rawJson,
- * the Zod-validated tool call downstream will catch the regression.
+ * convenience.
  */
 function readListingDetail(rawJson: unknown): ListingDetail | null {
   if (!rawJson || typeof rawJson !== "object") {
@@ -79,17 +95,155 @@ function readListingDetail(rawJson: unknown): ListingDetail | null {
   return rawJson as ListingDetail;
 }
 
+/** Project an Enrichment row's `crime` JSONB to the model-facing shape. */
+function toCrimeInput(
+  raw: typeof schema.enrichments.$inferSelect.crime
+): CrimeInput | null {
+  if (!raw) {
+    return null;
+  }
+  const top = Object.entries(raw.byCategory ?? {})
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+  return { month: raw.month, total: raw.total, topCategories: top };
+}
+
+function toBroadbandInput(
+  raw: typeof schema.enrichments.$inferSelect.broadband
+): EnrichmentInput | null {
+  if (!raw) {
+    return null;
+  }
+  return {
+    technology: raw.technology,
+    downloadMbps: raw.downloadMbps,
+    uploadMbps: raw.uploadMbps,
+    fttpAvailable: raw.fttpAvailable,
+  };
+}
+
+function toAmenitiesInput(
+  raw: typeof schema.enrichments.$inferSelect.amenities
+): AmenitiesInput | null {
+  if (!raw) {
+    return null;
+  }
+  return { withinMeters: raw.withinMeters, counts: raw.counts };
+}
+
+function toFloodInput(
+  raw: typeof schema.enrichments.$inferSelect.flood
+): FloodInput | null {
+  if (!raw) {
+    return null;
+  }
+  return { riskLevel: raw.riskLevel };
+}
+
+function toNearestStations(value: unknown): NearestStation[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter(
+      (s): s is Record<string, unknown> => Boolean(s) && typeof s === "object"
+    )
+    .map((s) => ({
+      name: typeof s.name === "string" ? s.name : "",
+      distanceMiles:
+        typeof s.distanceMiles === "number" ? s.distanceMiles : null,
+      types: Array.isArray(s.types)
+        ? (s.types.filter((t) => typeof t === "string") as string[])
+        : [],
+    }))
+    .filter((s) => s.name);
+}
+
+function toTenantPreferences(value: unknown): TenantPreferences | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const obj = value as Record<string, unknown>;
+  const pick = (k: string): boolean | null => {
+    const v = obj[k];
+    return typeof v === "boolean" ? v : null;
+  };
+  const out: TenantPreferences = {
+    studentsAccepted: pick("studentsAccepted"),
+    familiesAccepted: pick("familiesAccepted"),
+    petsAccepted: pick("petsAccepted"),
+    smokersAccepted: pick("smokersAccepted"),
+    dssAccepted: pick("dssAccepted"),
+  };
+  const anySet = Object.values(out).some((v) => v !== null);
+  return anySet ? out : null;
+}
+
+function toEpcCurrent(
+  raw: typeof schema.enrichments.$inferSelect.epc
+): string | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as { currentRating?: unknown };
+  return typeof obj.currentRating === "string" ? obj.currentRating : null;
+}
+
+function toEpcPotential(
+  raw: typeof schema.enrichments.$inferSelect.epc
+): string | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const obj = raw as { potentialRating?: unknown };
+  return typeof obj.potentialRating === "string" ? obj.potentialRating : null;
+}
+
+function toCommuteMinutes(
+  raw: typeof schema.enrichments.$inferSelect.commuteMinutes
+): Record<string, number> | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[k] = v;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Build the per-portal spread for the cluster. The cheapest row gets
+ * `deltaFromCheapest: 0`; others get their delta vs the cheapest.
+ */
+function buildPortalSpread(
+  rows: (typeof schema.listings.$inferSelect)[]
+): PortalSpreadRow[] {
+  if (rows.length === 0) {
+    return [];
+  }
+  const prices = rows
+    .map((r) => r.priceMonthly)
+    .filter((p): p is number => typeof p === "number");
+  const cheapest = prices.length > 0 ? Math.min(...prices) : null;
+  return rows.map((r) => ({
+    portal: r.portal,
+    priceMonthly: r.priceMonthly,
+    deltaFromCheapest:
+      cheapest !== null && r.priceMonthly !== null
+        ? r.priceMonthly - cheapest
+        : null,
+  }));
+}
+
 export const enrichAiTask = task({
   id: "enrich-ai",
   queue: scrapeQueue,
   maxDuration: 120,
 
-  /**
-   * onFailure mirrors scrape-detail: finalise the ai_runs row keyed on
-   * `ctx.run.id` so we don't lose a failed enrichment in the admin
-   * feed. If the row was never INSERTed (e.g. budget short-circuit
-   * threw before step 3), the UPDATE simply touches zero rows.
-   */
   onFailure: async ({
     error,
     ctx,
@@ -109,16 +263,13 @@ export const enrichAiTask = task({
       .where(eq(schema.aiRuns.id, ctx.run.id));
   },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: linear, well-commented pipeline; splitting would obscure the order of writes vs reads.
   run: async (payload: EnrichAiPayload, { ctx }): Promise<EnrichAiOutput> => {
     const db = getDb();
     const { listingId } = payload;
     const runId = ctx.run.id;
 
-    // STEP 1: pre-flight budget. If we're capped, INSERT a failure row
-    // and return — we don't even want to load the listing. Returning
-    // early instead of throwing keeps the ai_runs row's terminal state
-    // ("daily_budget_exceeded") accurate; throwing would route through
-    // onFailure which would clobber it with the throw's message.
+    // STEP 1: pre-flight budget.
     const budget = await checkDailyBudget(db);
     if (!budget.ok) {
       await db.insert(schema.aiRuns).values({
@@ -145,14 +296,11 @@ export const enrichAiTask = task({
       };
     }
 
-    // STEP 2: load the listing + its detail blob.
+    // STEP 2: load the listing + its raw_json.
     const listing = await db.query.listings.findFirst({
       where: (l, { eq: eqOp }) => eqOp(l.id, listingId),
     });
     if (!listing) {
-      // No listing → record a failure with a clear reason. We don't
-      // throw because the listing being missing isn't an exception
-      // worth retrying — the row was deleted between trigger and run.
       await db.insert(schema.aiRuns).values({
         id: runId,
         listingId,
@@ -174,8 +322,6 @@ export const enrichAiTask = task({
 
     const detail = readListingDetail(listing.rawJson);
     if (!detail || !detail.description) {
-      // No description = the model has nothing to ground against.
-      // Skipping here saves ~$0.001 per empty-detail call.
       await db.insert(schema.aiRuns).values({
         id: runId,
         listingId,
@@ -198,8 +344,72 @@ export const enrichAiTask = task({
       };
     }
 
-    // STEP 3: INSERT ai_runs row in `running` state. Keyed on
-    // ctx.run.id so onFailure can find it.
+    // STEP 3: gather context — sibling cluster listings + any existing
+    // enrichment row for this listing (sourced for geo data).
+    const clusterListings = listing.clusterId
+      ? await db
+          .select()
+          .from(schema.listings)
+          .where(eq(schema.listings.clusterId, listing.clusterId))
+      : [listing];
+
+    // Take whichever enrichment row exists at the highest prompt version
+    // — geo fields are written by sibling tasks and don't change with
+    // prompt revisions, so the newest row is the best source.
+    const existingEnrichmentRows = await db
+      .select()
+      .from(schema.enrichments)
+      .where(eq(schema.enrichments.listingId, listingId))
+      .orderBy(desc(schema.enrichments.promptVersion))
+      .limit(1);
+    const geo = existingEnrichmentRows[0];
+
+    const context: ExtractContext = {
+      listing: {
+        portal: detail.portal,
+        title: detail.title,
+        addressRaw: detail.addressRaw,
+        postcode: detail.postcode ?? listing.postcode ?? null,
+        priceMonthly: detail.priceMonthly ?? listing.priceMonthly ?? null,
+        bedrooms: detail.bedrooms ?? listing.bedrooms ?? null,
+        bathrooms: detail.bathrooms ?? listing.bathrooms ?? null,
+        propertyType: detail.propertyType ?? listing.propertyType ?? null,
+        sizeSqFt: detail.sizeSqFt ?? listing.sizeSqFt ?? null,
+        councilTaxBand: detail.councilTaxBand ?? listing.councilTaxBand ?? null,
+        publishedAt: detail.publishedAt ?? null,
+        description: detail.description ?? null,
+        keyFeatures: detail.keyFeatures ?? [],
+        tags: detail.tags ?? [],
+        furnished: detail.furnished ?? null,
+        deposit: detail.deposit ?? null,
+        minimumTermMonths: detail.minimumTermMonths ?? null,
+        letType: detail.letType ?? null,
+        billsIncluded:
+          typeof detail.billsIncluded === "boolean"
+            ? detail.billsIncluded
+            : null,
+        serviceChargeAnnual: detail.serviceChargeAnnual ?? null,
+        groundRentAnnual: detail.groundRentAnnual ?? null,
+        feesText: detail.feesText ?? null,
+        agentName: detail.agentName ?? null,
+        epcRatingFromPortal: detail.epcRating ?? null,
+        floorplanUrl: detail.floorplanUrl ?? null,
+        nearestStations: toNearestStations(detail.nearestStations),
+        tenantPreferences: toTenantPreferences(detail.tenantPreferences),
+      },
+      enrichment: {
+        epcCurrent: toEpcCurrent(geo?.epc ?? null),
+        epcPotential: toEpcPotential(geo?.epc ?? null),
+        commuteMinutes: toCommuteMinutes(geo?.commuteMinutes ?? null),
+        broadband: toBroadbandInput(geo?.broadband ?? null),
+        crime: toCrimeInput(geo?.crime ?? null),
+        amenities: toAmenitiesInput(geo?.amenities ?? null),
+        flood: toFloodInput(geo?.flood ?? null),
+      },
+      portalSpread: buildPortalSpread(clusterListings),
+    };
+
+    // STEP 4: INSERT ai_runs row in `running` state.
     await db.insert(schema.aiRuns).values({
       id: runId,
       listingId,
@@ -208,27 +418,23 @@ export const enrichAiTask = task({
       status: "running",
     });
 
-    // STEP 4: call Anthropic. Errors here route through onFailure.
+    // STEP 5: call Anthropic.
     const { ANTHROPIC_API_KEY } = env();
     logger.log("enrich-ai: calling Anthropic", {
       listingId,
       model: AI_BUDGET.model,
+      promptVersion: PROMPT_VERSION,
+      hasGeo: Boolean(geo),
     });
     const result = await extractFeatures({
-      listingDetail: detail,
+      context,
       apiKey: ANTHROPIC_API_KEY,
     });
 
-    // STEP 5: write enrichments. ON CONFLICT (listing_id, prompt_version)
-    // DO NOTHING — if a row already exists at this prompt version we
-    // leave it alone. Re-prompting at v1.1.0 would write a new row.
-    //
-    // The cast: `enrichments.features` declares its `$type<>` with
-    // optional booleans (`hasGarden?: boolean`), but our Zod schema
-    // returns the explicit tri-state `boolean | null` — a deliberately
-    // wider shape so we can distinguish "model couldn't tell" from
-    // "field absent". The JSONB column accepts both at runtime; the
-    // cast is just a TS-level reconciliation.
+    // STEP 6: upsert enrichments. The row may already exist at this
+    // prompt version if a sibling geo task wrote it first; in that case
+    // we patch our two columns (features + aiRunId) and leave the geo
+    // fields untouched.
     type FeaturesJson = typeof schema.enrichments.$inferInsert.features;
     await db
       .insert(schema.enrichments)
@@ -239,14 +445,18 @@ export const enrichAiTask = task({
         features: result.features as unknown as FeaturesJson,
         aiRunId: runId,
       })
-      .onConflictDoNothing({
+      .onConflictDoUpdate({
         target: [
           schema.enrichments.listingId,
           schema.enrichments.promptVersion,
         ],
+        set: {
+          features: result.features as unknown as FeaturesJson,
+          aiRunId: runId,
+        },
       });
 
-    // STEP 6: finalise ai_runs as success with the cost + tokens.
+    // STEP 7: finalise ai_runs as success.
     await db
       .update(schema.aiRuns)
       .set({
@@ -256,7 +466,7 @@ export const enrichAiTask = task({
         outputTokens: result.outputTokens,
         costUsd: result.costUsd.toFixed(6),
       })
-      .where(eq(schema.aiRuns.id, runId));
+      .where(and(eq(schema.aiRuns.id, runId)));
 
     logger.log("enrich-ai: done", {
       listingId,

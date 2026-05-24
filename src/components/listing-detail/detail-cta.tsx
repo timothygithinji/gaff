@@ -1,39 +1,38 @@
 /**
  * Sticky bottom CTA bar for the listing-detail screen.
  *
- * Composes three controls:
+ * Composes two controls:
  *   ✕   ghost skip button (left)
- *   ❤   primary keep button (centre, copper) — copy varies by state
- *   ★   ghost shortlist button (right)
+ *   ❤   primary shortlist button (right) — copy varies by state
  *
  * The CTA copy logic encodes the spec's decision table:
  *
- *   1 member  → "Keep" (unswiped) or "Saved" (kept)
+ *   1 member  → "Shortlist" (unswiped) or "Shortlisted" (kept)
  *   2 members →
- *     - neither has acted        → "Keep"
- *     - both kept                → "Both kept"
- *     - I kept, partner hasn't   → "Keep · waiting on <FirstName>"
- *     - partner kept, I haven't  → "Keep · they're waiting on you"
+ *     - neither has acted        → "Shortlist"
+ *     - both kept                → "Both shortlisted"
+ *     - I kept, partner hasn't   → "Waiting on <FirstName>"
+ *     - partner kept, I haven't  → "They're waiting on you"
  *   3+        →
- *     - none kept yet            → "Keep"
- *     - I kept, others haven't   → "Keep · waiting on <First> + N others"
- *     - I haven't, but >0 others have → "Keep · they're waiting on you"
- *     - all kept                 → "All kept"
+ *     - none kept yet            → "Shortlist"
+ *     - I kept, others haven't   → "Waiting on <First> + N others"
+ *     - I haven't, but >0 others have → "They're waiting on you"
+ *     - all kept                 → "All shortlisted"
  *
- * "Kept" here means the user's swipe outcome is `keep` or `shortlist`
- * — both flag the listing as something the household wants to pursue.
+ * Legacy `outcome="keep"` rows (written before B1 collapsed the two
+ * positive outcomes) still count as "kept" — the mutual-match math
+ * doesn't break for households who reviewed in v1.
  */
 import {
   Cancel01Icon,
   FavouriteIcon,
   Loading03Icon,
-  StarIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "../../components/ui/button";
 import type { ListingDetailPartnerSwipe } from "../../server/functions/listing-detail";
 
-export type DetailCtaPendingAction = "keep" | "skip" | "shortlist" | null;
+export type DetailCtaPendingAction = "shortlist" | "skip" | null;
 
 type Props = {
   memberCount: number;
@@ -43,7 +42,6 @@ type Props = {
   disabled?: boolean;
   /** Which swipe is currently mid-flight, if any. */
   pendingAction?: DetailCtaPendingAction;
-  onKeep: () => void;
   onSkip: () => void;
   onShortlist: () => void;
 };
@@ -70,7 +68,7 @@ export function detailCtaLabel(args: {
   const iKept = isKept(mySwipe);
 
   if (memberCount <= 1) {
-    return iKept ? "Saved" : "Keep";
+    return iKept ? "Shortlisted" : "Shortlist";
   }
 
   const keptPartners = partnerSwipes.filter((p) => isKept(p.outcome));
@@ -79,40 +77,40 @@ export function detailCtaLabel(args: {
   if (memberCount === 2) {
     const partner = partnerSwipes[0];
     if (!partner) {
-      return iKept ? "Saved" : "Keep";
+      return iKept ? "Shortlisted" : "Shortlist";
     }
     const partnerKept = isKept(partner.outcome);
     if (iKept && partnerKept) {
-      return "Both kept";
+      return "Both shortlisted";
     }
     if (iKept && !partnerKept) {
-      return `Keep · waiting on ${firstNameOf(partner.name)}`;
+      return `Waiting on ${firstNameOf(partner.name)}`;
     }
     if (!iKept && partnerKept) {
-      return "Keep · they're waiting on you";
+      return "They're waiting on you";
     }
-    return "Keep";
+    return "Shortlist";
   }
 
   // 3+ households.
   if (iKept && outstandingPartners.length === 0) {
-    return "All kept";
+    return "All shortlisted";
   }
   if (iKept && outstandingPartners.length > 0) {
     const first = outstandingPartners[0];
     if (!first) {
-      return "Saved";
+      return "Shortlisted";
     }
     const remaining = outstandingPartners.length - 1;
     if (remaining === 0) {
-      return `Keep · waiting on ${firstNameOf(first.name)}`;
+      return `Waiting on ${firstNameOf(first.name)}`;
     }
-    return `Keep · waiting on ${firstNameOf(first.name)} + ${remaining} other${remaining === 1 ? "" : "s"}`;
+    return `Waiting on ${firstNameOf(first.name)} + ${remaining} other${remaining === 1 ? "" : "s"}`;
   }
   if (!iKept && keptPartners.length > 0) {
-    return "Keep · they're waiting on you";
+    return "They're waiting on you";
   }
-  return "Keep";
+  return "Shortlist";
 }
 
 export function DetailCta({
@@ -121,7 +119,6 @@ export function DetailCta({
   partnerSwipes,
   disabled,
   pendingAction = null,
-  onKeep,
   onSkip,
   onShortlist,
 }: Props) {
@@ -149,41 +146,20 @@ export function DetailCta({
       </Button>
 
       <Button
-        aria-busy={pendingAction === "keep" || undefined}
+        aria-busy={pendingAction === "shortlist" || undefined}
         aria-pressed={iKept}
         className="h-13 grow basis-0 rounded-full font-semibold text-[15px] tracking-[-0.01em]"
         disabled={disabled}
-        onClick={onKeep}
+        onClick={onShortlist}
         type="button"
       >
         <HugeiconsIcon
-          className={pendingAction === "keep" ? "animate-spin" : undefined}
-          icon={pendingAction === "keep" ? Loading03Icon : FavouriteIcon}
+          className={pendingAction === "shortlist" ? "animate-spin" : undefined}
+          icon={pendingAction === "shortlist" ? Loading03Icon : FavouriteIcon}
           size={18}
           strokeWidth={2.2}
         />
         {label}
-      </Button>
-
-      <Button
-        aria-busy={pendingAction === "shortlist" || undefined}
-        aria-label="Shortlist"
-        aria-pressed={mySwipe === "shortlist"}
-        className={`size-13 shrink-0 rounded-full border-border bg-card hover:bg-muted ${
-          mySwipe === "shortlist" ? "text-foreground" : "text-muted-foreground"
-        }`}
-        disabled={disabled}
-        onClick={onShortlist}
-        size="icon"
-        type="button"
-        variant="outline"
-      >
-        <HugeiconsIcon
-          className={pendingAction === "shortlist" ? "animate-spin" : undefined}
-          icon={pendingAction === "shortlist" ? Loading03Icon : StarIcon}
-          size={20}
-          strokeWidth={2}
-        />
       </Button>
     </div>
   );

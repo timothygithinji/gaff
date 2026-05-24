@@ -99,6 +99,9 @@ export type ReviewCardHeadlineListing = {
   photos: string[];
   outcode: string;
   firstSeenAt: Date;
+  sizeSqFt: number | null;
+  /** Direct R2 / portal URL for the floor plan image, if scraped. */
+  floorplanUrl: string | null;
 };
 
 export type ReviewCardAlsoOn = {
@@ -107,12 +110,41 @@ export type ReviewCardAlsoOn = {
   url: string;
 };
 
+/**
+ * Nearest station as scraped by Rightmove (the only portal that exposes
+ * this in v1). Walking minutes are computed from `distanceMiles` using
+ * a 20 min/mile rule of thumb so we can surface a useful number on the
+ * card without an API call.
+ */
+export type ReviewCardStation = {
+  name: string;
+  distanceMiles: number | null;
+  walkMinutes: number | null;
+};
+
+/**
+ * Compact broadband summary lifted off `enrichments.broadband`. We
+ * already enriched this via BT Wholesale; the card consumes
+ * `downloadMbps` for the headline number and `fttpAvailable` for the
+ * fibre badge.
+ */
+export type ReviewCardBroadband = {
+  technology: "FTTP" | "FTTC" | "ADSL" | null;
+  downloadMbps: number | null;
+  fttpAvailable: boolean;
+};
+
 export type ReviewCard = {
   cluster: ReviewCardCluster;
   headlineListing: ReviewCardHeadlineListing;
   portalsAlsoOn: ReviewCardAlsoOn[];
   features?: Features;
   epcRating?: string;
+  /** Soonest commute target, in minutes, when enriched. */
+  commuteMinutes: number | null;
+  /** Closest scraped station (with derived walk minutes). */
+  nearestStation: ReviewCardStation | null;
+  broadband: ReviewCardBroadband | null;
   /**
    * The size of the queue *right now*, including the card currently
    * being returned. The UI surfaces this as "N LEFT TODAY". When the
@@ -173,6 +205,109 @@ function asFeatures(value: unknown): Features | undefined {
     return;
   }
   return value as Features;
+}
+
+/**
+ * Pick the soonest commute target from the `enrichments.commuteMinutes`
+ * map. Returns null when no enrichment exists yet. The map is keyed by
+ * the search's `commuteTargets[].label`; we don't care which label the
+ * caller picks first — the smallest minute count wins so the review
+ * card surfaces the best-case number.
+ */
+function pickSoonestCommute(value: unknown): number | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  let best: number | null = null;
+  for (const v of Object.values(value as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) {
+      if (best === null || v < best) {
+        best = v;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Lift the nearest scraped station out of `listing.rawJson.nearestStations`
+ * (Rightmove parser populates this; Zoopla/OpenRent don't). We pick the
+ * closest by distanceMiles and derive walk minutes at ~20 min/mile so
+ * the card has a usable headline.
+ */
+function pickNearestStation(rawJson: unknown): ReviewCardStation | null {
+  if (!rawJson || typeof rawJson !== "object") {
+    return null;
+  }
+  const arr = (rawJson as Record<string, unknown>).nearestStations;
+  if (!Array.isArray(arr)) {
+    return null;
+  }
+  const candidates = arr
+    .filter(
+      (s): s is { name: unknown; distanceMiles?: unknown } =>
+        Boolean(s) && typeof s === "object"
+    )
+    .map((s) => ({
+      name: typeof s.name === "string" ? s.name : "",
+      distanceMiles:
+        typeof s.distanceMiles === "number" ? s.distanceMiles : null,
+    }))
+    .filter((s) => s.name);
+  if (candidates.length === 0) {
+    return null;
+  }
+  candidates.sort((a, b) => {
+    if (a.distanceMiles === null && b.distanceMiles === null) {
+      return 0;
+    }
+    if (a.distanceMiles === null) {
+      return 1;
+    }
+    if (b.distanceMiles === null) {
+      return -1;
+    }
+    return a.distanceMiles - b.distanceMiles;
+  });
+  const top = candidates[0];
+  if (!top) {
+    return null;
+  }
+  const walk =
+    top.distanceMiles !== null
+      ? Math.max(1, Math.round(top.distanceMiles * 20))
+      : null;
+  return {
+    name: top.name,
+    distanceMiles: top.distanceMiles,
+    walkMinutes: walk,
+  };
+}
+
+function asBroadband(value: unknown): ReviewCardBroadband | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const b = value as Record<string, unknown>;
+  const tech =
+    b.technology === "FTTP" ||
+    b.technology === "FTTC" ||
+    b.technology === "ADSL"
+      ? b.technology
+      : null;
+  return {
+    technology: tech,
+    downloadMbps: typeof b.downloadMbps === "number" ? b.downloadMbps : null,
+    fttpAvailable: b.fttpAvailable === true,
+  };
+}
+
+function readFloorplanUrl(rawJson: unknown): string | null {
+  if (!rawJson || typeof rawJson !== "object") {
+    return null;
+  }
+  const u = (rawJson as Record<string, unknown>).floorplanUrl;
+  return typeof u === "string" && u.length > 0 ? u : null;
 }
 
 /**
@@ -461,10 +596,15 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         photos: photoUrls,
         outcode: outcodeOf(headline.postcode ?? cluster.postcode),
         firstSeenAt: headline.firstSeenAt,
+        sizeSqFt: headline.sizeSqFt,
+        floorplanUrl: readFloorplanUrl(headline.rawJson),
       },
       portalsAlsoOn,
       features: asFeatures(enrichment?.features),
       epcRating: asEpcRating(enrichment?.epc),
+      commuteMinutes: pickSoonestCommute(enrichment?.commuteMinutes),
+      nearestStation: pickNearestStation(headline.rawJson),
+      broadband: asBroadband(enrichment?.broadband),
       leftToday: clusterIds.length,
       searchId: headline.searchId,
       searchPill,

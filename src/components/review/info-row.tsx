@@ -3,8 +3,12 @@
  *
  * Lives below the feature pills. Each cell has a tiny eyebrow label
  * (copper, all-caps) with a Hugeicons stroke icon and a chunky Fraunces
- * value. Missing values render as "—" so the row stays aligned even with
- * sparse enrichment data.
+ * value. Missing values render as "—" so the row stays aligned even
+ * with sparse enrichment data.
+ *
+ * `walkMinutes` is derived from the nearest scraped station's
+ * `distanceMiles` (~20 min/mile). When we have a station name, the cell
+ * subtitle shows it so the number isn't context-free.
  */
 import {
   FlashIcon,
@@ -19,6 +23,7 @@ type IconRef = typeof FlashIcon;
 type Props = {
   commuteMinutes: number | null;
   walkMinutes: number | null;
+  stationName?: string | null;
   epcRating: string | null;
   broadbandMbps: number | null;
 };
@@ -26,6 +31,7 @@ type Props = {
 export function InfoRow({
   commuteMinutes,
   walkMinutes,
+  stationName,
   epcRating,
   broadbandMbps,
 }: Props) {
@@ -39,7 +45,7 @@ export function InfoRow({
       />
       <Cell
         icon={WalkingIcon}
-        eyebrow="Walk"
+        eyebrow={stationName ? `to ${stationName}` : "Walk"}
         value={walkMinutes === null ? "—" : `${walkMinutes}`}
         unit={walkMinutes === null ? "" : "min walk"}
       />
@@ -69,7 +75,7 @@ function Cell({
     <div className="leading-tight">
       <p className="flex items-center gap-1 font-medium text-[10px] text-primary uppercase tracking-wider">
         <HugeiconsIcon icon={icon} size={12} strokeWidth={2} />
-        {eyebrow}
+        <span className="truncate">{eyebrow}</span>
       </p>
       <p className="mt-1">
         <span className="font-serif text-foreground text-lg">{value}</span>
