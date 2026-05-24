@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "CLOUDFLARE_INCLUDE_PROCESS_ENV=true doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- bun scripts/neon-env.ts bun run dev:vite",
+    "dev": "mprocs",
+    "dev:web": "CLOUDFLARE_INCLUDE_PROCESS_ENV=true doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- bun scripts/neon-env.ts bun run dev:vite",
     "dev:prod": "CLOUDFLARE_INCLUDE_PROCESS_ENV=true doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji -- bun run dev:vite",
     "dev:vite": "vite",
     "build": "vite build",
@@ -79,6 +80,7 @@
     "consola": "^3.4.2",
     "drizzle-kit": "^0.28.1",
     "fallow": "^2.79.0",
+    "mprocs": "^0.9.3",
     "node-html-parser": "^7.1.0",
     "react-grab": "^0.1.37",
     "trigger.dev": "^4.4.6",
