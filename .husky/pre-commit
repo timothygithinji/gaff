@@ -6,7 +6,7 @@
 # the hook is installed.
 bun scripts/validation/branch-name.ts || exit 1
 
-bunx biome check --staged --no-errors-on-unmatched
+bunx biome check --staged --no-errors-on-unmatched || exit 1
 
 # Validate migration journal/snapshot integrity and auto-generate when
 # schema files are staged without corresponding migration files.
