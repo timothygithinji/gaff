@@ -37,7 +37,7 @@
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      "bucket_name": "gaff",
+      "bucket_name": "timothygithinji-gaff-production",
     },
   ],
   "observability": {
