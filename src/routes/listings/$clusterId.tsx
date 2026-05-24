@@ -248,7 +248,6 @@ function ListingDetailPage() {
         disabled={swipe.isPending}
         from={from}
         onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
-        onSkip={() => swipe.mutate({ outcome: "skip" })}
         pendingAction={pendingAction}
       />
 

@@ -61,7 +61,6 @@ type Props = {
   data: ListingDetailPayload;
   disabled?: boolean;
   from?: ListingFromOrigin;
-  onSkip: () => void;
   onShortlist: () => void;
   pendingAction?: ListingDetailPendingAction;
 };
@@ -70,22 +69,25 @@ export function DesktopListingDetail({
   data,
   disabled,
   from,
-  onSkip,
   onShortlist,
   pendingAction = null,
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
-      <TopBar from={from} headline={data.headline} mySwipe={data.mySwipe} />
+      <TopBar
+        disabled={disabled}
+        from={from}
+        headline={data.headline}
+        mySwipe={data.mySwipe}
+        onShortlist={onShortlist}
+        partnerNames={data.partnerSwipes
+          .filter((s) => s.outcome === null)
+          .map((s) => s.name)}
+        pendingAction={pendingAction}
+      />
       <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
         <MediaColumn data={data} />
-        <InfoColumn
-          data={data}
-          disabled={disabled}
-          onShortlist={onShortlist}
-          onSkip={onSkip}
-          pendingAction={pendingAction}
-        />
+        <InfoColumn data={data} />
       </div>
     </AdminSidebar>
   );
@@ -97,20 +99,28 @@ function TopBar({
   from,
   headline,
   mySwipe,
+  disabled,
+  pendingAction,
+  partnerNames,
+  onShortlist,
 }: {
   from?: ListingFromOrigin;
   headline: ListingDetailPayload["headline"];
   mySwipe?: Outcome;
+  disabled?: boolean;
+  pendingAction?: ListingDetailPendingAction;
+  partnerNames: string[];
+  onShortlist: () => void;
 }) {
   const navigate = useNavigate();
   const title = shortAddressTitle(headline.addressRaw);
   const origin = resolveFromOrigin(from);
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-bone border-b bg-ground/85 px-10 py-5 backdrop-blur">
-      <div className="flex items-center gap-3.5">
+    <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-bone border-b bg-ground/85 px-10 py-4 backdrop-blur">
+      <div className="flex min-w-0 items-center gap-3.5">
         <button
           aria-label="Back"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground"
           onClick={() => {
             // Prefer real history.back so the prior page's scroll +
             // selection state is restored; fall back to the recorded
@@ -128,21 +138,24 @@ function TopBar({
         </button>
         <nav
           aria-label="breadcrumb"
-          className="flex items-center gap-2 text-xs"
+          className="flex min-w-0 items-center gap-2 text-xs"
         >
           <Link
-            className="text-muted-foreground hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
             to={origin.path}
           >
             {origin.label}
           </Link>
           <span className="text-[#B5A893]">/</span>
-          <span className="font-semibold text-foreground">{title}</span>
+          <span className="truncate font-semibold text-foreground">
+            {title}
+          </span>
         </nav>
       </div>
-      <div className="flex items-center gap-2.5">
+      <div className="flex shrink-0 items-center gap-2.5">
         <button
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-foreground text-xs"
+          aria-label="Share with household"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground"
           onClick={() => {
             if (typeof navigator !== "undefined" && navigator.share) {
               navigator
@@ -155,10 +168,9 @@ function TopBar({
           type="button"
         >
           <HugeiconsIcon icon={Share05Icon} size={14} strokeWidth={1.6} />
-          <span className="font-medium">Share with household</span>
         </button>
         <a
-          className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-bone text-xs"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-foreground text-xs"
           href={headline.url}
           rel="noopener noreferrer"
           target="_blank"
@@ -168,14 +180,83 @@ function TopBar({
             Open on {portalLabel(headline.portal)}
           </span>
         </a>
-        {mySwipe === "shortlist" ? (
-          <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-bone px-2 py-1 font-semibold text-[10px] text-primary uppercase tracking-wider">
-            Starred
-          </span>
-        ) : null}
+        <ShortlistButton
+          disabled={disabled}
+          mySwipe={mySwipe}
+          onShortlist={onShortlist}
+          partnerNames={partnerNames}
+          pendingAction={pendingAction}
+        />
       </div>
     </header>
   );
+}
+
+/**
+ * Header-styled primary action button. Replaces the v1 sticky-footer
+ * DecisionBar with a single button whose label encodes the household
+ * decision state (Shortlist · Shortlisted · Waiting on Alice · …).
+ *
+ * Visual contract: same h-9 / rounded-lg as the surrounding header
+ * controls so the row reads as a single button cluster.
+ */
+function ShortlistButton({
+  disabled,
+  mySwipe,
+  pendingAction,
+  partnerNames,
+  onShortlist,
+}: {
+  disabled?: boolean;
+  mySwipe?: Outcome;
+  pendingAction?: ListingDetailPendingAction;
+  partnerNames: string[];
+  onShortlist: () => void;
+}) {
+  const iKept = mySwipe === "keep" || mySwipe === "shortlist";
+  const label = shortlistLabel(mySwipe, partnerNames);
+  return (
+    <button
+      aria-busy={pendingAction === "shortlist" || undefined}
+      aria-pressed={iKept}
+      className={cn(
+        "inline-flex h-9 items-center gap-1.5 rounded-lg px-3 font-semibold text-xs disabled:opacity-50",
+        iKept ? "bg-bone text-primary" : "bg-primary text-bone"
+      )}
+      disabled={disabled}
+      onClick={onShortlist}
+      type="button"
+    >
+      <HugeiconsIcon
+        className={pendingAction === "shortlist" ? "animate-spin" : undefined}
+        icon={pendingAction === "shortlist" ? Loading03Icon : FavouriteIcon}
+        size={14}
+        strokeWidth={1.8}
+      />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/**
+ * Header-button label for the Shortlist control. Stays short enough to
+ * fit inline (no full sentence) while still encoding the household
+ * decision state.
+ */
+function shortlistLabel(
+  mySwipe: Outcome | undefined,
+  partnerNames: string[]
+): string {
+  const iKept = mySwipe === "keep" || mySwipe === "shortlist";
+  if (!iKept) {
+    return "Shortlist";
+  }
+  if (partnerNames.length === 0) {
+    return "Shortlisted";
+  }
+  const first = partnerNames[0] ?? "them";
+  const rest = partnerNames.length - 1;
+  return rest > 0 ? `Waiting on ${first} +${rest}` : `Waiting on ${first}`;
 }
 
 /* ---------------- Media column ---------------- */
@@ -619,19 +700,7 @@ function LocationCard({
 
 /* ---------------- Info column ---------------- */
 
-function InfoColumn({
-  data,
-  disabled,
-  onSkip,
-  onShortlist,
-  pendingAction,
-}: {
-  data: ListingDetailPayload;
-  disabled?: boolean;
-  onSkip: () => void;
-  onShortlist: () => void;
-  pendingAction?: ListingDetailPendingAction;
-}) {
+function InfoColumn({ data }: { data: ListingDetailPayload }) {
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-3.5">
       <PriceCard data={data} />
@@ -641,16 +710,6 @@ function InfoColumn({
         watchouts={data.watchouts}
       />
       <RecordsCard epc={data.epc} publicRecords={data.publicRecords} />
-      <DecisionBar
-        disabled={disabled}
-        mySwipe={data.mySwipe}
-        onShortlist={onShortlist}
-        onSkip={onSkip}
-        partnerNames={data.partnerSwipes
-          .filter((s) => s.outcome === null)
-          .map((s) => s.name)}
-        pendingAction={pendingAction}
-      />
     </section>
   );
 }
@@ -705,8 +764,8 @@ function PortalRow({
   return (
     <a
       className={cn(
-        "-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-ground",
-        !isLast && "border-[#F2EBDE] border-b"
+        "-mx-2 flex min-w-0 items-center gap-3 px-2 py-2.5 transition-colors hover:bg-ground",
+        !isLast && "border-border border-b"
       )}
       href={row.url}
       rel="noopener noreferrer"
@@ -723,18 +782,18 @@ function PortalRow({
           {row.agentName ?? "Direct from landlord"}
         </span>
       </div>
-      <div className="flex flex-col items-end gap-0.5">
+      <div className="flex shrink-0 flex-col items-end gap-0.5">
         <span className="font-medium font-serif text-[15px] text-foreground">
           {formatPrice(row.priceMonthly)}
         </span>
         {delta > 0 ? (
           <span className="font-semibold text-[#B26B3F] text-[10px]">
-            +{formatPrice(delta).replace("£", "£")}
+            +{formatPrice(delta)}
           </span>
         ) : null}
       </div>
       <HugeiconsIcon
-        className="text-muted-foreground"
+        className="shrink-0 text-muted-foreground"
         icon={LinkSquare01Icon}
         size={14}
         strokeWidth={1.8}
@@ -893,90 +952,6 @@ function RecordsCard({
         ))}
       </ul>
     </article>
-  );
-}
-
-function DecisionBar({
-  disabled,
-  mySwipe,
-  onSkip,
-  onShortlist,
-  partnerNames,
-  pendingAction,
-}: {
-  disabled?: boolean;
-  mySwipe?: Outcome;
-  onSkip: () => void;
-  onShortlist: () => void;
-  partnerNames: string[];
-  pendingAction?: ListingDetailPendingAction;
-}) {
-  const headline = decisionHeadline(mySwipe, partnerNames);
-  const iKept = mySwipe === "keep" || mySwipe === "shortlist";
-  return (
-    <article className="flex items-center gap-2.5 rounded-2xl bg-foreground px-5 py-4">
-      <DecisionBarButton
-        ariaLabel="Shortlist"
-        className={iKept ? "bg-bone text-primary" : "bg-primary text-bone"}
-        icon={FavouriteIcon}
-        loading={pendingAction === "shortlist"}
-        onClick={onShortlist}
-        disabled={disabled}
-      />
-      <div className="flex flex-1 flex-col gap-0.5">
-        <span className="font-semibold text-[13px] text-bone">{headline}</span>
-        <span className="text-[11px] text-white/55">
-          {partnerNames.length > 0
-            ? `${partnerNames.join(" & ")} hasn't seen this yet · expect a reply soon`
-            : "Your call only — shortlist or skip"}
-        </span>
-      </div>
-      <DecisionBarButton
-        ariaLabel="Skip"
-        className="bg-white/10 text-white"
-        icon={Cancel01Icon}
-        loading={pendingAction === "skip"}
-        onClick={onSkip}
-        disabled={disabled}
-      />
-    </article>
-  );
-}
-
-function DecisionBarButton({
-  ariaLabel,
-  className,
-  icon,
-  loading,
-  onClick,
-  disabled,
-}: {
-  ariaLabel: string;
-  className?: string;
-  icon: typeof FavouriteIcon;
-  loading: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      aria-busy={loading || undefined}
-      aria-label={ariaLabel}
-      className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-        className
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      <HugeiconsIcon
-        className={loading ? "animate-spin" : undefined}
-        icon={loading ? Loading03Icon : icon}
-        size={16}
-        strokeWidth={loading ? 2 : 1.8}
-      />
-    </button>
   );
 }
 
@@ -1190,19 +1165,3 @@ function humaniseCategory(key: string): string {
   return key.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function decisionHeadline(
-  mySwipe: Outcome | undefined,
-  partnerNames: string[]
-): string {
-  const iKept = mySwipe === "keep" || mySwipe === "shortlist";
-  if (iKept && partnerNames.length > 0) {
-    return `Shortlisted · waiting on ${partnerNames.join(" & ")}`;
-  }
-  if (iKept) {
-    return "Shortlisted · plan a viewing";
-  }
-  if (mySwipe === "skip") {
-    return "Skipped · still here if you change your mind";
-  }
-  return "Decide together";
-}
