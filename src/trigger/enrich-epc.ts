@@ -95,6 +95,68 @@ function pickClosestCertificate(
   return best ?? certs[0] ?? null;
 }
 
+/**
+ * The search endpoint returns `{ "column-names": [...], "rows": [...] }`, NOT
+ * the bare array the generated spec claims (the OpenAPI doc models the 200
+ * body as `Certificates`, but the live API wraps the rows). Pull the rows out
+ * defensively, tolerating either shape.
+ */
+export function extractCertRows(data: unknown): Certificate[] {
+  if (Array.isArray(data)) {
+    return data as Certificate[];
+  }
+  const rows = (data as { rows?: unknown } | null)?.rows;
+  return Array.isArray(rows) ? (rows as Certificate[]) : [];
+}
+
+/** Stored EPC blob shape — what `asEpcRating` (review) and `asEpc`
+ * (listing-detail) read back. */
+type NormalisedEpc = {
+  currentRating: string;
+  potentialRating?: string;
+  expiresOn?: string;
+};
+
+/**
+ * Map a raw EPC certificate row into the stored blob the app reads. The
+ * EPC Open Data API uses kebab-case keys (`current-energy-rating`, …) — not
+ * the camelCase the readers expect — and exposes a lodgement date rather
+ * than an expiry, so we derive `expiresOn` from the 10-year EPC validity
+ * window. Returns null when the row carries no current rating.
+ */
+export function normaliseEpcCert(cert: Certificate): NormalisedEpc | null {
+  const currentRating = epcString(cert["current-energy-rating"]);
+  if (!currentRating) {
+    return null;
+  }
+  const potentialRating = epcString(cert["potential-energy-rating"]);
+  const lodgement = epcString(cert["lodgement-date"]);
+  const expiresOn = lodgement ? tenYearsAfter(lodgement) : undefined;
+  return {
+    currentRating,
+    ...(potentialRating ? { potentialRating } : {}),
+    ...(expiresOn ? { expiresOn } : {}),
+  };
+}
+
+function epcString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** EPCs are valid for 10 years from lodgement; the API exposes no expiry. */
+function tenYearsAfter(isoDate: string): string | undefined {
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) {
+    return;
+  }
+  d.setFullYear(d.getFullYear() + 10);
+  return d.toISOString().slice(0, 10);
+}
+
 export const enrichEpcTask = task({
   id: "enrich-epc",
   queue: scrapeQueue,
@@ -132,14 +194,20 @@ export const enrichEpcTask = task({
           : JSON.stringify(search.error);
       throw new Error(`enrich-epc: EPC search failed: ${message}`);
     }
-    const certs = search.data ?? [];
+    // The search endpoint returns `{ "column-names": [...], "rows": [...] }`,
+    // NOT the bare array the generated spec claims (the OpenAPI doc models the
+    // 200 body as `Certificates`, but the live API wraps the rows). Pull the
+    // rows out defensively so we iterate the actual certificates.
+    const certs = extractCertRows(search.data);
 
     const clusterLat = parseNumeric(cluster.lat);
     const clusterLng = parseNumeric(cluster.lng);
     const cert = pickClosestCertificate(certs, clusterLat, clusterLng);
 
-    if (!cert) {
-      logger.warn("enrich-epc: no certificates for postcode", {
+    // Normalise the kebab-case EPC row into the camelCase blob the app reads.
+    const epcBlob = cert ? normaliseEpcCert(cert) : null;
+    if (!epcBlob) {
+      logger.warn("enrich-epc: no usable certificate for postcode", {
         clusterId,
         postcode: cluster.postcode,
       });
@@ -147,7 +215,7 @@ export const enrichEpcTask = task({
     }
 
     const touched = await upsertEnrichmentForCluster(db, clusterId, {
-      epc: cert,
+      epc: epcBlob,
     });
 
     logger.log("enrich-epc: done", {
