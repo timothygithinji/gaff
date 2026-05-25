@@ -9,7 +9,7 @@
     "dev:prod": "CLOUDFLARE_INCLUDE_PROCESS_ENV=true doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji -- bun run dev:vite",
     "dev:vite": "vite",
     "build": "vite build",
-    "deploy": "wrangler deploy",
+    "deploy": "vite build && wrangler deploy",
     "db:validate": "bun scripts/validation/migrations.ts --check-only",
     "db:generate": "bun scripts/validation/migrations.ts --check-only && bunx drizzle-kit generate",
     "db:migrate": "bun scripts/validation/migrations.ts --check-only && doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- bun scripts/neon-env.ts bunx drizzle-kit migrate",
