@@ -106,12 +106,18 @@ describe("FeaturesSchema", () => {
     expect(parsed.summary).toBeNull();
   });
 
-  it("rejects an invalid watchout severity", () => {
-    const bad = {
+  it("coerces an out-of-enum watchout severity to caution", () => {
+    // Haiku occasionally returns a severity outside the enum. Rather than
+    // throw away the whole result (summary + highlights + valid watchouts),
+    // `severity` is `.catch("caution")` — the bad value degrades to the
+    // milder tone and the watchout is preserved.
+    const odd = {
       summary: null,
       watchouts: [{ severity: "danger", label: "x", detail: null }],
     };
-    expect(() => FeaturesSchema.parse(bad)).toThrow();
+    const parsed = FeaturesSchema.parse(odd);
+    expect(parsed.watchouts[0]?.severity).toBe("caution");
+    expect(parsed.watchouts[0]?.label).toBe("x");
   });
 
   it("rejects a non-string highlight label", () => {
