@@ -39,7 +39,13 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { Link } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
 import { useIsMobile } from "../../hooks/use-mobile";
 import { cn } from "../../lib/utils";
@@ -53,6 +59,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Kbd } from "../ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 /* ---------------- Types ---------------- */
 
@@ -294,6 +301,16 @@ function QueueRail({
   selectedClusterId: string | null;
   onSelectCluster?: (clusterId: string | null) => void;
 }) {
+  // Keep the selected row visible as ↑/↓ walk the queue: scroll it into the
+  // rail when the selection changes (and on mount). `block: "nearest"` only
+  // moves when the row is actually off-screen, so visible selections don't
+  // jump around.
+  const currentRowRef = useRef<HTMLLIElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedClusterId is the intentional re-scroll trigger — when it changes, the ref already points at the newly-selected row.
+  useEffect(() => {
+    currentRowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedClusterId]);
+
   return (
     <aside className="flex min-h-0 w-[260px] shrink-0 flex-col">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
@@ -307,6 +324,7 @@ function QueueRail({
               <li
                 className={cn(i < items.length - 1 && "border-bone border-b")}
                 key={item.id}
+                ref={isCurrent ? currentRowRef : undefined}
               >
                 <QueueRow
                   isCurrent={isCurrent}
@@ -808,13 +826,113 @@ function HeroSpecRow({
   );
 }
 
+// Verdict chips and the overflow "+N" pill share one base so the pill
+// measures and wraps exactly like a real chip. `leading-5` + `py-1.5` pin
+// every chip to 32px tall and `whitespace-nowrap` keeps each to a single
+// line, so the two-row packing maths below stay honest.
+const CHIP_BASE =
+  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 font-medium text-[13px] leading-5";
+
+// Two 32px chip rows plus one 8px (`gap-2`) row gap. The chip area is
+// pinned to this height so the card never reflows as you move between
+// listings, and so a long verdict set can't steal vertical space from the
+// photo above — anything past two rows collapses into the "+N" pill.
+const VERDICTS_TWO_ROW_PX = 72;
+const CHIP_GAP_PX = 8;
+
+/** Rows a run of chip widths needs when flex-wrapped at `containerWidth`. */
+function rowsFor(widths: number[], containerWidth: number): number {
+  let rows = 1;
+  let rowWidth = -1;
+  for (const w of widths) {
+    if (rowWidth < 0) {
+      rowWidth = w;
+    } else if (rowWidth + CHIP_GAP_PX + w <= containerWidth + 0.5) {
+      rowWidth += CHIP_GAP_PX + w;
+    } else {
+      rows += 1;
+      rowWidth = w;
+    }
+  }
+  return rows;
+}
+
+/**
+ * How many leading chips fit in two rows. If every chip fits we keep them
+ * all (caller renders no pill); otherwise we pack `chips + pill` so the
+ * trailing row leaves room for the "+N" pill, and return the largest such
+ * prefix.
+ */
+function fitTwoRows(
+  chipWidths: number[],
+  pillWidth: number,
+  containerWidth: number
+): number {
+  if (rowsFor(chipWidths, containerWidth) <= 2) {
+    return chipWidths.length;
+  }
+  for (let k = chipWidths.length - 1; k >= 0; k--) {
+    if (rowsFor([...chipWidths.slice(0, k), pillWidth], containerWidth) <= 2) {
+      return k;
+    }
+  }
+  return 0;
+}
+
 function HeroVerdicts({ verdicts }: { verdicts: VerdictChip[] }) {
+  const measureRef = useRef<HTMLDivElement>(null);
+  // `desktopData` rebuilds the verdicts array on every parent render, so its
+  // identity is useless as a change signal — key off the labels instead.
+  const verdictsKey = verdicts.map((v) => v.label).join("");
+  // Start by "showing" them all: SSR and the first client render are then
+  // identical (the fixed-height box simply clips any overflow), so there's
+  // no hydration mismatch. After mount we measure real chip widths and fold
+  // whatever spills past two rows into the pill.
+  const [visibleCount, setVisibleCount] = useState(verdicts.length);
+  // Card changed → snap back to show-all (clipped) for this render so we
+  // never flash a stale "+N" from the previous listing; the effect below
+  // re-measures and folds the overflow back in. Safe against the unstable
+  // array identity because `verdictsKey` only moves on real content change.
+  const [trackedKey, setTrackedKey] = useState(verdictsKey);
+  if (trackedKey !== verdictsKey) {
+    setTrackedKey(verdictsKey);
+    setVisibleCount(verdicts.length);
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: verdictsKey is the intentional re-measure trigger — it changes only when the verdict set does, which is exactly when we must re-pack.
+  useEffect(() => {
+    const el = measureRef.current;
+    if (!el) {
+      return;
+    }
+    const measure = () => {
+      const containerWidth = el.clientWidth;
+      if (containerWidth === 0) {
+        return;
+      }
+      // Measuring layout: the chips followed by one trailing pill.
+      const kids = Array.from(el.children) as HTMLElement[];
+      const pillWidth = kids.at(-1)?.offsetWidth ?? 0;
+      const chipWidths = kids.slice(0, -1).map((k) => k.offsetWidth);
+      setVisibleCount(fitTwoRows(chipWidths, pillWidth, containerWidth));
+    };
+    measure();
+    // Re-pack when the column resizes (sidebar toggle, window resize).
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [verdictsKey]);
+
   // Hide the whole section (header included) when the listing has no
   // verdicts — either it isn't AI-enriched yet, or the model grounded
   // nothing. An empty "What stands out" heading reads as broken.
   if (verdicts.length === 0) {
     return null;
   }
+
+  const visible = verdicts.slice(0, visibleCount);
+  const hidden = verdicts.slice(visibleCount);
+
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex items-center gap-1.5">
@@ -826,14 +944,72 @@ function HeroVerdicts({ verdicts }: { verdicts: VerdictChip[] }) {
         />
         <Eyebrow tone="primary">What stands out</Eyebrow>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {verdicts.map((v) => (
-          <Verdict key={v.label} tone={v.tone}>
-            {v.label}
-          </Verdict>
-        ))}
+      <div
+        className="relative overflow-hidden"
+        style={{ height: VERDICTS_TWO_ROW_PX }}
+      >
+        {/* Measuring layer: all chips + a worst-case pill, laid out at the
+            real width but invisible and inert, so packing reads true widths
+            independent of what's currently shown. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none invisible absolute inset-0 flex flex-wrap gap-2"
+          ref={measureRef}
+        >
+          {verdicts.map((v) => (
+            <Verdict key={v.label} tone={v.tone}>
+              {v.label}
+            </Verdict>
+          ))}
+          <span className={cn(CHIP_BASE, "bg-bone text-muted-foreground")}>
+            +{verdicts.length}
+          </span>
+        </div>
+        {/* Display layer. */}
+        <div className="flex flex-wrap gap-2">
+          {visible.map((v) => (
+            <Verdict key={v.label} tone={v.tone}>
+              {v.label}
+            </Verdict>
+          ))}
+          {hidden.length > 0 ? <VerdictOverflow hidden={hidden} /> : null}
+        </div>
       </div>
     </section>
+  );
+}
+
+function VerdictOverflow({ hidden }: { hidden: VerdictChip[] }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-label={`${hidden.length} more`}
+            className={cn(
+              CHIP_BASE,
+              "cursor-default bg-bone text-muted-foreground transition-colors hover:bg-bone/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            )}
+            type="button"
+          >
+            {`+${hidden.length}`}
+          </button>
+        }
+      />
+      <TooltipContent align="start" className="flex-col items-start gap-1.5">
+        {hidden.map((v) => (
+          <span className="flex items-center gap-1.5" key={v.label}>
+            <span
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                v.tone === "positive" ? "bg-[#7FAE63]" : "bg-[#D08A57]"
+              )}
+            />
+            {v.label}
+          </span>
+        ))}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -855,12 +1031,7 @@ function Verdict({
       : "bg-[#B26B3F]/15 text-foreground";
   const iconColor = tone === "positive" ? "text-[#5D7A4A]" : "text-[#B26B3F]";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-medium text-[13px]",
-        palette
-      )}
-    >
+    <span className={cn(CHIP_BASE, palette)}>
       <HugeiconsIcon
         className={iconColor}
         icon={icon}
