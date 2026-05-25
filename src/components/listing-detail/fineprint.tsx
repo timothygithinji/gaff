@@ -88,11 +88,13 @@ function buildRows(fp: ListingDetailFineprint): DefRow[] {
   push("Council tax band", fp.councilTaxBand);
   if (fp.councilTaxAnnualEstimate !== null) {
     // Derived from the billing authority's Band D via statutory ratios —
-    // an area approximation, so it's labelled as such.
-    push(
-      "Council tax/yr",
-      `~£${fp.councilTaxAnnualEstimate.toLocaleString("en-GB")}`
-    );
+    // an area approximation, so it's labelled "~". Monthly is the annual
+    // figure spread evenly over 12 months (councils often bill over 10,
+    // but /12 is the fair comparison against monthly rent).
+    const annual = fp.councilTaxAnnualEstimate;
+    const monthly = Math.round(annual / 12);
+    push("Council tax/yr", `~£${annual.toLocaleString("en-GB")}`);
+    push("Council tax/mo", `~£${monthly.toLocaleString("en-GB")}`);
   }
   if (fp.billsIncluded !== null) {
     push("Bills included", fp.billsIncluded ? "Yes" : "No");
