@@ -17,7 +17,19 @@ runs:
       env:
         DOPPLER_TOKEN: ${{ inputs.doppler-token }}
       run: |
-        doppler secrets download \
-          --no-file \
-          --format=docker \
-          >> "$GITHUB_ENV"
+        # Register every value as a mask BEFORE writing it to $GITHUB_ENV.
+        # Doppler secrets aren't GitHub Actions secrets, so without an
+        # explicit ::add-mask:: GitHub prints them in cleartext in the
+        # `env:` group of every later `run:` step. Split on the first `=`
+        # only so values containing `=` survive; skip blank values (GitHub
+        # won't mask them and they aren't sensitive).
+        doppler secrets download --no-file --format=docker \
+          | while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              case "$line" in \#*) continue ;; esac
+              name="${line%%=*}"
+              value="${line#*=}"
+              [ -z "$name" ] && continue
+              [ -n "$value" ] && echo "::add-mask::$value"
+              printf '%s\n' "$name=$value" >> "$GITHUB_ENV"
+            done
