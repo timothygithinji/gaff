@@ -52,11 +52,6 @@ const setPipelineStatusSchema = z
     path: ["archivedReason"],
   });
 
-const setPipelineNotesSchema = z.object({
-  clusterId: z.string().trim().min(1),
-  notes: z.string().max(2000),
-});
-
 // -----------------------------------------------------------------------------
 // Wire types
 // -----------------------------------------------------------------------------
@@ -285,49 +280,3 @@ export const setPipelineStatus = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
-
-export const setPipelineNotes = createServerFn({ method: "POST" })
-  .inputValidator(setPipelineNotesSchema)
-  .handler(async ({ data }): Promise<{ ok: true }> => {
-    const { householdId, currentUserId } = await requireHouseholdScope();
-    const db = getDb();
-
-    // Notes on a card require the card to already exist in the
-    // pipeline. We don't auto-promote a Shortlisted (derived) card just
-    // to attach notes — a status move comes first.
-    const existing = await db
-      .select({ id: shortlistPipeline.id })
-      .from(shortlistPipeline)
-      .where(
-        and(
-          eq(shortlistPipeline.householdId, householdId),
-          eq(shortlistPipeline.clusterId, data.clusterId)
-        )
-      )
-      .limit(1);
-
-    if (existing.length === 0) {
-      throw new Error("card_not_in_pipeline");
-    }
-
-    const now = new Date();
-    await db
-      .update(shortlistPipeline)
-      .set({
-        notes: data.notes,
-        lastMovedByUserId: currentUserId,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(shortlistPipeline.householdId, householdId),
-          eq(shortlistPipeline.clusterId, data.clusterId)
-        )
-      );
-
-    return { ok: true };
-  });
-
-// Re-export for convenience — UI callers can pull every pipeline
-// public type from a single module.
-export type { ShortlistMember } from "./shortlist";

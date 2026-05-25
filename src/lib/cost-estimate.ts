@@ -53,13 +53,3 @@ export function estimateCost({
     perWeekUsd: perDay * 7,
   };
 }
-
-export function formatUsd(amount: number): string {
-  if (amount < 0.01) {
-    return `$${amount.toFixed(4)}`;
-  }
-  if (amount < 1) {
-    return `$${amount.toFixed(2)}`;
-  }
-  return `$${amount.toFixed(2)}`;
-}

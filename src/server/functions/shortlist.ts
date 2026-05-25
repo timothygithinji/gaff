@@ -7,11 +7,8 @@
  * listing, the other portals as a price-spread tail, and the members
  * who voted keep/shortlist on the cluster.
  *
- * Three list shapes:
+ * Two list shapes:
  *
- *   listMutualMatches   — clusters every household member has kept-or-
- *     shortlisted. Powers the legacy Mutual surface and is still used
- *     by the pipeline kanban's data layer indirectly.
  *   listMyOutcomes      — clusters the current user has personally swiped
  *     into ('keep' or 'shortlist'). Powers the "Yours" tab.
  *   listMemberOutcomes  — same but for ANOTHER household member. Powers
@@ -31,7 +28,7 @@
  * pulls in `cloudflare:workers` via `session.ts`).
  */
 import { createServerFn } from "@tanstack/react-start";
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import { swipes, userState, vMutualMatches } from "../../../db/schema";
@@ -94,35 +91,6 @@ export type MutualMatch = {
 // -----------------------------------------------------------------------------
 // Reads
 // -----------------------------------------------------------------------------
-
-export const listMutualMatches = createServerFn({ method: "GET" }).handler(
-  async (): Promise<MutualMatch[]> => {
-    const { householdId, memberUserIds } = await requireHouseholdScope();
-    const db = getDb();
-
-    const rows = await db
-      .select({
-        clusterId: vMutualMatches.clusterId,
-        searchId: vMutualMatches.searchId,
-        matchedAt: vMutualMatches.matchedAt,
-      })
-      .from(vMutualMatches)
-      .where(eq(vMutualMatches.householdId, householdId))
-      .orderBy(desc(vMutualMatches.matchedAt));
-
-    const summaries = await Promise.all(
-      rows.map((r) =>
-        hydrateClusterSummary(db, {
-          clusterId: r.clusterId,
-          searchId: r.searchId,
-          matchedAt: r.matchedAt,
-          householdMemberUserIds: memberUserIds,
-        })
-      )
-    );
-    return summaries.filter((s): s is MutualMatch => s !== null);
-  }
-);
 
 /**
  * The current user's own keep / shortlist picks. The view-mutual feed

@@ -33,7 +33,6 @@ import { z } from "zod";
 import { getDb } from "../../../db";
 import {
   enrichments,
-  householdMembers,
   listingPhotos,
   listings,
   searches,
@@ -41,6 +40,7 @@ import {
 } from "../../../db/schema";
 import type { Features } from "../../lib/ai/prompt";
 import { getCurrentUser } from "./session";
+import { requireHouseholdScope } from "./shortlist-helpers.server";
 
 const swipeOutcomeSchema = z.enum(["keep", "skip", "shortlist"]);
 
@@ -328,38 +328,6 @@ function asEpcRating(value: unknown): string | undefined {
 }
 
 /**
- * Resolve every member of the caller's household, or throw. Returns
- * the membership rows so we know who counts as "any household member"
- * for the asymmetric-hides-from-skip filter.
- */
-async function requireHouseholdMembers(): Promise<{
-  householdId: string;
-  memberUserIds: string[];
-  currentUserId: string;
-}> {
-  const session = await getCurrentUser();
-  if (!session) {
-    throw new Error("unauthorized");
-  }
-  const db = getDb();
-  const myMembership = await db.query.householdMembers.findFirst({
-    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
-  });
-  if (!myMembership) {
-    throw new Error("no_household");
-  }
-  const members = await db
-    .select({ userId: householdMembers.userId })
-    .from(householdMembers)
-    .where(eq(householdMembers.householdId, myMembership.householdId));
-  return {
-    householdId: myMembership.householdId,
-    memberUserIds: members.map((m) => m.userId),
-    currentUserId: session.userId,
-  };
-}
-
-/**
  * The "ranked queue" step of the review pipeline, shared by
  * `getNextReviewCard` and `getReviewQueue`.
  *
@@ -463,7 +431,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
   .inputValidator(reviewCardInputSchema)
   .handler(async ({ data }): Promise<ReviewCard | null> => {
     const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdMembers();
+      await requireHouseholdScope();
     const db = getDb();
 
     const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
@@ -653,7 +621,7 @@ export const getReviewQueue = createServerFn({ method: "GET" })
   .inputValidator(queueFilterSchema)
   .handler(async ({ data }): Promise<ReviewQueue> => {
     const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdMembers();
+      await requireHouseholdScope();
     const db = getDb();
 
     const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(

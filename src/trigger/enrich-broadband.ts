@@ -15,12 +15,9 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { and, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { getDb } from "../../db";
-import * as schema from "../../db/schema";
-import { PROMPT_VERSION } from "../lib/ai/config";
 import { getBroadband } from "../lib/broadband";
+import { upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
 export type EnrichBroadbandPayload = {
@@ -82,43 +79,9 @@ export const enrichBroadbandTask = task({
       );
     }
 
-    const listings = await db
-      .select({ id: schema.listings.id })
-      .from(schema.listings)
-      .where(eq(schema.listings.clusterId, clusterId));
-
-    let touched = 0;
-    for (const { id: listingId } of listings) {
-      const inserted = await db
-        .insert(schema.enrichments)
-        .values({
-          id: nanoid(),
-          listingId,
-          promptVersion: PROMPT_VERSION,
-          features: {},
-          broadband,
-        })
-        .onConflictDoNothing({
-          target: [
-            schema.enrichments.listingId,
-            schema.enrichments.promptVersion,
-          ],
-        })
-        .returning({ id: schema.enrichments.id });
-
-      if (inserted.length === 0) {
-        await db
-          .update(schema.enrichments)
-          .set({ broadband })
-          .where(
-            and(
-              eq(schema.enrichments.listingId, listingId),
-              eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-            )
-          );
-      }
-      touched += 1;
-    }
+    const touched = await upsertEnrichmentForCluster(db, clusterId, {
+      broadband,
+    });
 
     logger.log("enrich-broadband: done", {
       clusterId,

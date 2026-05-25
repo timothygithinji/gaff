@@ -7,7 +7,7 @@
  * those imports into the browser graph.
  *
  * If we exported these helpers from `shortlist.ts` directly, the
- * client-side import of `listMutualMatches` would force rollup to
+ * client-side import of `listMyOutcomes` would force rollup to
  * resolve every other export's import chain (including `cloudflare:
  * workers`) just to know what types are exposed, and the build would
  * fail in the client environment.

@@ -10,12 +10,9 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { and, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { getDb } from "../../db";
-import * as schema from "../../db/schema";
-import { PROMPT_VERSION } from "../lib/ai/config";
 import { getAmenityCounts } from "../lib/overpass";
+import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
 export type EnrichAmenitiesPayload = {
@@ -27,14 +24,6 @@ export type EnrichAmenitiesOutput = {
   totalAmenities: number;
   listingsTouched: number;
 };
-
-function parseNumeric(value: string | null): number | null {
-  if (value == null) {
-    return null;
-  }
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
 
 export const enrichAmenitiesTask = task({
   id: "enrich-amenities",
@@ -66,43 +55,9 @@ export const enrichAmenitiesTask = task({
     const amenities = await getAmenityCounts({ lat, lng });
     const total = Object.values(amenities.counts).reduce((a, b) => a + b, 0);
 
-    const listings = await db
-      .select({ id: schema.listings.id })
-      .from(schema.listings)
-      .where(eq(schema.listings.clusterId, clusterId));
-
-    let touched = 0;
-    for (const { id: listingId } of listings) {
-      const inserted = await db
-        .insert(schema.enrichments)
-        .values({
-          id: nanoid(),
-          listingId,
-          promptVersion: PROMPT_VERSION,
-          features: {},
-          amenities,
-        })
-        .onConflictDoNothing({
-          target: [
-            schema.enrichments.listingId,
-            schema.enrichments.promptVersion,
-          ],
-        })
-        .returning({ id: schema.enrichments.id });
-
-      if (inserted.length === 0) {
-        await db
-          .update(schema.enrichments)
-          .set({ amenities })
-          .where(
-            and(
-              eq(schema.enrichments.listingId, listingId),
-              eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-            )
-          );
-      }
-      touched += 1;
-    }
+    const touched = await upsertEnrichmentForCluster(db, clusterId, {
+      amenities,
+    });
 
     logger.log("enrich-amenities: done", {
       clusterId,

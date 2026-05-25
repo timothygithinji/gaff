@@ -30,17 +30,16 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { and, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
+import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { PROMPT_VERSION } from "../lib/ai/config";
 import { env } from "../lib/env";
 import {
   computeRoute,
   nextWeekdayAt,
   normaliseTravelMode,
 } from "../lib/google-routes";
+import { upsertEnrichmentForListings } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
 export type EnrichCommutePayload = {
@@ -168,46 +167,6 @@ async function loadCommuteContext(
   };
 }
 
-async function upsertCommuteForListings(
-  db: ReturnType<typeof getDb>,
-  listingIds: string[],
-  commuteMinutes: Record<string, number>
-): Promise<number> {
-  let touched = 0;
-  for (const listingId of listingIds) {
-    const inserted = await db
-      .insert(schema.enrichments)
-      .values({
-        id: nanoid(),
-        listingId,
-        promptVersion: PROMPT_VERSION,
-        features: {},
-        commuteMinutes,
-      })
-      .onConflictDoNothing({
-        target: [
-          schema.enrichments.listingId,
-          schema.enrichments.promptVersion,
-        ],
-      })
-      .returning({ id: schema.enrichments.id });
-
-    if (inserted.length === 0) {
-      await db
-        .update(schema.enrichments)
-        .set({ commuteMinutes })
-        .where(
-          and(
-            eq(schema.enrichments.listingId, listingId),
-            eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-          )
-        );
-    }
-    touched += 1;
-  }
-  return touched;
-}
-
 export const enrichCommuteTask = task({
   id: "enrich-commute",
   queue: scrapeQueue,
@@ -261,11 +220,9 @@ export const enrichCommuteTask = task({
       return empty;
     }
 
-    const touched = await upsertCommuteForListings(
-      db,
-      ctx.listingIds,
-      commuteMinutes
-    );
+    const touched = await upsertEnrichmentForListings(db, ctx.listingIds, {
+      commuteMinutes,
+    });
 
     logger.log("enrich-commute: done", {
       clusterId,

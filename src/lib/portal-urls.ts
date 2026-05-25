@@ -49,7 +49,11 @@
  *     those exclusions are no-ops on OR (nothing to hide).
  */
 
-export type Furnished = "furnished" | "unfurnished";
+// Search-filter furnished states (two-valued): the portals' search UIs
+// only offer furnished/unfurnished as filters. Distinct from the
+// three-valued parsed-listing `Furnished` in `parsers/types.ts`, which
+// also models `part_furnished`. Local to this module.
+type Furnished = "furnished" | "unfurnished";
 export type MustHave = "garden" | "parking" | "pets";
 export type Exclusion = "student" | "retirement" | "house_share";
 

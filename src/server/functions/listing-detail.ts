@@ -51,7 +51,7 @@ import {
 } from "../../lib/council-tax";
 import { env as parsedEnv } from "../../lib/env";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
-import { getCurrentUser } from "./session";
+import { requireHouseholdScope } from "./shortlist-helpers.server";
 
 // -----------------------------------------------------------------------------
 // Wire types
@@ -456,33 +456,6 @@ function buildFineprint(
     furnished: d?.furnished ?? null,
     sizeSqFt: d?.sizeSqFt ?? headline.sizeSqFt ?? null,
     nearestStations: Array.isArray(d?.nearestStations) ? d.nearestStations : [],
-  };
-}
-
-async function requireHouseholdScope(): Promise<{
-  householdId: string;
-  memberUserIds: string[];
-  currentUserId: string;
-}> {
-  const session = await getCurrentUser();
-  if (!session) {
-    throw new Error("unauthorized");
-  }
-  const db = getDb();
-  const myMembership = await db.query.householdMembers.findFirst({
-    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
-  });
-  if (!myMembership) {
-    throw new Error("no_household");
-  }
-  const members = await db
-    .select({ userId: householdMembers.userId })
-    .from(householdMembers)
-    .where(eq(householdMembers.householdId, myMembership.householdId));
-  return {
-    householdId: myMembership.householdId,
-    memberUserIds: members.map((m) => m.userId),
-    currentUserId: session.userId,
   };
 }
 

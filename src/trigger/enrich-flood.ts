@@ -11,12 +11,9 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { and, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { getDb } from "../../db";
-import * as schema from "../../db/schema";
-import { PROMPT_VERSION } from "../lib/ai/config";
 import { getFloodRisk } from "../lib/flood-risk";
+import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
 export type EnrichFloodPayload = {
@@ -28,14 +25,6 @@ export type EnrichFloodOutput = {
   riskLevel: string;
   listingsTouched: number;
 };
-
-function parseNumeric(value: string | null): number | null {
-  if (value == null) {
-    return null;
-  }
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
 
 export const enrichFloodTask = task({
   id: "enrich-flood",
@@ -64,43 +53,9 @@ export const enrichFloodTask = task({
 
     const flood = await getFloodRisk({ lat, lng });
 
-    const listings = await db
-      .select({ id: schema.listings.id })
-      .from(schema.listings)
-      .where(eq(schema.listings.clusterId, clusterId));
-
-    let touched = 0;
-    for (const { id: listingId } of listings) {
-      const inserted = await db
-        .insert(schema.enrichments)
-        .values({
-          id: nanoid(),
-          listingId,
-          promptVersion: PROMPT_VERSION,
-          features: {},
-          flood,
-        })
-        .onConflictDoNothing({
-          target: [
-            schema.enrichments.listingId,
-            schema.enrichments.promptVersion,
-          ],
-        })
-        .returning({ id: schema.enrichments.id });
-
-      if (inserted.length === 0) {
-        await db
-          .update(schema.enrichments)
-          .set({ flood })
-          .where(
-            and(
-              eq(schema.enrichments.listingId, listingId),
-              eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-            )
-          );
-      }
-      touched += 1;
-    }
+    const touched = await upsertEnrichmentForCluster(db, clusterId, {
+      flood,
+    });
 
     logger.log("enrich-flood: done", {
       clusterId,

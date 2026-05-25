@@ -30,17 +30,14 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { and, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { getDb } from "../../db";
-import * as schema from "../../db/schema";
-import { PROMPT_VERSION } from "../lib/ai/config";
 import {
   type Certificate,
   createEpcClient,
   getDomesticSearch,
 } from "../lib/api-clients/epc";
 import { env } from "../lib/env";
+import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
 export type EnrichEpcPayload = {
@@ -52,20 +49,6 @@ export type EnrichEpcOutput = {
   certificateFound: boolean;
   listingsTouched: number;
 };
-
-/**
- * Convert a possibly-null `numeric` column value to a number, or null.
- * drizzle's `numeric` columns come back as strings to preserve
- * precision; we only need approximate distance comparisons here so
- * Number() is fine.
- */
-function parseNumeric(value: string | null): number | null {
-  if (value == null) {
-    return null;
-  }
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
 
 /**
  * Pick the certificate whose lat/lng is closest to the cluster's
@@ -163,53 +146,9 @@ export const enrichEpcTask = task({
       return { clusterId, certificateFound: false, listingsTouched: 0 };
     }
 
-    // Load every listing in this cluster so we can write the EPC blob
-    // onto each. We touch listings, not the cluster, because
-    // `enrichments` is per-listing (cluster-level enrichment would
-    // require a separate column on property_clusters which the schema
-    // deliberately doesn't have).
-    const listings = await db
-      .select({ id: schema.listings.id })
-      .from(schema.listings)
-      .where(eq(schema.listings.clusterId, clusterId));
-
-    let touched = 0;
-    for (const { id: listingId } of listings) {
-      // Two-step UPSERT: try INSERT first with ON CONFLICT DO NOTHING.
-      // If a row already exists at this prompt version (AI enrichment
-      // got there first), we then UPDATE just the `epc` column. This
-      // preserves any `features` payload the AI task wrote and avoids
-      // a no-op write when neither side has run yet.
-      const inserted = await db
-        .insert(schema.enrichments)
-        .values({
-          id: nanoid(),
-          listingId,
-          promptVersion: PROMPT_VERSION,
-          features: {},
-          epc: cert,
-        })
-        .onConflictDoNothing({
-          target: [
-            schema.enrichments.listingId,
-            schema.enrichments.promptVersion,
-          ],
-        })
-        .returning({ id: schema.enrichments.id });
-
-      if (inserted.length === 0) {
-        await db
-          .update(schema.enrichments)
-          .set({ epc: cert })
-          .where(
-            and(
-              eq(schema.enrichments.listingId, listingId),
-              eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-            )
-          );
-      }
-      touched += 1;
-    }
+    const touched = await upsertEnrichmentForCluster(db, clusterId, {
+      epc: cert,
+    });
 
     logger.log("enrich-epc: done", {
       clusterId,
