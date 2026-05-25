@@ -39,6 +39,7 @@ import {
   swipes,
 } from "../../../db/schema";
 import type { Features } from "../../lib/ai/prompt";
+import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
 
@@ -511,7 +512,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       .where(eq(listingPhotos.listingId, headline.id))
       .orderBy(listingPhotos.position);
 
-    const photoUrls = photos.map((p) => p.r2Key ?? p.url);
+    const photoUrls = photos.map(resolvePhotoUrl);
 
     // Pull the most recent enrichments row for the headline listing.
     // The unique (listing_id, prompt_version) means there can be many
@@ -764,7 +765,7 @@ async function loadFirstPhotoByListing(
   const byListingId = new Map<string, string>();
   for (const p of photos) {
     if (!byListingId.has(p.listingId)) {
-      byListingId.set(p.listingId, p.r2Key ?? p.url);
+      byListingId.set(p.listingId, resolvePhotoUrl(p));
     }
   }
   return byListingId;
