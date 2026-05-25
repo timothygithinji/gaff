@@ -86,7 +86,10 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   propertyTypes: [],
   furnished: null,
   mustHaves: [],
-  exclusions: [],
+  // Student lets, retirement homes, and house shares are hidden by
+  // default — most renters don't want them in results. Users can
+  // re-enable any category via the Hide toggles.
+  exclusions: ["student", "retirement", "house_share"],
   commuteTargets: [],
   transportTargets: [],
   portals: ["rightmove", "zoopla", "openrent"],
