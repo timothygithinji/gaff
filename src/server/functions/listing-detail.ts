@@ -43,7 +43,12 @@ import type {
   HighlightItem,
   WatchoutItem,
 } from "../../lib/ai/prompt";
-import { bandAmountPence } from "../../lib/council-tax";
+import {
+  COUNCIL_TAX_BANDS,
+  type CouncilTaxBand,
+  bandAmountPence,
+  normaliseBand,
+} from "../../lib/council-tax";
 import { env as parsedEnv } from "../../lib/env";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { getCurrentUser } from "./session";
@@ -102,6 +107,30 @@ export type ListingDetailEpc = {
 export type ListingDetailHighlight = HighlightItem;
 export type ListingDetailWatchout = WatchoutItem;
 
+/** One band's estimated council tax, in whole pounds. */
+export type ListingDetailCouncilTaxBand = {
+  band: CouncilTaxBand;
+  annualPounds: number;
+  monthlyPounds: number;
+};
+
+/**
+ * Council tax estimate for a listing's billing authority: every band
+ * A–H, plus which band the listing itself is (so the UI can highlight
+ * it — or fall back to the whole table when the listing's band is
+ * unknown, which is common).
+ */
+export type ListingDetailCouncilTax = {
+  /** Billing-authority name, e.g. "Barnet". */
+  authority: string;
+  /** Tax year the figures are for, e.g. "2026-27". */
+  year: string;
+  /** The listing's band, if known — for highlighting in the table. */
+  listingBand: CouncilTaxBand | null;
+  /** All eight bands, ascending A→H. */
+  bands: ListingDetailCouncilTaxBand[];
+};
+
 /**
  * Closed-shape "fine print" lifted off `listing.rawJson` so the UI can
  * surface a stable set of tenancy-relevant facts (deposit, fees,
@@ -119,19 +148,16 @@ export type ListingDetailFineprint = {
   agentPhone: string | null;
   agentBranchUrl: string | null;
   billsIncluded: boolean | null;
+  /** The listing's own band, when the portal reported one. */
   councilTaxBand: string | null;
   /**
-   * Estimated annual council tax in whole pounds, derived from the
-   * billing authority's seeded Band D figure and the listing's band via
-   * the statutory ratios. Null when we couldn't resolve the authority,
-   * have no seeded rate for it, or the band is missing. Approximate —
-   * parish precepts vary within an authority. England only.
+   * Estimated council tax for every band A–H in the listing's billing
+   * authority, derived from the seeded area Band D via the fixed
+   * statutory ratios. Null when we couldn't resolve the authority or
+   * have no seeded rate for it. Approximate — parish precepts vary
+   * within an authority. England only.
    */
-  councilTaxAnnualEstimate: number | null;
-  /** Billing-authority name behind the estimate, e.g. "Guildford". */
-  councilTaxAuthority: string | null;
-  /** Tax year the estimate's rate is for, e.g. "2025-26". */
-  councilTaxYear: string | null;
+  councilTax: ListingDetailCouncilTax | null;
   furnished: "furnished" | "unfurnished" | "part_furnished" | null;
   sizeSqFt: number | null;
   nearestStations: NearestStation[];
@@ -376,28 +402,31 @@ type CouncilTaxContext = {
 };
 
 /**
- * Turn the cluster's Band D figure into a per-band, whole-pounds annual
- * estimate. Returns all-null unless we have both a rate and a band that
- * derive a figure, so the three fields stay consistent.
+ * Expand the cluster's area Band D into all eight bands (A–H) via the
+ * fixed statutory ratios, in whole pounds, annual + monthly. Returns
+ * null when there's no seeded rate for the authority.
  */
-function deriveCouncilTax(
+function buildCouncilTax(
   band: string | null,
   councilTax: CouncilTaxContext | null
-): {
-  annualEstimate: number | null;
-  authority: string | null;
-  year: string | null;
-} {
-  const estimatePence = councilTax
-    ? bandAmountPence(councilTax.bandDPence, band)
-    : null;
-  if (!councilTax || estimatePence === null) {
-    return { annualEstimate: null, authority: null, year: null };
+): ListingDetailCouncilTax | null {
+  if (!councilTax) {
+    return null;
   }
+  const bands: ListingDetailCouncilTaxBand[] = COUNCIL_TAX_BANDS.map((b) => {
+    // `b` is always a valid band, so bandAmountPence never returns null here.
+    const pence = bandAmountPence(councilTax.bandDPence, b) ?? 0;
+    return {
+      band: b,
+      annualPounds: Math.round(pence / 100),
+      monthlyPounds: Math.round(pence / 1200),
+    };
+  });
   return {
-    annualEstimate: Math.round(estimatePence / 100),
     authority: councilTax.authorityName,
     year: councilTax.taxYear,
+    listingBand: normaliseBand(band),
+    bands,
   };
 }
 
@@ -408,7 +437,6 @@ function buildFineprint(
   const d = readDetail(headline.rawJson);
   const agent = readAgent(headline.rawJson);
   const councilTaxBand = d?.councilTaxBand ?? headline.councilTaxBand ?? null;
-  const councilTaxDerived = deriveCouncilTax(councilTaxBand, councilTax);
   return {
     deposit: d?.deposit ?? null,
     feesText: d?.feesText ?? null,
@@ -424,9 +452,7 @@ function buildFineprint(
     billsIncluded:
       typeof d?.billsIncluded === "boolean" ? d.billsIncluded : null,
     councilTaxBand,
-    councilTaxAnnualEstimate: councilTaxDerived.annualEstimate,
-    councilTaxAuthority: councilTaxDerived.authority,
-    councilTaxYear: councilTaxDerived.year,
+    councilTax: buildCouncilTax(councilTaxBand, councilTax),
     furnished: d?.furnished ?? null,
     sizeSqFt: d?.sizeSqFt ?? headline.sizeSqFt ?? null,
     nearestStations: Array.isArray(d?.nearestStations) ? d.nearestStations : [],

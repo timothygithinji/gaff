@@ -85,16 +85,10 @@ function buildRows(fp: ListingDetailFineprint): DefRow[] {
   push("Let type", fp.letType);
   push("Available from", formatAvailableFrom(fp.availableFrom));
   push("Furnished", formatFurnished(fp.furnished));
-  push("Council tax band", fp.councilTaxBand);
-  if (fp.councilTaxAnnualEstimate !== null) {
-    // Derived from the billing authority's Band D via statutory ratios —
-    // an area approximation, so it's labelled "~". Monthly is the annual
-    // figure spread evenly over 12 months (councils often bill over 10,
-    // but /12 is the fair comparison against monthly rent).
-    const annual = fp.councilTaxAnnualEstimate;
-    const monthly = Math.round(annual / 12);
-    push("Council tax/yr", `~£${annual.toLocaleString("en-GB")}`);
-    push("Council tax/mo", `~£${monthly.toLocaleString("en-GB")}`);
+  // Band only shown here when we have no full estimate table to render
+  // (the table below highlights the band itself when present).
+  if (!fp.councilTax) {
+    push("Council tax band", fp.councilTaxBand);
   }
   if (fp.billsIncluded !== null) {
     push("Bills included", fp.billsIncluded ? "Yes" : "No");
@@ -104,10 +98,63 @@ function buildRows(fp: ListingDetailFineprint): DefRow[] {
   return rows;
 }
 
+function CouncilTaxTable({
+  councilTax,
+}: {
+  councilTax: NonNullable<ListingDetailFineprint["councilTax"]>;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-4">
+      <p className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.08em]">
+        Council tax · {councilTax.authority} · {councilTax.year}
+      </p>
+      <ul className="flex flex-col">
+        {councilTax.bands.map((b) => {
+          const isListing = b.band === councilTax.listingBand;
+          return (
+            <li
+              className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-[13px] ${
+                isListing
+                  ? "bg-primary/10 font-semibold text-foreground"
+                  : "text-muted-foreground"
+              }`}
+              key={b.band}
+            >
+              <span className="flex w-16 shrink-0 items-center gap-1.5">
+                <span className={isListing ? "text-foreground" : ""}>
+                  Band {b.band}
+                </span>
+                {isListing ? (
+                  <span className="rounded-full bg-primary/15 px-1.5 py-px font-medium text-[9px] text-primary uppercase tracking-[0.06em]">
+                    This home
+                  </span>
+                ) : null}
+              </span>
+              <span className="tabular-nums">
+                ~£{b.annualPounds.toLocaleString("en-GB")}/yr
+              </span>
+              <span className="w-20 shrink-0 text-right tabular-nums">
+                ~£{b.monthlyPounds.toLocaleString("en-GB")}/mo
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-[11px] text-muted-foreground leading-[140%]">
+        Approximate — derived from {councilTax.authority}'s area Band D;
+        parish precepts vary within the area.
+      </p>
+    </div>
+  );
+}
+
 export function Fineprint({ fineprint }: Props) {
   const rows = buildRows(fineprint);
   const hasAnything =
-    rows.length > 0 || fineprint.agentName || fineprint.feesText;
+    rows.length > 0 ||
+    fineprint.agentName ||
+    fineprint.feesText ||
+    fineprint.councilTax;
   if (!hasAnything) {
     return null;
   }
@@ -143,6 +190,10 @@ export function Fineprint({ fineprint }: Props) {
             </div>
           ))}
         </dl>
+      ) : null}
+
+      {fineprint.councilTax ? (
+        <CouncilTaxTable councilTax={fineprint.councilTax} />
       ) : null}
 
       {fineprint.agentName ? (
