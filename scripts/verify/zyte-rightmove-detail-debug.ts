@@ -108,23 +108,25 @@ try {
         "customer",
         "nearestStations",
       ];
+      const describeRef = (resolved: unknown): string => {
+        if (resolved === null) {
+          return "null";
+        }
+        if (Array.isArray(resolved)) {
+          return `array(${resolved.length})`;
+        }
+        if (typeof resolved === "object") {
+          return `obj{${Object.keys(resolved as object)
+            .slice(0, 5)
+            .join(",")}}`;
+        }
+        return JSON.stringify(resolved).slice(0, 50);
+      };
       for (const f of fields) {
         const v = (pd as Record<string, unknown>)[f];
         if (typeof v === "number") {
           const resolved = direct[v];
-          console.log(
-            `  ${f}: ref ${v} → ${
-              resolved === null
-                ? "null"
-                : Array.isArray(resolved)
-                  ? `array(${resolved.length})`
-                  : typeof resolved === "object"
-                    ? `obj{${Object.keys(resolved as object)
-                        .slice(0, 5)
-                        .join(",")}}`
-                    : JSON.stringify(resolved).slice(0, 50)
-            }`
-          );
+          console.log(`  ${f}: ref ${v} → ${describeRef(resolved)}`);
         } else {
           console.log(
             `  ${f}: ${typeof v === "object" ? "(inline obj)" : JSON.stringify(v)}`

@@ -205,6 +205,7 @@ export type ZooplaSearchUrlParams = PortalSearchParams & {
  * exclusion is `is_shared_accommodation=false` (default already
  * hides; we set explicitly so the intent is visible).
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flat sequence of conditional `usp.set(...)` calls mapping each search param to Zoopla's query string — the branches are independent and splitting would just scatter the URL contract.
 export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
   const usp = new URLSearchParams();
   usp.set("section", "to-rent");
@@ -317,6 +318,7 @@ function milesToOpenrentAreaKm(miles: number): number {
   return Math.max(2, km);
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flat sequence of conditional `usp.set(...)` calls mapping each search param to OpenRent's query string — the branches are independent and splitting would just scatter the URL contract.
 export function openrentSearchUrl(params: OpenrentSearchUrlParams): string {
   const usp = new URLSearchParams();
   usp.set("term", params.term);

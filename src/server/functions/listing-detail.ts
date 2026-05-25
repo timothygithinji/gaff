@@ -42,8 +42,8 @@ import type {
   HighlightItem,
   WatchoutItem,
 } from "../../lib/ai/prompt";
-import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { env as parsedEnv } from "../../lib/env";
+import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { getCurrentUser } from "./session";
 
 // -----------------------------------------------------------------------------
@@ -323,7 +323,7 @@ function asAmenities(value: unknown): ListingDetailAmenities | undefined {
       ? Object.fromEntries(
           Object.entries(a.counts as Record<string, unknown>).filter(
             ([, v]) => typeof v === "number"
-          ) as Array<[string, number]>
+          ) as [string, number][]
         )
       : {};
   if (Object.keys(counts).length === 0) {

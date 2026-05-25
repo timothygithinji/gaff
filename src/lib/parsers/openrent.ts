@@ -36,6 +36,8 @@ const STRIP_OPENRENT_SUFFIX_RE = /\s*-\s*OpenRent.*$/i;
 const OPENRENT_CDN_RE = /imagescdn\.openrent\.co\.uk\/listings\//i;
 const DASH_RE = /-/g;
 const TRAILING_COMMA_RE = /,\s*$/;
+const EPC_RATING_RE = /^[A-G]$/;
+const COUNCIL_TAX_BAND_RE = /^[A-H]/;
 
 /**
  * Parse an OpenRent search results page.
@@ -277,8 +279,17 @@ const ID_FROM_URL_RE = /\/property-to-rent\/[^/]+\/[^/]+\/(\d+)/;
  */
 function extractCleanLabel(td: HTMLElement): string {
   const childNodes =
-    (td as unknown as { childNodes?: { nodeType: number; rawText?: string; text?: string; classNames?: string[]; getAttribute?: (k: string) => string | null }[] })
-      .childNodes ?? [];
+    (
+      td as unknown as {
+        childNodes?: {
+          nodeType: number;
+          rawText?: string;
+          text?: string;
+          classNames?: string[];
+          getAttribute?: (k: string) => string | null;
+        }[];
+      }
+    ).childNodes ?? [];
   const parts: string[] = [];
   for (const node of childNodes) {
     if (node.nodeType === 3) {
@@ -312,6 +323,7 @@ function extractCleanLabel(td: HTMLElement): string {
     .toLowerCase();
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: walks OpenRent's flat fact-table rows mapping each label cell to its value — a single linear scan whose branches are independent per row.
 function extractFactTable(root: HTMLElement): Map<string, string> {
   const out = new Map<string, string>();
   const rows = root.querySelectorAll("tr");
@@ -374,24 +386,25 @@ function openrentTenantPreferences(
   facts: Map<string, string>
 ): TenantPreferences | undefined {
   const out: TenantPreferences = {};
-  const set = (
-    key: keyof TenantPreferences,
-    raw: string | undefined
-  ): void => {
+  const set = (key: keyof TenantPreferences, raw: string | undefined): void => {
     const v = ynToBool(raw);
     if (v !== undefined) {
       out[key] = v;
     }
   };
-  set("studentsAccepted", facts.get("student friendly") ?? facts.get("students"));
-  set("familiesAccepted", facts.get("families allowed") ?? facts.get("families"));
+  set(
+    "studentsAccepted",
+    facts.get("student friendly") ?? facts.get("students")
+  );
+  set(
+    "familiesAccepted",
+    facts.get("families allowed") ?? facts.get("families")
+  );
   set("petsAccepted", facts.get("pets allowed") ?? facts.get("pets"));
   set("smokersAccepted", facts.get("smokers allowed") ?? facts.get("smokers"));
   set(
     "dssAccepted",
-    facts.get("dss/lha covers rent") ??
-      facts.get("dss/lha") ??
-      facts.get("dss")
+    facts.get("dss/lha covers rent") ?? facts.get("dss/lha") ?? facts.get("dss")
   );
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -568,7 +581,8 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     lat,
     lng,
     description: ogDescription.length > 0 ? ogDescription : undefined,
-    availableFrom: factAvailableFrom ?? (availableMatch ? availableMatch[1] : undefined),
+    availableFrom:
+      factAvailableFrom ?? (availableMatch ? availableMatch[1] : undefined),
     furnished: furnishedFromFacts ?? openrentFurnished(bodyText),
     deposit: depositMatch ? toNumber(depositMatch[1]) : undefined,
     photos,
@@ -577,12 +591,12 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     agentPhone: undefined,
     keyFeatures: undefined,
     epcRating:
-      (factEpc ?? "").toUpperCase().match(/^[A-G]$/)?.[0] ??
+      (factEpc ?? "").toUpperCase().match(EPC_RATING_RE)?.[0] ??
       (epcMatch ? (epcMatch[1] ?? "").toUpperCase() : undefined),
     nearestStations: undefined,
     sizeSqFt: undefined,
     councilTaxBand: factCouncilTax
-      ? factCouncilTax.trim().toUpperCase().match(/^[A-H]/)?.[0]
+      ? factCouncilTax.trim().toUpperCase().match(COUNCIL_TAX_BAND_RE)?.[0]
       : undefined,
     publishedAt: undefined,
     minimumTermMonths,

@@ -20,10 +20,18 @@ export const RADIUS_STEPS_MILES = [
 ] as const;
 
 function formatMiles(miles: number): string {
-  if (miles === 0) return "This area only";
-  if (miles === 0.25) return "Within ¼ mile";
-  if (miles === 0.5) return "Within ½ mile";
-  if (miles === 1) return "Within 1 mile";
+  if (miles === 0) {
+    return "This area only";
+  }
+  if (miles === 0.25) {
+    return "Within ¼ mile";
+  }
+  if (miles === 0.5) {
+    return "Within ½ mile";
+  }
+  if (miles === 1) {
+    return "Within 1 mile";
+  }
   return `Within ${miles} miles`;
 }
 

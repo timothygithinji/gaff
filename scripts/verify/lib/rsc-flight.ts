@@ -94,7 +94,12 @@ function findJsonEnd(s: string, start: number): number {
   }
   if (c === "t" || c === "f" || c === "n") {
     // true | false | null
-    const lit = c === "t" ? "true" : c === "f" ? "false" : "null";
+    let lit = "null";
+    if (c === "t") {
+      lit = "true";
+    } else if (c === "f") {
+      lit = "false";
+    }
     return s.startsWith(lit, i) ? i + lit.length : -1;
   }
   // number — read up to whitespace, comma, or closing bracket

@@ -60,7 +60,8 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
               <span className="block truncate text-foreground text-sm">
                 {value.name}
               </span>
-              {value.formattedAddress && value.formattedAddress !== value.name ? (
+              {value.formattedAddress &&
+              value.formattedAddress !== value.name ? (
                 <span className="block truncate text-muted-foreground text-xs">
                   {value.formattedAddress}
                 </span>

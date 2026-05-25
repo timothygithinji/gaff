@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
-import * as pulumi from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
+import * as pulumi from "@pulumi/pulumi";
 import * as doppler from "@pulumiverse/doppler";
 
 const config = new pulumi.Config();
@@ -75,14 +75,14 @@ const r2BucketWritePermGroup =
 
 function firstPermGroupId(
   list: pulumi.Output<{ results: { id: string; name: string }[] }>,
-  expectedName: string,
+  expectedName: string
 ): pulumi.Output<string> {
   return list.apply((res) => {
     const match = res.results.find((g) => g.name === expectedName);
     if (!match) {
       throw new Error(
         `Cloudflare API didn't return a "${expectedName}" permission group; ` +
-          `got ${res.results.length} groups (${res.results.map((r) => r.name).join(", ")})`,
+          `got ${res.results.length} groups (${res.results.map((r) => r.name).join(", ")})`
       );
     }
     return match.id;
@@ -103,26 +103,24 @@ const r2Token = new cloudflare.AccountToken(`${projectName}-r2-token`, {
         {
           id: firstPermGroupId(
             r2BucketReadPermGroup,
-            "Workers R2 Storage Bucket Item Read",
+            "Workers R2 Storage Bucket Item Read"
           ),
         },
         {
           id: firstPermGroupId(
             r2BucketWritePermGroup,
-            "Workers R2 Storage Bucket Item Write",
+            "Workers R2 Storage Bucket Item Write"
           ),
         },
       ],
       // Scope to THIS bucket only — `default` is the jurisdiction prefix
       // for non-EU / non-FedRAMP buckets. The bucket-scoped permission
       // groups above only accept resources in this namespace.
-      resources: pulumi
-        .all([accountId, bucket.name])
-        .apply(([aid, name]) =>
-          JSON.stringify({
-            [`com.cloudflare.edge.r2.bucket.${aid}_default_${name}`]: "*",
-          }),
-        ),
+      resources: pulumi.all([accountId, bucket.name]).apply(([aid, name]) =>
+        JSON.stringify({
+          [`com.cloudflare.edge.r2.bucket.${aid}_default_${name}`]: "*",
+        })
+      ),
     },
   ],
 });
@@ -130,26 +128,32 @@ const r2Token = new cloudflare.AccountToken(`${projectName}-r2-token`, {
 // Cloudflare Access — restrict the domain to members of the org email.
 // In @pulumi/cloudflare v6 the policy is declared as a separate resource
 // and then attached via the application's `policies` array.
-const accessPolicy = new cloudflare.ZeroTrustAccessPolicy(`${projectName}-access-policy`, {
-  accountId,
-  name: "Allow timothygithinji.com",
-  decision: "allow",
-  includes: [
-    {
-      emailDomain: { domain: "timothygithinji.com" },
-    },
-  ],
-});
+const accessPolicy = new cloudflare.ZeroTrustAccessPolicy(
+  `${projectName}-access-policy`,
+  {
+    accountId,
+    name: "Allow timothygithinji.com",
+    decision: "allow",
+    includes: [
+      {
+        emailDomain: { domain: "timothygithinji.com" },
+      },
+    ],
+  }
+);
 
-const accessApp = new cloudflare.ZeroTrustAccessApplication(`${projectName}-access-app`, {
-  accountId,
-  name: `${projectName}`,
-  domain,
-  type: "self_hosted",
-  sessionDuration: "24h",
-  autoRedirectToIdentity: false,
-  policies: [{ id: accessPolicy.id }],
-});
+const accessApp = new cloudflare.ZeroTrustAccessApplication(
+  `${projectName}-access-app`,
+  {
+    accountId,
+    name: `${projectName}`,
+    domain,
+    type: "self_hosted",
+    sessionDuration: "24h",
+    autoRedirectToIdentity: false,
+    policies: [{ id: accessPolicy.id }],
+  }
+);
 
 export const accessAppId = accessApp.id;
 export const accessAppAud = accessApp.aud;
@@ -172,8 +176,8 @@ export const r2AccountId = accountId;
 export const r2AccessKeyId = r2Token.id;
 export const r2SecretAccessKey = pulumi.secret(
   r2Token.value.apply((v) =>
-    crypto.createHash("sha256").update(v).digest("hex"),
-  ),
+    crypto.createHash("sha256").update(v).digest("hex")
+  )
 );
 
 // ---------------------------------------------------------------------------

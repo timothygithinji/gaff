@@ -23,9 +23,9 @@
 
 import { useEffect, useRef } from "react";
 import { useGoogleMaps } from "../../hooks/use-google-maps";
-import {
-  type SearchLocation,
-  type SearchLocationType,
+import type {
+  SearchLocation,
+  SearchLocationType,
 } from "../../lib/search-location";
 
 type Props = {
@@ -49,10 +49,18 @@ const INCLUDED_PRIMARY_TYPES = [
  */
 function normaliseType(googleTypes: readonly string[]): SearchLocationType {
   for (const t of googleTypes) {
-    if (t === "postal_code") return "postal_code";
-    if (t === "locality") return "locality";
-    if (t === "sublocality" || t === "sublocality_level_1") return "sublocality";
-    if (t === "neighborhood") return "neighborhood";
+    if (t === "postal_code") {
+      return "postal_code";
+    }
+    if (t === "locality") {
+      return "locality";
+    }
+    if (t === "sublocality" || t === "sublocality_level_1") {
+      return "sublocality";
+    }
+    if (t === "neighborhood") {
+      return "neighborhood";
+    }
   }
   return "sublocality";
 }
@@ -103,7 +111,9 @@ export function PlaceAutocomplete({ onSelect, placeholder }: Props) {
 
     const handle = async (event: Event) => {
       const detail = (event as PlaceSelectEvent).placePrediction;
-      if (!detail) return;
+      if (!detail) {
+        return;
+      }
       const place = detail.toPlace();
       await place.fetchFields({
         fields: [
@@ -166,8 +176,8 @@ export function PlaceAutocomplete({ onSelect, placeholder }: Props) {
   if (status === "error") {
     return (
       <p className="text-destructive text-xs">
-        Place search failed to load. Reload the page or check the GCP API
-        key has Places API (New) enabled.
+        Place search failed to load. Reload the page or check the GCP API key
+        has Places API (New) enabled.
       </p>
     );
   }

@@ -47,6 +47,7 @@ function parseArgs(argv: string[]): Args {
     searchId: undefined,
     portal: undefined,
   };
+  // biome-ignore lint/style/useForOf: index-based arg parser that advances `i` to consume the next token (`argv[++i]`) for `--flag value` pairs — a for-of can't express the lookahead.
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") {
@@ -84,8 +85,8 @@ async function main(): Promise<void> {
 
   const db = getDb();
   // Read just the columns we need so the script stays cheap on a big DB.
-  const rows = await (async () => {
-    const conds = [];
+  const rows = await (() => {
+    const conds: ReturnType<typeof eq>[] = [];
     if (args.searchId) {
       conds.push(eq(schema.listings.searchId, args.searchId));
     }

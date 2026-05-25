@@ -27,10 +27,10 @@ import { type ReactNode, useEffect, useState } from "react";
 import { queryKeys } from "../../lib/query-keys";
 import { cn } from "../../lib/utils";
 import {
-  runSearchNow,
   type SearchRow,
   type SearchesPerSearchStats,
   type SearchesPortfolio,
+  runSearchNow,
 } from "../../server/functions/searches";
 import { AdminSidebar } from "../layout/admin-sidebar";
 
@@ -240,7 +240,8 @@ function SearchCard({
   const expectedRunCount = search.portals.length;
   const runs = realtime.runs ?? [];
   const allLanded =
-    runs.length >= expectedRunCount && runs.every((r) => TERMINAL.has(r.status));
+    runs.length >= expectedRunCount &&
+    runs.every((r) => TERMINAL.has(r.status));
 
   // Drop the subscription once everything finishes so the hook stops
   // streaming. Also invalidate the portfolio query so stats refresh.

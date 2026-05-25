@@ -33,6 +33,12 @@ const SEARCH_PATHS: (string | number)[][] = [
 
 const NON_DIGITS_RE = /[^\d]/g;
 const PROPERTIES_ID_RE = /\/properties\/(\d+)/;
+const NO_PETS_RE = /no\s+pets|pets\s+not\s+allowed|sorry,?\s+no\s+pets/;
+const PETS_ALLOWED_RE = /pets\s+(allowed|welcome|considered)/;
+const STUDENTS_ALLOWED_RE =
+  /students?\s+(welcome|considered|friendly|accepted)/;
+const DSS_ALLOWED_RE = /dss\s+(welcome|considered|accepted)/;
+const FAMILIES_RE = /families/;
 
 /** Best-effort: pull a numeric monthly price from a Rightmove listing. */
 function rightmoveMonthlyPrice(
@@ -227,6 +233,7 @@ function rightmoveStations(stations: unknown): NearestStation[] | undefined {
  * often quote a tight min/max range — the high end is the marketing one
  * users will see in the listing card).
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: walks Rightmove's polymorphic sizings array trying each unit/shape (sq ft, sq m, ranges) — the fallbacks are intentional and inlined for readability.
 function rightmoveSizeSqFt(sizings: unknown): number | undefined {
   if (!Array.isArray(sizings) || sizings.length === 0) {
     return undefined;
@@ -315,14 +322,10 @@ function rightmoveTenantPreferences(
     }
     return undefined;
   };
-  const noPets = /no\s+pets|pets\s+not\s+allowed|sorry,?\s+no\s+pets/.test(
-    blob
-  );
-  const petsAllowed = /pets\s+(allowed|welcome|considered)/.test(blob);
-  const studentsAllowed = /students?\s+(welcome|considered|friendly|accepted)/.test(
-    blob
-  );
-  const dssAllowed = /dss\s+(welcome|considered|accepted)/.test(blob);
+  const noPets = NO_PETS_RE.test(blob);
+  const petsAllowed = PETS_ALLOWED_RE.test(blob);
+  const studentsAllowed = STUDENTS_ALLOWED_RE.test(blob);
+  const dssAllowed = DSS_ALLOWED_RE.test(blob);
   const out: TenantPreferences = {};
   if (petsAllowed) {
     out.petsAccepted = true;
@@ -335,7 +338,9 @@ function rightmoveTenantPreferences(
   if (dssAllowed) {
     out.dssAccepted = true;
   }
-  has(/families/) && (out.familiesAccepted = true);
+  if (has(FAMILIES_RE)) {
+    out.familiesAccepted = true;
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -382,10 +387,9 @@ function rightmoveAgentBranchUrl(
   customer: Record<string, unknown>
 ): string | undefined {
   const branchId = toNumber(customer.branchId);
-  const slug = toStringSafe(customer.branchName)?.toLowerCase().replace(
-    /\s+/g,
-    "-"
-  );
+  const slug = toStringSafe(customer.branchName)
+    ?.toLowerCase()
+    .replace(/\s+/g, "-");
   if (branchId === undefined) {
     return undefined;
   }
@@ -432,8 +436,7 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     (pd.livingCosts as Record<string, unknown> | undefined) ?? {};
   const listingHistory =
     (pd.listingHistory as Record<string, unknown> | undefined) ?? {};
-  const feesApply =
-    (pd.feesApply as Record<string, unknown> | undefined) ?? {};
+  const feesApply = (pd.feesApply as Record<string, unknown> | undefined) ?? {};
 
   const id =
     toStringSafe(pd.id) ??
@@ -509,8 +512,7 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     feesText: toStringSafe(feesApply.feesApplyText),
     tags: rightmoveTags(pd),
     tenantPreferences: rightmoveTenantPreferences(pd),
-    billsIncluded:
-      livingCosts.councilTaxIncluded === true ? true : undefined,
+    billsIncluded: livingCosts.councilTaxIncluded === true ? true : undefined,
   };
 }
 

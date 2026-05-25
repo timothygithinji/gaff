@@ -220,10 +220,12 @@ function pickSoonestCommute(value: unknown): number | null {
   }
   let best: number | null = null;
   for (const v of Object.values(value as Record<string, unknown>)) {
-    if (typeof v === "number" && Number.isFinite(v)) {
-      if (best === null || v < best) {
-        best = v;
-      }
+    if (
+      typeof v === "number" &&
+      Number.isFinite(v) &&
+      (best === null || v < best)
+    ) {
+      best = v;
     }
   }
   return best;

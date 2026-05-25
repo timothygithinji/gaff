@@ -31,11 +31,11 @@ import {
   type PipelineArchivedReason,
   type PipelineStatus,
 } from "../../lib/pipeline-status";
+import type { MutualMatch } from "./shortlist";
 import {
   hydrateClusterSummary,
   requireHouseholdScope,
 } from "./shortlist-helpers.server";
-import type { MutualMatch, ShortlistMember } from "./shortlist";
 
 // -----------------------------------------------------------------------------
 // Input schemas
@@ -87,6 +87,7 @@ export type PipelineColumns = Record<PipelineStatus, PipelineCard[]>;
 // -----------------------------------------------------------------------------
 
 export const listPipeline = createServerFn({ method: "GET" }).handler(
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: merges the mutual-match + pipeline-row sources, hydrates each cluster, and buckets into columns in one linear pass — splitting it would scatter the column-assembly logic across helpers.
   async (): Promise<PipelineColumns> => {
     const { householdId, memberUserIds } = await requireHouseholdScope();
     const db = getDb();
@@ -329,4 +330,4 @@ export const setPipelineNotes = createServerFn({ method: "POST" })
 
 // Re-export for convenience — UI callers can pull every pipeline
 // public type from a single module.
-export type { ShortlistMember };
+export type { ShortlistMember } from "./shortlist";

@@ -65,15 +65,22 @@ const SURFACED_DETAIL_KEYS = new Set<string>([
 type Leaf = { path: string; sample: string };
 
 function summarise(v: unknown, max = 80): string {
-  if (v === null) return "null";
-  if (v === undefined) return "undefined";
+  if (v === null) {
+    return "null";
+  }
+  if (v === undefined) {
+    return "undefined";
+  }
   if (typeof v === "string") {
     const t = v.replace(/\s+/g, " ").trim();
     return t.length > max ? `"${t.slice(0, max)}…"` : `"${t}"`;
   }
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  if (Array.isArray(v))
+  if (typeof v === "number" || typeof v === "boolean") {
+    return String(v);
+  }
+  if (Array.isArray(v)) {
     return `array(${v.length})${v.length > 0 ? ` first=${summarise(v[0], 40)}` : ""}`;
+  }
   if (typeof v === "object") {
     const keys = Object.keys(v as object);
     return `object{${keys.slice(0, 6).join(",")}${keys.length > 6 ? ",…" : ""}} (${keys.length} keys)`;
@@ -81,12 +88,14 @@ function summarise(v: unknown, max = 80): string {
   return String(v);
 }
 
-function* walkLeaves(
-  node: unknown,
-  prefix = "",
-  depth = 0
-): Generator<Leaf> {
-  if (depth > 3 || node === null || node === undefined || typeof node !== "object" || Array.isArray(node)) {
+function* walkLeaves(node: unknown, prefix = "", depth = 0): Generator<Leaf> {
+  if (
+    depth > 3 ||
+    node === null ||
+    node === undefined ||
+    typeof node !== "object" ||
+    Array.isArray(node)
+  ) {
     yield { path: prefix, sample: summarise(node) };
     return;
   }
@@ -100,28 +109,39 @@ function* walkLeaves(
   }
 }
 
-const tail = (p: string) => (p.split(".").at(-1) ?? p);
+const tail = (p: string) => p.split(".").at(-1) ?? p;
 
-function reportGap(portal: string, surfaced: Set<string>, leaves: Leaf[]): void {
+function reportGap(
+  portal: string,
+  surfaced: Set<string>,
+  leaves: Leaf[]
+): void {
   console.log(`\n========== ${portal.toUpperCase()} ==========`);
   console.log(`Total raw leaf paths: ${leaves.length}`);
   const unsurfaced = leaves.filter(
-    (l) => !SURFACED_DETAIL_KEYS.has(tail(l.path)) && !surfaced.has(tail(l.path))
+    (l) =>
+      !SURFACED_DETAIL_KEYS.has(tail(l.path)) && !surfaced.has(tail(l.path))
   );
   const byRoot = new Map<string, Leaf[]>();
   for (const leaf of unsurfaced) {
     const root = leaf.path.split(".")[0] ?? leaf.path;
-    if (!byRoot.has(root)) byRoot.set(root, []);
+    if (!byRoot.has(root)) {
+      byRoot.set(root, []);
+    }
     byRoot.get(root)?.push(leaf);
   }
-  const sorted = [...byRoot.entries()].sort((a, b) => b[1].length - a[1].length);
+  const sorted = [...byRoot.entries()].sort(
+    (a, b) => b[1].length - a[1].length
+  );
   console.log(`Unsurfaced leaves: ${unsurfaced.length}\n`);
   for (const [root, items] of sorted) {
     console.log(`  [${root}] (${items.length})`);
     for (const leaf of items.slice(0, 12)) {
       console.log(`    ${leaf.path}: ${leaf.sample}`);
     }
-    if (items.length > 12) console.log(`    …${items.length - 12} more`);
+    if (items.length > 12) {
+      console.log(`    …${items.length - 12} more`);
+    }
   }
 }
 
@@ -152,7 +172,9 @@ async function rightmove(): Promise<void> {
   );
   const root = extractRightmoveModel(html) as Record<string, unknown>;
   const pd = root.propertyData as Record<string, unknown> | undefined;
-  if (!pd) throw new Error("propertyData missing");
+  if (!pd) {
+    throw new Error("propertyData missing");
+  }
   reportGap("rightmove (propertyData)", surfaced, [...walkLeaves(pd)]);
 }
 
@@ -164,7 +186,9 @@ async function zoopla(): Promise<void> {
     true
   );
   const m = searchHtml.match(/\/to-rent\/details\/(\d+)\/?/);
-  if (!m) throw new Error("no zoopla detail link found in search");
+  if (!m) {
+    throw new Error("no zoopla detail link found in search");
+  }
   const detailUrl = `https://www.zoopla.co.uk/to-rent/details/${m[1]}/`;
   const html = await fetchPage(detailUrl, true);
   const parsed = parseZooplaDetail(html);
@@ -176,7 +200,9 @@ async function zoopla(): Promise<void> {
   const flight = parseFlight(html);
   const listing =
     findInFlight(flight, (v) => {
-      if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+      if (!v || typeof v !== "object" || Array.isArray(v)) {
+        return false;
+      }
       const o = v as Record<string, unknown>;
       const hasAddress = "displayAddress" in o || "address" in o;
       const hasCounts =
@@ -184,19 +210,19 @@ async function zoopla(): Promise<void> {
         "numBedrooms" in o;
       return hasAddress && hasCounts;
     }) ??
-    (findByKey(flight, "listingDetails") as
-      | { listingDetails?: unknown }
-      | null
-      | undefined)?.listingDetails;
+    (
+      findByKey(flight, "listingDetails") as
+        | { listingDetails?: unknown }
+        | null
+        | undefined
+    )?.listingDetails;
   if (!listing || typeof listing !== "object") {
     console.log("zoopla: no listing-shaped object");
     return;
   }
-  reportGap(
-    "zoopla (listing object)",
-    surfaced,
-    [...walkLeaves(listing as Record<string, unknown>)]
-  );
+  reportGap("zoopla (listing object)", surfaced, [
+    ...walkLeaves(listing as Record<string, unknown>),
+  ]);
 }
 
 // ---- OpenRent ----------------------------------------------------------
@@ -230,10 +256,12 @@ async function openrent(): Promise<void> {
       root.querySelector(`meta[name="${name}"]`) ??
       root.querySelector(`meta[property="${name}"]`);
     const content = el?.getAttribute("content");
-    if (content) facts[`meta.${name}`] = content;
+    if (content) {
+      facts[`meta.${name}`] = content;
+    }
   }
   facts["title.text"] = root.querySelector("title")?.text?.trim();
-  facts["canonical"] = root
+  facts.canonical = root
     .querySelector('link[rel="canonical"]')
     ?.getAttribute("href");
   const text = (root.text ?? "").replace(/\s+/g, " ").trim();
@@ -250,7 +278,9 @@ async function openrent(): Promise<void> {
   ];
   for (const [k, re] of labelPatterns) {
     const m = text.match(re);
-    if (m) facts[`label.${k}`] = m[0].slice(0, 120);
+    if (m) {
+      facts[`label.${k}`] = m[0].slice(0, 120);
+    }
   }
   reportGap("openrent (page facts)", surfaced, [...walkLeaves(facts)]);
 }

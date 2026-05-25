@@ -13,7 +13,9 @@
  */
 import {
   DndContext,
+  type DragEndEvent,
   DragOverlay,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   closestCorners,
@@ -21,8 +23,6 @@ import {
   useDroppable,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   Cancel01Icon,
@@ -325,10 +325,7 @@ function CardMenu({
           {PIPELINE_STATUSES.filter(
             (s) => s !== card.status && s !== "archived"
           ).map((s) => (
-            <DropdownMenuItem
-              key={s}
-              onClick={() => onMove(card.clusterId, s)}
-            >
+            <DropdownMenuItem key={s} onClick={() => onMove(card.clusterId, s)}>
               {COLUMN_LABELS[s]}
             </DropdownMenuItem>
           ))}

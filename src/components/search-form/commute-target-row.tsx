@@ -266,7 +266,10 @@ function PlacesAutocompleteInput({ onSelect }: PlacesProps) {
 
   if (status !== "ready") {
     return (
-      <div className="h-10 w-full animate-pulse rounded-md bg-card" aria-hidden />
+      <div
+        className="h-10 w-full animate-pulse rounded-md bg-card"
+        aria-hidden
+      />
     );
   }
 
