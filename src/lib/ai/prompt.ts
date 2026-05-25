@@ -52,11 +52,18 @@ export const FeaturesSchema = z.object({
   /**
    * Up to six negatives with severity. `caution` = worth knowing,
    * `problem` = likely dealbreaker. Same grounding rule as highlights.
+   *
+   * `severity` is `.catch("caution")`: Haiku occasionally returns a
+   * value outside the enum (e.g. "warning"), and without this the whole
+   * `FeaturesSchema.parse` threw — discarding the summary, highlights,
+   * and every valid watchout for that listing, leaving "What stands out"
+   * blank. Every consumer treats non-`"problem"` as caution, so coercing
+   * an unknown value to the milder tone degrades safely.
    */
   watchouts: z
     .array(
       z.object({
-        severity: z.enum(["caution", "problem"]),
+        severity: z.enum(["caution", "problem"]).catch("caution"),
         label: z.string(),
         detail: z.string().nullable(),
       })
