@@ -212,9 +212,11 @@ async function authenticateRequest(
  *     })]
  *   })
  */
-export function cloudflareAccess(
-  options: CloudflareAccessOptions
-): BetterAuthPlugin {
+// Return type is intentionally inferred (not annotated `: BetterAuthPlugin`):
+// the precise `endpoints` shape has to survive so Better Auth's `InferAPI`
+// exposes `auth.api.cloudflareAccessSession` to callers. The `satisfies`
+// below still enforces plugin conformance.
+export function cloudflareAccess(options: CloudflareAccessOptions) {
   const endpointPath = options.endpoint ?? "/cloudflare-access/session";
 
   return {
@@ -254,6 +256,20 @@ export function cloudflareAccess(
       ),
     },
   } satisfies BetterAuthPlugin;
+}
+
+/**
+ * Cheap presence check for a Cloudflare Access token on a request, used by
+ * the SSR session path to decide whether to attempt an auto-sign-in before
+ * paying for JWKS verification. Mirrors the lookup in `authenticateRequest`:
+ * the `cf-access-jwt-assertion` header (set by CF Access on the Worker) with
+ * the `CF_Authorization` cookie as fallback. Presence does not imply the
+ * token is valid — the endpoint still verifies it.
+ */
+export function hasCloudflareAccessToken(headers: Headers): boolean {
+  return Boolean(
+    headers.get(CF_ACCESS_HEADER) ?? readCookie(headers, CF_ACCESS_COOKIE)
+  );
 }
 
 /**
