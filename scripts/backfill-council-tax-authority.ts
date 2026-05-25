@@ -27,7 +27,7 @@
  */
 
 import { tasks } from "@trigger.dev/sdk";
-import { and, isNotNull, isNull } from "drizzle-orm";
+import { and, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb } from "../db";
 import * as schema from "../db/schema";
 
@@ -68,12 +68,17 @@ async function main(): Promise<void> {
   }
 
   const db = getDb();
-  // Always require a postcode (the task no-ops without one). Unless
-  // --all, skip clusters that already carry an authority code.
+  // The task resolves from a full postcode OR lat/lng, so require at
+  // least one of those (it no-ops without any location). Unless --all,
+  // skip clusters that already carry an authority code.
+  const hasLocation = or(
+    isNotNull(schema.propertyClusters.postcode),
+    isNotNull(schema.propertyClusters.lat)
+  );
   const where = args.all
-    ? isNotNull(schema.propertyClusters.postcode)
+    ? hasLocation
     : and(
-        isNotNull(schema.propertyClusters.postcode),
+        hasLocation,
         isNull(schema.propertyClusters.councilTaxAuthorityCode)
       );
   const rows = await db
