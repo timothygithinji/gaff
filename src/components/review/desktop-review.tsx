@@ -514,6 +514,13 @@ function HeroPhoto({
     meta: { category: "Review", description: "Next photo" },
   });
   const openLightbox = useCallback(() => setLightboxOpen(true), []);
+  // F enlarges the current hero photo into the lightbox. Unlike the ←/→
+  // hero keys this doesn't gate on `canPaginate` — a single photo is still
+  // worth viewing fullscreen — only on there being a photo at all.
+  useHotkey("F", openLightbox, {
+    enabled: !lightboxOpen && !isMobile && photoCount > 0,
+    meta: { category: "Review", description: "View photo fullscreen" },
+  });
 
   // Mirror the lightbox state up so the route can disable its page-level
   // keep/skip/shortlist/undo hotkeys while the lightbox is steering the
@@ -648,9 +655,17 @@ function PhotoLightbox({
   // gate on `!lightboxOpen`), so only one handler fires at a time. No
   // `description` here — the help dialog's "Previous/Next photo" entry
   // already covers both contexts; listing them twice would just confuse.
-  // Esc is handled by base-ui Dialog.
   useHotkey("ArrowLeft", () => emblaApi?.scrollPrev(), { enabled: open });
   useHotkey("ArrowRight", () => emblaApi?.scrollNext(), { enabled: open });
+  // base-ui's Dialog already closes on Esc; we register it explicitly too so
+  // it shows in the shortcuts help dialog (which only lists hotkeys carrying
+  // a `description`). Closing twice is idempotent, so racing base-ui's own
+  // handler is harmless. `enabled: false` keeps the registration visible in
+  // help even while the lightbox is shut — only the firing is suppressed.
+  useHotkey("Escape", () => onOpenChange(false), {
+    enabled: open,
+    meta: { category: "Review", description: "Close fullscreen" },
+  });
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
