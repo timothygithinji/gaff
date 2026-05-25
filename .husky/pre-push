@@ -3,3 +3,12 @@
 # Reject pushes from branches that don't match Gaff's naming convention.
 # Bot branches (dependabot/, renovate/) and `main`/`master` are allowed.
 bun scripts/validation/branch-name.ts || exit 1
+
+# Gate the push on the same checks CI runs for PRs. A push to `main`
+# triggers deploy.yml directly (no PR), so without this a direct push
+# could ship type errors / lint failures / broken tests to production.
+# `vitest run` (not the watch-mode `test` script) keeps the hook from
+# hanging.
+bun run typecheck || exit 1
+bun run lint:ci || exit 1
+bunx vitest run || exit 1
