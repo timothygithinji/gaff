@@ -14,10 +14,14 @@
  * in `src/lib/council-tax.ts`. Keeping it read-time means re-seeding next
  * year's rates updates every estimate without re-running this task.
  *
+ * Resolution needs a precise signal — a full postcode or lat/lng — to
+ * land on an exact billing authority. Most clusters only carry an
+ * outcode, which can't pin one, so we lean on lat/lng where present.
+ *
  * Fan-out: dispatched alongside enrich-epc / enrich-crime / … from
- * `clusterTask.onSuccess`. No-ops when the cluster has no postcode or
- * the postcode doesn't resolve (e.g. non-England, where we hold no
- * rates anyway).
+ * `clusterTask.onSuccess`. No-ops when the cluster has no usable
+ * location or the location doesn't resolve (e.g. non-England, where we
+ * hold no rates anyway).
  */
 
 import { logger, task } from "@trigger.dev/sdk";
@@ -54,18 +58,26 @@ export const enrichCouncilTaxTask = task({
     if (!cluster) {
       throw new Error(`enrich-council-tax: cluster ${clusterId} not found`);
     }
-    if (!cluster.postcode) {
-      logger.warn("enrich-council-tax: cluster has no postcode, skipping", {
+    const lat = cluster.lat == null ? null : Number(cluster.lat);
+    const lng = cluster.lng == null ? null : Number(cluster.lng);
+    if (!cluster.postcode && (lat == null || !Number.isFinite(lat))) {
+      logger.warn("enrich-council-tax: cluster has no usable location, skipping", {
         clusterId,
       });
       return empty;
     }
 
-    const authority = await resolveBillingAuthority(cluster.postcode);
+    const authority = await resolveBillingAuthority({
+      postcode: cluster.postcode,
+      lat: lat != null && Number.isFinite(lat) ? lat : null,
+      lng: lng != null && Number.isFinite(lng) ? lng : null,
+    });
     if (!authority) {
-      logger.log("enrich-council-tax: postcode did not resolve, skipping", {
+      logger.log("enrich-council-tax: location did not resolve, skipping", {
         clusterId,
         postcode: cluster.postcode,
+        lat,
+        lng,
       });
       return empty;
     }

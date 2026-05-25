@@ -103,35 +103,34 @@ export type BillingAuthority = {
   country: string;
 };
 
-/**
- * Resolve the council tax billing authority for a postcode via
- * postcodes.io. `codes.admin_district` is the lower-tier district /
- * unitary authority, which is the billing authority for council tax.
- *
- * Returns null when the postcode isn't found or the response lacks the
- * district code. Accepts an injected client for testing.
- */
-export async function resolveBillingAuthority(
-  postcode: string,
-  options: { client?: Client } = {}
-): Promise<BillingAuthority | null> {
-  const trimmed = postcode.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const client = options.client ?? createPostcodesClient();
-  const { data, error } = await lookupPostcode({
-    client,
-    path: { postcode: trimmed },
-  });
-  if (error || !data?.result) {
-    return null;
-  }
-  const result = data.result;
+export type ResolveLocation = {
+  /** Full postcode preferred; bare outcodes ("N11") are ignored (see below). */
+  postcode?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+};
+
+const POSTCODES_BASE_URL = "https://api.postcodes.io";
+
+// A complete UK postcode (with the inward "digit + two letters" part).
+// Crucially this REJECTS bare outcodes like "N11" — the data we hold is
+// mostly outcode-only, and an outcode can straddle several billing
+// authorities (N11 spans Barnet/Enfield/Haringey), so it can't pin one.
+const FULL_POSTCODE_RE = /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/;
+
+/** A postcodes.io result carrying the bits we read off it. */
+type PostcodeLike = {
+  codes?: { admin_district?: string };
+  admin_district?: unknown;
+  country?: unknown;
+};
+
+/** Pull the billing authority off a postcodes.io result, or null. */
+function billingAuthorityFrom(result: PostcodeLike): BillingAuthority | null {
   const code = result.codes?.admin_district;
-  // `admin_district` (the name) is typed `unknown` on the generated
-  // Postcode type, so narrow it defensively.
-  const name = typeof result.admin_district === "string" ? result.admin_district : null;
+  // `admin_district` (the name) is typed loosely upstream — narrow it.
+  const name =
+    typeof result.admin_district === "string" ? result.admin_district : null;
   if (!code || !name) {
     return null;
   }
@@ -140,4 +139,71 @@ export async function resolveBillingAuthority(
     name,
     country: typeof result.country === "string" ? result.country : "",
   };
+}
+
+type ResolveOptions = { client?: Client; fetch?: typeof fetch };
+
+/** Full-postcode → exact `/postcodes/{postcode}` lookup. */
+async function lookupFullPostcode(
+  postcode: string,
+  options: ResolveOptions
+): Promise<BillingAuthority | null> {
+  const client =
+    options.client ??
+    createPostcodesClient(options.fetch ? { fetch: options.fetch } : {});
+  const { data, error } = await lookupPostcode({
+    client,
+    path: { postcode },
+  });
+  if (error || !data?.result) {
+    return null;
+  }
+  return billingAuthorityFrom(data.result);
+}
+
+/** lat/lng → reverse-geocode to the nearest full postcode. */
+async function reverseGeocode(
+  lat: number,
+  lng: number,
+  fetchImpl: typeof fetch
+): Promise<BillingAuthority | null> {
+  const url = `${POSTCODES_BASE_URL}/postcodes?lon=${lng}&lat=${lat}&limit=1`;
+  const res = await fetchImpl(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    return null;
+  }
+  const body = (await res.json()) as { result?: PostcodeLike[] | null };
+  const nearest = Array.isArray(body.result) ? body.result[0] : null;
+  return nearest ? billingAuthorityFrom(nearest) : null;
+}
+
+/**
+ * Resolve the council tax billing authority for a location via
+ * postcodes.io. `codes.admin_district` is the lower-tier district /
+ * unitary authority, which is the billing authority for council tax.
+ *
+ * Tries the precise signals only, since we need an exact GSS code:
+ *   1. a full postcode → `/postcodes/{postcode}`,
+ *   2. else lat/lng → reverse-geocode to the nearest postcode.
+ * A bare outcode resolves to neither (the outcode endpoint returns no
+ * GSS code and can span multiple authorities), so it yields null rather
+ * than a wrong council.
+ *
+ * Accepts injected `client`/`fetch` for testing.
+ */
+export async function resolveBillingAuthority(
+  location: ResolveLocation,
+  options: ResolveOptions = {}
+): Promise<BillingAuthority | null> {
+  const pc = (location.postcode ?? "").trim().toUpperCase().replace(/\s+/g, "");
+  if (FULL_POSTCODE_RE.test(pc)) {
+    const authority = await lookupFullPostcode(pc, options);
+    if (authority) {
+      return authority;
+    }
+  }
+  if (typeof location.lat === "number" && typeof location.lng === "number") {
+    return reverseGeocode(location.lat, location.lng, options.fetch ?? fetch);
+  }
+  return null;
 }

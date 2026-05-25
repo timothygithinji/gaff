@@ -11,6 +11,7 @@ import {
   bandAmountPence,
   currentCouncilTaxYear,
   normaliseBand,
+  resolveBillingAuthority,
 } from "./council-tax";
 
 describe("bandAmountPence", () => {
@@ -58,6 +59,86 @@ describe("normaliseBand", () => {
     expect(normaliseBand("I")).toBeNull();
     expect(normaliseBand("Z")).toBeNull();
     expect(normaliseBand(null)).toBeNull();
+  });
+});
+
+describe("resolveBillingAuthority", () => {
+  const urlOf = (input: string | URL | Request): string => {
+    if (typeof input === "string") {
+      return input;
+    }
+    return input instanceof Request ? input.url : input.toString();
+  };
+
+  // A fetch stub that answers postcodes.io routes from a fixture map.
+  function stubFetch(routes: Record<string, unknown>): typeof fetch {
+    return ((input: string | URL | Request) => {
+      const url = urlOf(input);
+      const key = Object.keys(routes).find((k) => url.includes(k));
+      const headers = { "Content-Type": "application/json" };
+      if (!key) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ status: 404 }), { status: 404, headers })
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(routes[key]), { status: 200, headers })
+      );
+    }) as typeof fetch;
+  }
+
+  it("resolves a full postcode to its billing authority", async () => {
+    const fetchImpl = stubFetch({
+      "/postcodes/GU11AA": {
+        status: 200,
+        result: {
+          country: "England",
+          admin_district: "Guildford",
+          codes: { admin_district: "E07000209" },
+        },
+      },
+    });
+    const authority = await resolveBillingAuthority(
+      { postcode: "GU1 1AA" },
+      { fetch: fetchImpl }
+    );
+    expect(authority).toEqual({
+      code: "E07000209",
+      name: "Guildford",
+      country: "England",
+    });
+  });
+
+  it("reverse-geocodes from lat/lng when there's no full postcode", async () => {
+    const fetchImpl = stubFetch({
+      "/postcodes?lon=": {
+        status: 200,
+        result: [
+          {
+            country: "England",
+            admin_district: "Barnet",
+            codes: { admin_district: "E09000003" },
+          },
+        ],
+      },
+    });
+    const authority = await resolveBillingAuthority(
+      { postcode: "N11", lat: 51.61195, lng: -0.122162 },
+      { fetch: fetchImpl }
+    );
+    expect(authority?.code).toBe("E09000003");
+    expect(authority?.name).toBe("Barnet");
+  });
+
+  it("returns null for an outcode with no coordinates (can't pin an authority)", async () => {
+    // Even if the network were hit, an outcode isn't a full postcode and
+    // there are no coords, so nothing should resolve.
+    const fetchImpl = stubFetch({});
+    const authority = await resolveBillingAuthority(
+      { postcode: "N11" },
+      { fetch: fetchImpl }
+    );
+    expect(authority).toBeNull();
   });
 });
 
