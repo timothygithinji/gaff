@@ -794,6 +794,12 @@ function HeroSpecRow({
 }
 
 function HeroVerdicts({ verdicts }: { verdicts: VerdictChip[] }) {
+  // Hide the whole section (header included) when the listing has no
+  // verdicts — either it isn't AI-enriched yet, or the model grounded
+  // nothing. An empty "What stands out" heading reads as broken.
+  if (verdicts.length === 0) {
+    return null;
+  }
   return (
     <section className="flex flex-col gap-2.5">
       <div className="flex items-center gap-1.5">

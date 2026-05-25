@@ -410,13 +410,21 @@ export const enrichAiTask = task({
     };
 
     // STEP 4: INSERT ai_runs row in `running` state.
-    await db.insert(schema.aiRuns).values({
-      id: runId,
-      listingId,
-      promptVersion: PROMPT_VERSION,
-      model: AI_BUDGET.model,
-      status: "running",
-    });
+    //
+    // `id` is the stable Trigger run id, so on a retried attempt this row
+    // already exists — without onConflictDoNothing the re-insert hits a
+    // duplicate-PK error that masks the real first-attempt failure and
+    // prevents the retry from ever reaching the Anthropic call.
+    await db
+      .insert(schema.aiRuns)
+      .values({
+        id: runId,
+        listingId,
+        promptVersion: PROMPT_VERSION,
+        model: AI_BUDGET.model,
+        status: "running",
+      })
+      .onConflictDoNothing({ target: schema.aiRuns.id });
 
     // STEP 5: call Anthropic.
     const { ANTHROPIC_API_KEY } = env();
