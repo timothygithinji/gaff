@@ -13,12 +13,9 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { and, eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { getDb } from "../../db";
-import * as schema from "../../db/schema";
-import { PROMPT_VERSION } from "../lib/ai/config";
 import { getCrimeAggregate } from "../lib/police-uk";
+import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
 export type EnrichCrimePayload = {
@@ -30,14 +27,6 @@ export type EnrichCrimeOutput = {
   total: number;
   listingsTouched: number;
 };
-
-function parseNumeric(value: string | null): number | null {
-  if (value == null) {
-    return null;
-  }
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
 
 export const enrichCrimeTask = task({
   id: "enrich-crime",
@@ -74,43 +63,9 @@ export const enrichCrimeTask = task({
       return empty;
     }
 
-    const listings = await db
-      .select({ id: schema.listings.id })
-      .from(schema.listings)
-      .where(eq(schema.listings.clusterId, clusterId));
-
-    let touched = 0;
-    for (const { id: listingId } of listings) {
-      const inserted = await db
-        .insert(schema.enrichments)
-        .values({
-          id: nanoid(),
-          listingId,
-          promptVersion: PROMPT_VERSION,
-          features: {},
-          crime: aggregate,
-        })
-        .onConflictDoNothing({
-          target: [
-            schema.enrichments.listingId,
-            schema.enrichments.promptVersion,
-          ],
-        })
-        .returning({ id: schema.enrichments.id });
-
-      if (inserted.length === 0) {
-        await db
-          .update(schema.enrichments)
-          .set({ crime: aggregate })
-          .where(
-            and(
-              eq(schema.enrichments.listingId, listingId),
-              eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-            )
-          );
-      }
-      touched += 1;
-    }
+    const touched = await upsertEnrichmentForCluster(db, clusterId, {
+      crime: aggregate,
+    });
 
     logger.log("enrich-crime: done", {
       clusterId,

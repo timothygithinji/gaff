@@ -40,6 +40,7 @@ import { useHotkey } from "@tanstack/react-hotkeys";
 import { Link } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
 import { useIsMobile } from "../../hooks/use-mobile";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
@@ -477,23 +478,9 @@ function HeroPhoto({
     duration: 28,
     watchDrag: canPaginate,
   });
-  const [index, setIndex] = useState(0);
-
   // Keep our progress + counter overlays in sync with whatever slide
   // Embla settles on (drag, click, keyboard, programmatic).
-  useEffect(() => {
-    if (!emblaApi) {
-      return;
-    }
-    const sync = () => setIndex(emblaApi.selectedScrollSnap());
-    sync();
-    emblaApi.on("select", sync);
-    emblaApi.on("reInit", sync);
-    return () => {
-      emblaApi.off("select", sync);
-      emblaApi.off("reInit", sync);
-    };
-  }, [emblaApi]);
+  const index = useEmblaSelectedIndex(emblaApi);
 
   // New card → snap back to the first photo without animation. `photos`
   // is the trigger: when a new card arrives, the array identity changes
@@ -645,21 +632,7 @@ function PhotoLightbox({
     startIndex,
     watchDrag: canPaginate,
   });
-  const [index, setIndex] = useState(startIndex);
-
-  useEffect(() => {
-    if (!emblaApi) {
-      return;
-    }
-    const sync = () => setIndex(emblaApi.selectedScrollSnap());
-    sync();
-    emblaApi.on("select", sync);
-    emblaApi.on("reInit", sync);
-    return () => {
-      emblaApi.off("select", sync);
-      emblaApi.off("reInit", sync);
-    };
-  }, [emblaApi]);
+  const index = useEmblaSelectedIndex(emblaApi, startIndex);
 
   // Re-sync the carousel position when the lightbox opens to whatever
   // slide the small carousel is currently showing. Embla's `startIndex`

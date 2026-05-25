@@ -455,11 +455,10 @@ function openrentFurnished(text: string): Furnished | undefined {
  * that combination of absences indicates a wrong page (e.g. a 404 or
  * blocked response).
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: large-but-flat field mapping across DOM + regex sources.
-export function parseOpenrentDetail(html: string): ListingDetail {
-  const root = parse(html);
-  const titleText = decodeEntities(root.querySelector("title")?.text ?? "");
-
+/** Resolve the listing id from the canonical link or the og:url meta. */
+function resolveOpenrentId(
+  root: ReturnType<typeof parse>
+): string | undefined {
   const idFromCanonical = root
     .querySelector('link[rel="canonical"]')
     ?.getAttribute("href")
@@ -468,7 +467,89 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     .querySelector('meta[property="og:url"]')
     ?.getAttribute("content")
     ?.match(ID_FROM_URL_RE)?.[1];
-  const id = idFromCanonical ?? idFromOgUrl;
+  return idFromCanonical ?? idFromOgUrl;
+}
+
+/**
+ * Collect the listing gallery and the derived floorplan URL.
+ *
+ * Hero photo: meta[name=twitter:image] is the listing's first photo
+ * (https://imagescdn.openrent.co.uk/...), while og:image is OpenRent's
+ * fallback share-graphic logo — splice the better one in front when the
+ * lower-resolution gallery doesn't already include it.
+ */
+function resolveOpenrentPhotos(
+  root: ReturnType<typeof parse>,
+  id: string | undefined
+): { photos: string[]; floorplanUrl: string | undefined } {
+  const twitterImage = root
+    .querySelector('meta[name="twitter:image"]')
+    ?.getAttribute("content");
+  const heroPhoto =
+    twitterImage && OPENRENT_CDN_RE.test(twitterImage)
+      ? twitterImage
+      : undefined;
+
+  const collected = collectOpenrentPhotos(root, id);
+  const photos =
+    heroPhoto && !collected.includes(heroPhoto)
+      ? [heroPhoto, ...collected]
+      : collected;
+  return {
+    photos,
+    floorplanUrl: photos.find((u) => FLOORPLAN_FILENAME_RE.test(u)),
+  };
+}
+
+/**
+ * Read the structured `<tr>/<td>` fact table into the final-shaped detail
+ * fields. Prefer these labelled cells over free-text regex — they're far
+ * less brittle than scraping the description prose.
+ */
+function readOpenrentFactFields(root: ReturnType<typeof parse>): {
+  tenantPreferences: ReturnType<typeof openrentTenantPreferences>;
+  minimumTermMonths: ReturnType<typeof openrentMinimumTermMonths>;
+  billsIncluded: boolean | undefined;
+  councilTaxBand: string | undefined;
+  tags: string[] | undefined;
+  epcRating: string | undefined;
+  availableFrom: string | undefined;
+  furnished: ReturnType<typeof openrentFurnished>;
+} {
+  const facts = extractFactTable(root);
+
+  const factCouncilTax = facts.get("council tax band");
+  const garden = ynToBool(facts.get("garden"));
+  const parking = ynToBool(facts.get("parking"));
+  const factEpc = facts.get("epc rating");
+  const factFurnishing = facts.get("furnishing");
+
+  return {
+    tenantPreferences: openrentTenantPreferences(facts),
+    minimumTermMonths: openrentMinimumTermMonths(facts),
+    billsIncluded: ynToBool(facts.get("bills included") ?? facts.get("bills")),
+    councilTaxBand: factCouncilTax
+      ? factCouncilTax.trim().toUpperCase().match(COUNCIL_TAX_BAND_RE)?.[0]
+      : undefined,
+    tags:
+      parking === true || garden === true
+        ? [
+            ...(garden === true ? ["Garden"] : []),
+            ...(parking === true ? ["Parking"] : []),
+          ]
+        : undefined,
+    epcRating: (factEpc ?? "").toUpperCase().match(EPC_RATING_RE)?.[0],
+    availableFrom: facts.get("available from"),
+    furnished: factFurnishing ? openrentFurnished(factFurnishing) : undefined,
+  };
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: id/photo/fact extraction now lives in helpers; what remains is the inherently large-but-flat field mapping into ListingDetail, which reads better in one place than fragmented further.
+export function parseOpenrentDetail(html: string): ListingDetail {
+  const root = parse(html);
+  const titleText = decodeEntities(root.querySelector("title")?.text ?? "");
+
+  const id = resolveOpenrentId(root);
 
   const titleMatch = titleText.match(TITLE_RE);
   const latMatch = html.match(LAT_RE);
@@ -501,51 +582,14 @@ export function parseOpenrentDetail(html: string): ListingDetail {
       ?.getAttribute("content") ?? ""
   );
 
-  // Hero photo: meta[name=twitter:image] is the listing's first photo
-  // (https://imagescdn.openrent.co.uk/...), while og:image is OpenRent's
-  // fallback share-graphic logo. Surface the better one as photos[0].
-  const twitterImage = root
-    .querySelector('meta[name="twitter:image"]')
-    ?.getAttribute("content");
-  const heroPhoto =
-    twitterImage && OPENRENT_CDN_RE.test(twitterImage)
-      ? twitterImage
-      : undefined;
-
-  // Photos: OpenRent CDN URLs scoped to /listings/<id>/. Splice the
-  // twitter:image hero in front when we have one and the lower-resolution
-  // gallery doesn't already include it.
-  const collected = collectOpenrentPhotos(root, id);
-  const photos =
-    heroPhoto && !collected.includes(heroPhoto)
-      ? [heroPhoto, ...collected]
-      : collected;
-  const floorplanUrl = photos.find((u) => FLOORPLAN_FILENAME_RE.test(u));
+  const { photos, floorplanUrl } = resolveOpenrentPhotos(root, id);
 
   const bodyText = decodeEntities(root.text.replace(WHITESPACE_RE, " "));
   const epcMatch = bodyText.match(EPC_RE);
   const depositMatch = bodyText.match(DEPOSIT_RE);
   const availableMatch = bodyText.match(AVAILABLE_FROM_RE);
 
-  // Pull every <tr>/<td> fact pair so we can read structured values
-  // without relying on free-text regex.
-  const facts = extractFactTable(root);
-  const tenantPreferences = openrentTenantPreferences(facts);
-  const minimumTermMonths = openrentMinimumTermMonths(facts);
-  const billsIncluded = ynToBool(
-    facts.get("bills included") ?? facts.get("bills")
-  );
-  const factCouncilTax = facts.get("council tax band");
-  const factParking = ynToBool(facts.get("parking"));
-  const factGarden = ynToBool(facts.get("garden"));
-  const factEpc = facts.get("epc rating");
-  const factAvailableFrom = facts.get("available from");
-  // Prefer the structured Furnishing cell over the bodyText regex —
-  // less brittle when the description mentions "Unfurnished" mid-paragraph.
-  const factFurnishing = facts.get("furnishing");
-  const furnishedFromFacts = factFurnishing
-    ? openrentFurnished(factFurnishing)
-    : undefined;
+  const facts = readOpenrentFactFields(root);
 
   const streetWithPostcode = postcode ? `${street}, ${postcode}` : street;
   const addressRaw = street ? (streetWithPostcode ?? "") : ogTitle;
@@ -582,8 +626,8 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     lng,
     description: ogDescription.length > 0 ? ogDescription : undefined,
     availableFrom:
-      factAvailableFrom ?? (availableMatch ? availableMatch[1] : undefined),
-    furnished: furnishedFromFacts ?? openrentFurnished(bodyText),
+      facts.availableFrom ?? (availableMatch ? availableMatch[1] : undefined),
+    furnished: facts.furnished ?? openrentFurnished(bodyText),
     deposit: depositMatch ? toNumber(depositMatch[1]) : undefined,
     photos,
     floorplanUrl,
@@ -591,15 +635,13 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     agentPhone: undefined,
     keyFeatures: undefined,
     epcRating:
-      (factEpc ?? "").toUpperCase().match(EPC_RATING_RE)?.[0] ??
+      facts.epcRating ??
       (epcMatch ? (epcMatch[1] ?? "").toUpperCase() : undefined),
     nearestStations: undefined,
     sizeSqFt: undefined,
-    councilTaxBand: factCouncilTax
-      ? factCouncilTax.trim().toUpperCase().match(COUNCIL_TAX_BAND_RE)?.[0]
-      : undefined,
+    councilTaxBand: facts.councilTaxBand,
     publishedAt: undefined,
-    minimumTermMonths,
+    minimumTermMonths: facts.minimumTermMonths,
     letType: undefined,
     serviceChargeAnnual: undefined,
     groundRentAnnual: undefined,
@@ -608,15 +650,9 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     agentCompany: "OpenRent",
     agentBranchUrl: undefined,
     feesText: undefined,
-    tags:
-      factParking === true || factGarden === true
-        ? [
-            ...(factGarden === true ? ["Garden"] : []),
-            ...(factParking === true ? ["Parking"] : []),
-          ]
-        : undefined,
-    tenantPreferences,
-    billsIncluded,
+    tags: facts.tags,
+    tenantPreferences: facts.tenantPreferences,
+    billsIncluded: facts.billsIncluded,
   };
 }
 

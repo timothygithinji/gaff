@@ -34,6 +34,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
+import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
 import {
   type ListingFromOrigin,
   resolveFromOrigin,
@@ -272,21 +273,7 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
     duration: 28,
     watchDrag: canPaginate,
   });
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  useEffect(() => {
-    if (!emblaApi) {
-      return;
-    }
-    const sync = () => setActiveIndex(emblaApi.selectedScrollSnap());
-    sync();
-    emblaApi.on("select", sync);
-    emblaApi.on("reInit", sync);
-    return () => {
-      emblaApi.off("select", sync);
-      emblaApi.off("reInit", sync);
-    };
-  }, [emblaApi]);
+  const activeIndex = useEmblaSelectedIndex(emblaApi);
 
   const scrollTo = useCallback(
     (i: number) => emblaApi?.scrollTo(i),

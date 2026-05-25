@@ -24,28 +24,6 @@ import { getMapsKey } from "../server/functions/config";
 // `@types/google.maps` package is ~10MB of types we don't otherwise
 // need — declaring the shape locally keeps the dependency footprint
 // flat.
-type GMapsLatLng = { lat: () => number; lng: () => number };
-
-type GMapsPlace = {
-  displayName?: string;
-  formattedAddress?: string;
-  location?: GMapsLatLng;
-  fetchFields: (opts: { fields: string[] }) => Promise<void>;
-};
-
-type GMapsPlacePrediction = {
-  toPlace: () => GMapsPlace;
-};
-
-/**
- * `gmp-select` event shape. Google attaches `placePrediction` directly
- * to the event object (not under `.detail`), which is non-standard for
- * web component events but matches the published docs.
- */
-export type PlaceSelectEvent = Event & {
-  placePrediction: GMapsPlacePrediction;
-};
-
 interface PlaceAutocompleteElement extends HTMLElement {
   // No documented `value` property — the element manages its internal
   // input. We rely on the `gmp-select` event for the user's pick.

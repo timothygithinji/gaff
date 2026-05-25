@@ -61,9 +61,9 @@ import type {
   EnrichmentInput,
   ExtractContext,
   FloodInput,
-  NearestStation,
   PortalSpreadRow,
-  TenantPreferences,
+  PromptNearestStation,
+  PromptTenantPreferences,
 } from "../lib/ai/prompt";
 import { env } from "../lib/env";
 import type { ListingDetail } from "../lib/parsers/types";
@@ -141,7 +141,7 @@ function toFloodInput(
   return { riskLevel: raw.riskLevel };
 }
 
-function toNearestStations(value: unknown): NearestStation[] {
+function toNearestStations(value: unknown): PromptNearestStation[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -160,7 +160,7 @@ function toNearestStations(value: unknown): NearestStation[] {
     .filter((s) => s.name);
 }
 
-function toTenantPreferences(value: unknown): TenantPreferences | null {
+function toTenantPreferences(value: unknown): PromptTenantPreferences | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -169,7 +169,7 @@ function toTenantPreferences(value: unknown): TenantPreferences | null {
     const v = obj[k];
     return typeof v === "boolean" ? v : null;
   };
-  const out: TenantPreferences = {
+  const out: PromptTenantPreferences = {
     studentsAccepted: pick("studentsAccepted"),
     familiesAccepted: pick("familiesAccepted"),
     petsAccepted: pick("petsAccepted"),

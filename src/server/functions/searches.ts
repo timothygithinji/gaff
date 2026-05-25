@@ -49,7 +49,6 @@ import { getDb } from "../../../db";
 import {
   type Search,
   aiRuns,
-  householdMembers,
   listings,
   scrapeRuns,
   searches,
@@ -71,6 +70,7 @@ import {
   updateSchedule,
 } from "./schedules";
 import { getCurrentUser } from "./session";
+import { requireHouseholdScope } from "./shortlist-helpers.server";
 
 const SCRAPE_TASK_ID = "scrape-search";
 const SCHEDULE_TIMEZONE = "Europe/London";
@@ -93,6 +93,26 @@ async function requireHouseholdId(): Promise<string> {
     throw new Error("no_household");
   }
   return membership.householdId;
+}
+
+/**
+ * Fetch a search by id, scoped to the caller's household, or throw
+ * `not_found`. Every mutating/reading search endpoint goes through this
+ * so a user can never reach another household's row by guessing an id.
+ */
+async function findHouseholdSearch(
+  db: ReturnType<typeof getDb>,
+  searchId: string,
+  householdId: string
+) {
+  const row = await db.query.searches.findFirst({
+    where: (s, { eq: eqOp, and: andOp }) =>
+      andOp(eqOp(s.id, searchId), eqOp(s.householdId, householdId)),
+  });
+  if (!row) {
+    throw new Error("not_found");
+  }
+  return row;
 }
 
 /**
@@ -259,14 +279,7 @@ export const getSearch = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<SearchRow> => {
     const householdId = await requireHouseholdId();
     const db = getDb();
-    const row = await db.query.searches.findFirst({
-      where: (s, { eq: eqOp, and: andOp }) =>
-        andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
-    });
-    if (!row) {
-      throw new Error("not_found");
-    }
-    return row;
+    return findHouseholdSearch(db, data.id, householdId);
   });
 
 // -----------------------------------------------------------------------------
@@ -400,13 +413,7 @@ export const updateSearch = createServerFn({ method: "POST" })
     const db = getDb();
 
     // Confirm the row belongs to the caller's household before touching it.
-    const existing = await db.query.searches.findFirst({
-      where: (s, { eq: eqOp, and: andOp }) =>
-        andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
-    });
-    if (!existing) {
-      throw new Error("not_found");
-    }
+    await findHouseholdSearch(db, data.id, householdId);
 
     const location = await stampPortalRefs(data.location, data.portals);
     const excludeLocations = stripExcludeRefs(data.excludeLocations);
@@ -495,13 +502,7 @@ export const archiveSearch = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     const householdId = await requireHouseholdId();
     const db = getDb();
-    const existing = await db.query.searches.findFirst({
-      where: (s, { eq: eqOp, and: andOp }) =>
-        andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
-    });
-    if (!existing) {
-      throw new Error("not_found");
-    }
+    await findHouseholdSearch(db, data.id, householdId);
     await db
       .update(searches)
       .set({ active: false })
@@ -544,13 +545,7 @@ export const runSearchNow = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<RunSearchNowResult> => {
     const householdId = await requireHouseholdId();
     const db = getDb();
-    const search = await db.query.searches.findFirst({
-      where: (s, { eq: eqOp, and: andOp }) =>
-        andOp(eqOp(s.id, data.id), eqOp(s.householdId, householdId)),
-    });
-    if (!search) {
-      throw new Error("not_found");
-    }
+    const search = await findHouseholdSearch(db, data.id, householdId);
     if (search.portals.length === 0) {
       throw new Error("no_portals_selected");
     }
@@ -620,37 +615,10 @@ export type SearchesPortfolio = {
  */
 const PORTFOLIO_BUDGET_USD = 15.0;
 
-async function requireHouseholdMembersForPortfolio(): Promise<{
-  householdId: string;
-  memberUserIds: string[];
-  currentUserId: string;
-}> {
-  const session = await getCurrentUser();
-  if (!session) {
-    throw new Error("unauthorized");
-  }
-  const db = getDb();
-  const myMembership = await db.query.householdMembers.findFirst({
-    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
-  });
-  if (!myMembership) {
-    throw new Error("no_household");
-  }
-  const members = await db
-    .select({ userId: householdMembers.userId })
-    .from(householdMembers)
-    .where(eq(householdMembers.householdId, myMembership.householdId));
-  return {
-    householdId: myMembership.householdId,
-    memberUserIds: members.map((m) => m.userId),
-    currentUserId: session.userId,
-  };
-}
-
 export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
   async (): Promise<SearchesPortfolio> => {
     const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdMembersForPortfolio();
+      await requireHouseholdScope();
     const db = getDb();
 
     const searchRows = await db

@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
+import { TextField } from "../components/text-field";
 import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { redirectIfSignedIn } from "../lib/auth-guard";
@@ -100,25 +101,13 @@ function LoginPage() {
             }}
           >
             {(field) => (
-              <label className="block space-y-1.5">
-                <span className="text-muted-foreground text-xs uppercase tracking-widest">
-                  Email
-                </span>
-                <input
-                  autoComplete="email"
-                  className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-foreground outline-none focus:border-primary"
-                  inputMode="email"
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  type="email"
-                  value={field.state.value}
-                />
-                {field.state.meta.errors[0] ? (
-                  <span className="text-primary text-xs">
-                    {String(field.state.meta.errors[0])}
-                  </span>
-                ) : null}
-              </label>
+              <TextField
+                autoComplete="email"
+                field={field}
+                inputMode="email"
+                label="Email"
+                type="email"
+              />
             )}
           </form.Field>
 
@@ -132,24 +121,12 @@ function LoginPage() {
             }}
           >
             {(field) => (
-              <label className="block space-y-1.5">
-                <span className="text-muted-foreground text-xs uppercase tracking-widest">
-                  Password
-                </span>
-                <input
-                  autoComplete="current-password"
-                  className="w-full rounded-lg border border-border bg-muted px-3 py-2.5 text-foreground outline-none focus:border-primary"
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  type="password"
-                  value={field.state.value}
-                />
-                {field.state.meta.errors[0] ? (
-                  <span className="text-primary text-xs">
-                    {String(field.state.meta.errors[0])}
-                  </span>
-                ) : null}
-              </label>
+              <TextField
+                autoComplete="current-password"
+                field={field}
+                label="Password"
+                type="password"
+              />
             )}
           </form.Field>
 

@@ -192,7 +192,11 @@ export type PortalSpreadRow = {
   deltaFromCheapest: number | null;
 };
 
-export type TenantPreferences = {
+// AI-prompt-context shapes: this layer uses `| null` throughout (the
+// model sees explicit nulls, not absent keys), so these deliberately
+// diverge from the `?:`/undefined-convention shapes of the same concept
+// in `parsers/types.ts`. The `Prompt` prefix keeps the two distinct.
+export type PromptTenantPreferences = {
   studentsAccepted?: boolean | null;
   familiesAccepted?: boolean | null;
   petsAccepted?: boolean | null;
@@ -200,7 +204,7 @@ export type TenantPreferences = {
   dssAccepted?: boolean | null;
 };
 
-export type NearestStation = {
+export type PromptNearestStation = {
   name: string;
   distanceMiles: number | null;
   types: string[];
@@ -233,8 +237,8 @@ export type ExtractContext = {
     agentName: string | null;
     epcRatingFromPortal: string | null;
     floorplanUrl: string | null;
-    nearestStations: NearestStation[];
-    tenantPreferences: TenantPreferences | null;
+    nearestStations: PromptNearestStation[];
+    tenantPreferences: PromptTenantPreferences | null;
   };
   enrichment: {
     epcCurrent: string | null;

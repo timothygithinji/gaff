@@ -12,9 +12,14 @@
  * Empty array = no filter.
  */
 
+import {
+  MultiTogglePills,
+  type TogglePillOption,
+} from "./multi-toggle-pills";
+
 export type MustHaveValue = "garden" | "parking" | "pets";
 
-const OPTIONS: { id: MustHaveValue; label: string }[] = [
+const OPTIONS: TogglePillOption<MustHaveValue>[] = [
   { id: "garden", label: "Garden" },
   { id: "parking", label: "Parking" },
   { id: "pets", label: "Pets OK" },
@@ -26,31 +31,5 @@ type Props = {
 };
 
 export function MustHavesToggles({ value, onChange }: Props) {
-  const toggle = (id: MustHaveValue) => {
-    onChange(
-      value.includes(id) ? value.filter((v) => v !== id) : [...value, id]
-    );
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {OPTIONS.map((opt) => {
-        const active = value.includes(opt.id);
-        return (
-          <button
-            className={
-              active
-                ? "rounded-full bg-foreground px-4 py-2 font-medium text-background text-sm"
-                : "rounded-full bg-muted px-4 py-2 text-muted-foreground text-sm"
-            }
-            key={opt.id}
-            onClick={() => toggle(opt.id)}
-            type="button"
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <MultiTogglePills onChange={onChange} options={OPTIONS} value={value} />;
 }
