@@ -92,6 +92,13 @@
       "when": 1779632579500,
       "tag": "0012_common_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779669045483,
+      "tag": "0013_lowly_miss_america",
+      "breakpoints": true
     }
   ]
 }
