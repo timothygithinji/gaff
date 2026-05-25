@@ -13,7 +13,7 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
       - name: Lint
-        run: bun run lint
+        run: bun run lint:ci
 
   typecheck:
     name: Typecheck
