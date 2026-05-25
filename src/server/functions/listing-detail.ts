@@ -51,6 +51,7 @@ import {
 } from "../../lib/council-tax";
 import { env as parsedEnv } from "../../lib/env";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
+import { resolvePhotoUrl } from "./photo-url";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
 
 // -----------------------------------------------------------------------------
@@ -561,7 +562,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       .orderBy(listingPhotos.position);
 
     const photos: ListingDetailPhoto[] = photoRows.map((p) => ({
-      url: p.r2Key ?? p.url,
+      url: resolvePhotoUrl(p),
       r2Key: p.r2Key,
       position: p.position,
     }));

@@ -6,8 +6,9 @@
  * (and last visible) thumbnail gets an "+N" overlay when there are
  * more photos than thumbnail slots.
  *
- * Photos come from `listing_photos` — the route resolves the URL via
- * `r2Key ?? url` so the gallery itself is a thin presentational
+ * Photos come from `listing_photos` — the route resolves each URL via
+ * `resolvePhotoUrl` (a root-absolute `/clusters/…` R2 path, or the portal
+ * URL when uncached) so the gallery itself is a thin presentational
  * component that doesn't care about R2 vs. portal sources.
  */
 import type { ListingDetailPhoto } from "../../server/functions/listing-detail";

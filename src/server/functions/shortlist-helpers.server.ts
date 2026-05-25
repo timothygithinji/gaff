@@ -21,6 +21,7 @@ import {
   swipes,
   user,
 } from "../../../db/schema";
+import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
 import type { MutualMatch, ShortlistMember } from "./shortlist";
 
@@ -88,9 +89,7 @@ export async function hydrateClusterSummary(
     .orderBy(listingPhotos.position)
     .limit(1);
   const headlinePhoto = headlinePhotos[0];
-  const photoUrl = headlinePhoto
-    ? (headlinePhoto.r2Key ?? headlinePhoto.url)
-    : null;
+  const photoUrl = headlinePhoto ? resolvePhotoUrl(headlinePhoto) : null;
 
   const portalSpread = sortedListings
     .filter((l) => l.id !== headlineListing.id)
