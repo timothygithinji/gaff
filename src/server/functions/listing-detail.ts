@@ -29,6 +29,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import {
+  councilTaxRates,
   enrichments,
   householdMembers,
   listingPhotos,
@@ -42,6 +43,7 @@ import type {
   HighlightItem,
   WatchoutItem,
 } from "../../lib/ai/prompt";
+import { bandAmountPence } from "../../lib/council-tax";
 import { env as parsedEnv } from "../../lib/env";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { getCurrentUser } from "./session";
@@ -118,6 +120,18 @@ export type ListingDetailFineprint = {
   agentBranchUrl: string | null;
   billsIncluded: boolean | null;
   councilTaxBand: string | null;
+  /**
+   * Estimated annual council tax in whole pounds, derived from the
+   * billing authority's seeded Band D figure and the listing's band via
+   * the statutory ratios. Null when we couldn't resolve the authority,
+   * have no seeded rate for it, or the band is missing. Approximate —
+   * parish precepts vary within an authority. England only.
+   */
+  councilTaxAnnualEstimate: number | null;
+  /** Billing-authority name behind the estimate, e.g. "Guildford". */
+  councilTaxAuthority: string | null;
+  /** Tax year the estimate's rate is for, e.g. "2025-26". */
+  councilTaxYear: string | null;
   furnished: "furnished" | "unfurnished" | "part_furnished" | null;
   sizeSqFt: number | null;
   nearestStations: NearestStation[];
@@ -350,11 +364,51 @@ function asFlood(value: unknown): ListingDetailFlood | undefined {
   return;
 }
 
+/**
+ * The cluster's seeded council tax rate, when one is on file. Band D is
+ * in pence; we turn it into a whole-pounds estimate for the listing's
+ * actual band inside `buildFineprint`.
+ */
+type CouncilTaxContext = {
+  bandDPence: number;
+  authorityName: string;
+  taxYear: string;
+};
+
+/**
+ * Turn the cluster's Band D figure into a per-band, whole-pounds annual
+ * estimate. Returns all-null unless we have both a rate and a band that
+ * derive a figure, so the three fields stay consistent.
+ */
+function deriveCouncilTax(
+  band: string | null,
+  councilTax: CouncilTaxContext | null
+): {
+  annualEstimate: number | null;
+  authority: string | null;
+  year: string | null;
+} {
+  const estimatePence = councilTax
+    ? bandAmountPence(councilTax.bandDPence, band)
+    : null;
+  if (!councilTax || estimatePence === null) {
+    return { annualEstimate: null, authority: null, year: null };
+  }
+  return {
+    annualEstimate: Math.round(estimatePence / 100),
+    authority: councilTax.authorityName,
+    year: councilTax.taxYear,
+  };
+}
+
 function buildFineprint(
-  headline: typeof listings.$inferSelect
+  headline: typeof listings.$inferSelect,
+  councilTax: CouncilTaxContext | null
 ): ListingDetailFineprint {
   const d = readDetail(headline.rawJson);
   const agent = readAgent(headline.rawJson);
+  const councilTaxBand = d?.councilTaxBand ?? headline.councilTaxBand ?? null;
+  const councilTaxDerived = deriveCouncilTax(councilTaxBand, councilTax);
   return {
     deposit: d?.deposit ?? null,
     feesText: d?.feesText ?? null,
@@ -369,7 +423,10 @@ function buildFineprint(
     agentBranchUrl: agent.branchUrl,
     billsIncluded:
       typeof d?.billsIncluded === "boolean" ? d.billsIncluded : null,
-    councilTaxBand: d?.councilTaxBand ?? headline.councilTaxBand ?? null,
+    councilTaxBand,
+    councilTaxAnnualEstimate: councilTaxDerived.annualEstimate,
+    councilTaxAuthority: councilTaxDerived.authority,
+    councilTaxYear: councilTaxDerived.year,
     furnished: d?.furnished ?? null,
     sizeSqFt: d?.sizeSqFt ?? headline.sizeSqFt ?? null,
     nearestStations: Array.isArray(d?.nearestStations) ? d.nearestStations : [],
@@ -601,7 +658,25 @@ export const getListingDetail = createServerFn({ method: "GET" })
       return Object.keys(out).length > 0 ? out : undefined;
     })();
 
-    const fineprint = buildFineprint(headlineListing);
+    // Council tax rate: look up the latest seeded Band D figure for the
+    // cluster's billing authority (resolved by `enrich-council-tax`).
+    // `buildFineprint` turns it into a per-band, whole-pounds estimate.
+    let councilTaxContext: CouncilTaxContext | null = null;
+    if (cluster.councilTaxAuthorityCode) {
+      const rateRows = await db
+        .select({
+          bandDPence: councilTaxRates.bandDPence,
+          authorityName: councilTaxRates.authorityName,
+          taxYear: councilTaxRates.taxYear,
+        })
+        .from(councilTaxRates)
+        .where(eq(councilTaxRates.authorityCode, cluster.councilTaxAuthorityCode))
+        .orderBy(desc(councilTaxRates.taxYear))
+        .limit(1);
+      councilTaxContext = rateRows[0] ?? null;
+    }
+
+    const fineprint = buildFineprint(headlineListing, councilTaxContext);
 
     return {
       cluster: {

@@ -8,6 +8,7 @@ import {
   pgEnum,
   pgTable,
   pgView,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -230,6 +231,17 @@ export const propertyClusters = pgTable(
     postcode: text("postcode"),
     lat: numeric("lat", { precision: 9, scale: 6 }),
     lng: numeric("lng", { precision: 10, scale: 6 }),
+    /**
+     * GSS code of the council tax billing authority (e.g. "E07000223"),
+     * resolved once per building from `postcode` via postcodes.io
+     * (`codes.admin_district`). Joined against `council_tax_rates` at
+     * read time to estimate the annual bill from the listing's band.
+     * NULL until `enrich-council-tax` runs, or for non-England postcodes
+     * (the rate table is England-only). See `src/lib/council-tax.ts`.
+     */
+    councilTaxAuthorityCode: text("council_tax_authority_code"),
+    /** Human-readable billing-authority name, for display alongside the estimate. */
+    councilTaxAuthorityName: text("council_tax_authority_name"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => new Date())
@@ -239,6 +251,47 @@ export const propertyClusters = pgTable(
     uniqueIndex("property_clusters_normalised_address_uniq").on(
       t.normalisedAddress
     ),
+  ]
+);
+
+/**
+ * Council tax rates by billing authority, seeded once per tax year from
+ * MHCLG's "Council Tax levels set by local authorities in England"
+ * dataset (see `scripts/seed-council-tax.ts`).
+ *
+ * We store only the area-average **Band D** figure per authority; the
+ * other bands (A–H) are fixed statutory ratios of Band D (Local
+ * Government Finance Act 1992, s.5), derived at read time in
+ * `src/lib/council-tax.ts`. England only — Wales (bands A–I) and
+ * Scotland (revised E–H multipliers) use different ratios and aren't
+ * covered here.
+ *
+ * "Only so many councils": ~317 billing authorities, so the whole table
+ * is a few hundred rows refreshed annually. Keyed (authorityCode,
+ * taxYear) so historic years coexist; read paths take the latest seeded
+ * year for the authority.
+ */
+export const councilTaxRates = pgTable(
+  "council_tax_rates",
+  {
+    /** GSS code of the billing authority, matches `codes.admin_district`. */
+    authorityCode: text("authority_code").notNull(),
+    /** Billing-authority name as published in the source dataset. */
+    authorityName: text("authority_name").notNull(),
+    /** UK council tax year the figure applies to, e.g. "2025-26". */
+    taxYear: text("tax_year").notNull(),
+    /**
+     * Area-average Band D council tax in **pence** (integer to avoid
+     * float drift; source figures carry pence, e.g. £2,280.39).
+     */
+    bandDPence: integer("band_d_pence").notNull(),
+    /** Provenance — the dataset URL/file the figure was seeded from. */
+    source: text("source"),
+    fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.authorityCode, t.taxYear] }),
+    index("council_tax_rates_tax_year_idx").on(t.taxYear),
   ]
 );
 
@@ -813,3 +866,6 @@ export type NewUserState = typeof userState.$inferInsert;
 
 export type ShortlistPipeline = typeof shortlistPipeline.$inferSelect;
 export type NewShortlistPipeline = typeof shortlistPipeline.$inferInsert;
+
+export type CouncilTaxRate = typeof councilTaxRates.$inferSelect;
+export type NewCouncilTaxRate = typeof councilTaxRates.$inferInsert;

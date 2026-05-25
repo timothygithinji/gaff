@@ -86,6 +86,14 @@ function buildRows(fp: ListingDetailFineprint): DefRow[] {
   push("Available from", formatAvailableFrom(fp.availableFrom));
   push("Furnished", formatFurnished(fp.furnished));
   push("Council tax band", fp.councilTaxBand);
+  if (fp.councilTaxAnnualEstimate !== null) {
+    // Derived from the billing authority's Band D via statutory ratios —
+    // an area approximation, so it's labelled as such.
+    push(
+      "Council tax/yr",
+      `~£${fp.councilTaxAnnualEstimate.toLocaleString("en-GB")}`
+    );
+  }
   if (fp.billsIncluded !== null) {
     push("Bills included", fp.billsIncluded ? "Yes" : "No");
   }
