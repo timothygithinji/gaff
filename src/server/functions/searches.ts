@@ -195,7 +195,7 @@ const baseSearchSchema = z
      */
     exclusions: z
       .array(z.enum(["student", "retirement", "house_share"]))
-      .default([]),
+      .default(["student", "retirement", "house_share"]),
     commuteTargets: z.array(commuteTargetSchema).default([]),
     transportTargets: z.array(transportTargetSchema).default([]),
     /** Cron string, or `null` for the explicit "Off" preset. */
