@@ -105,8 +105,7 @@ export async function r2Put(input: R2PutInput): Promise<void> {
     ),
   };
   const sortedNames = Object.keys(allHeaders).sort();
-  const canonicalHeaders =
-    `${sortedNames.map((n) => `${n}:${allHeaders[n]}`).join("\n")}\n`;
+  const canonicalHeaders = `${sortedNames.map((n) => `${n}:${allHeaders[n]}`).join("\n")}\n`;
   const signedHeaders = sortedNames.join(";");
 
   const canonicalRequest = [

@@ -64,15 +64,21 @@ const SURFACED_DETAIL_KEYS = new Set<string>([
 ]);
 
 function summarise(v: unknown, max = 80): string {
-  if (v === null) return "null";
-  if (v === undefined) return "undefined";
+  if (v === null) {
+    return "null";
+  }
+  if (v === undefined) {
+    return "undefined";
+  }
   if (typeof v === "string") {
     const trimmed = v.replace(/\s+/g, " ").trim();
     return trimmed.length > max
       ? `"${trimmed.slice(0, max)}…"`
       : `"${trimmed}"`;
   }
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "number" || typeof v === "boolean") {
+    return String(v);
+  }
   if (Array.isArray(v)) {
     return `array(${v.length})${v.length > 0 ? ` first=${summarise(v[0], 40)}` : ""}`;
   }
@@ -88,11 +94,7 @@ function summarise(v: unknown, max = 80): string {
  * nodes that summarise to an array/object so we see "this exists" even
  * when we don't recurse. We cap depth at 3 so the output is readable.
  */
-function* walkLeaves(
-  node: unknown,
-  prefix = "",
-  depth = 0
-): Generator<Leaf> {
+function* walkLeaves(node: unknown, prefix = "", depth = 0): Generator<Leaf> {
   if (depth > 3) {
     yield { path: prefix, sample: summarise(node) };
     return;
@@ -121,7 +123,7 @@ function* walkLeaves(
 
 function tail(path: string): string {
   const parts = path.split(".");
-  return parts[parts.length - 1] ?? path;
+  return parts.at(-1) ?? path;
 }
 
 function reportGap(
@@ -144,7 +146,9 @@ function reportGap(
   const byRoot = new Map<string, Leaf[]>();
   for (const leaf of unsurfaced) {
     const root = leaf.path.split(".")[0] ?? leaf.path;
-    if (!byRoot.has(root)) byRoot.set(root, []);
+    if (!byRoot.has(root)) {
+      byRoot.set(root, []);
+    }
     byRoot.get(root)?.push(leaf);
   }
   const sortedRoots = [...byRoot.entries()].sort(
@@ -180,7 +184,9 @@ function analyseRightmove(): void {
   // Root the analysis at the same place rightmove.ts reads from.
   const root = extractRightmoveModel(html) as Record<string, unknown>;
   const pd = root.propertyData as Record<string, unknown> | undefined;
-  if (!pd) throw new Error("propertyData missing");
+  if (!pd) {
+    throw new Error("propertyData missing");
+  }
 
   const leaves = [...walkLeaves(pd)];
   reportGap("rightmove (propertyData)", surfaced, leaves);
@@ -204,7 +210,9 @@ function analyseZoopla(): void {
   // Locate the same listing object zoopla.ts pulls (counts + address).
   const listing =
     findInFlight(flight, (v) => {
-      if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+      if (!v || typeof v !== "object" || Array.isArray(v)) {
+        return false;
+      }
       const o = v as Record<string, unknown>;
       const hasAddress = "displayAddress" in o || "address" in o;
       const hasCounts =
@@ -212,10 +220,12 @@ function analyseZoopla(): void {
         "numBedrooms" in o;
       return hasAddress && hasCounts;
     }) ??
-    (findByKey(flight, "listingDetails") as
-      | { listingDetails?: unknown }
-      | null
-      | undefined)?.listingDetails;
+    (
+      findByKey(flight, "listingDetails") as
+        | { listingDetails?: unknown }
+        | null
+        | undefined
+    )?.listingDetails;
 
   if (!listing || typeof listing !== "object") {
     console.log("zoopla: no listing-shaped object found");
@@ -267,10 +277,12 @@ function analyseOpenrent(): void {
       root.querySelector(`meta[name="${name}"]`) ??
       root.querySelector(`meta[property="${name}"]`);
     const content = el?.getAttribute("content");
-    if (content) facts[`meta.${name}`] = content;
+    if (content) {
+      facts[`meta.${name}`] = content;
+    }
   }
   facts["title.text"] = root.querySelector("title")?.text?.trim();
-  facts["canonical"] = root
+  facts.canonical = root
     .querySelector('link[rel="canonical"]')
     ?.getAttribute("href");
   facts["jsonld.count"] = root.querySelectorAll(
@@ -281,7 +293,10 @@ function analyseOpenrent(): void {
   const text = (root.text ?? "").replace(/\s+/g, " ").trim();
   const labelPatterns: [string, RegExp][] = [
     ["minimumTenancy", /Minimum Tenancy[^:]*:?\s*([^.\n]{1,60})/i],
-    ["maximumTenants", /Maximum (?:Number of )?Tenants[^:]*:?\s*([^.\n]{1,40})/i],
+    [
+      "maximumTenants",
+      /Maximum (?:Number of )?Tenants[^:]*:?\s*([^.\n]{1,40})/i,
+    ],
     ["studentsAccepted", /Students[^?]*\?\s*([^.\n]{1,40})/i],
     ["familiesAccepted", /Families[^?]*\?\s*([^.\n]{1,40})/i],
     ["petsAccepted", /Pets[^?]*\?\s*([^.\n]{1,40})/i],
@@ -299,7 +314,9 @@ function analyseOpenrent(): void {
   ];
   for (const [k, re] of labelPatterns) {
     const m = text.match(re);
-    if (m) facts[`label.${k}`] = m[0].slice(0, 120);
+    if (m) {
+      facts[`label.${k}`] = m[0].slice(0, 120);
+    }
   }
 
   const leaves = [...walkLeaves(facts)];

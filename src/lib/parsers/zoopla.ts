@@ -36,6 +36,14 @@ const ZOOPLA_IMG_BASE = "https://lid.zoocdn.com/645/430";
 const ZOOPLA_PRICE_NUM_RE = /£?\s*([\d,]+)/;
 const ZOOPLA_RSC_REF_RE = /^\$[A-Za-z0-9]+$/;
 const COMMA_RE = /,/g;
+const BAND_LETTER_RE = /^[A-H]/;
+const DOUBLE_TRAILING_Z_RE = /ZZ$/;
+const PETS_ALLOWED_RE = /pets\s+(allowed|welcome|considered)/;
+const NO_PETS_RE = /no\s+pets|pets\s+not\s+allowed/;
+const STUDENTS_ALLOWED_RE =
+  /students?\s+(welcome|considered|friendly|accepted)/;
+const DSS_ALLOWED_RE = /dss\s+(welcome|considered|accepted)/;
+const FAMILIES_RE = /families/;
 
 function zooplaSummaryUrl(raw: Record<string, unknown>): string {
   const uris = raw.listingUris as { detail?: unknown } | undefined;
@@ -329,6 +337,7 @@ type NtsRow = {
 
 function collectNtsInfo(o: Record<string, unknown>): Map<string, string> {
   const out = new Map<string, string>();
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: probes each row of a polymorphic info array for label/value pairs across Zoopla's several shapes; the branches are independent and clearer inline.
   const seed = (arr: unknown): void => {
     if (!Array.isArray(arr)) {
       return;
@@ -357,9 +366,7 @@ function collectNtsInfo(o: Record<string, unknown>): Map<string, string> {
   return out;
 }
 
-function zooplaCouncilTaxBand(
-  nts: Map<string, string>
-): string | undefined {
+function zooplaCouncilTaxBand(nts: Map<string, string>): string | undefined {
   const raw =
     nts.get("council_tax_band") ??
     nts.get("counciltaxband") ??
@@ -367,7 +374,7 @@ function zooplaCouncilTaxBand(
   if (!raw) {
     return undefined;
   }
-  const letter = raw.trim().toUpperCase().match(/^[A-H]/);
+  const letter = raw.trim().toUpperCase().match(BAND_LETTER_RE);
   return letter ? letter[0] : raw;
 }
 
@@ -378,7 +385,9 @@ function zooplaPublishedAt(o: Record<string, unknown>): string | undefined {
   }
   // Zoopla emits e.g. "2026-05-23T18:25:59" without a TZ; treat it as UTC
   // for storage consistency. Bad strings drop through to `undefined`.
-  const iso = raw.includes("T") ? `${raw}Z`.replace(/ZZ$/, "Z") : raw;
+  const iso = raw.includes("T")
+    ? `${raw}Z`.replace(DOUBLE_TRAILING_Z_RE, "Z")
+    : raw;
   return Number.isNaN(new Date(iso).getTime()) ? undefined : iso;
 }
 
@@ -406,6 +415,7 @@ function zooplaSizeSqFt(o: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: collects tags from several optional Zoopla shapes (tagsV2, flags, badges) — independent guarded reads that read clearer inline than split apart.
 function zooplaTags(o: Record<string, unknown>): string[] | undefined {
   const out: string[] = [];
   const tagsV2 = o.tagsV2;
@@ -494,18 +504,18 @@ function zooplaTenantPreferences(
     return undefined;
   }
   const out: TenantPreferences = {};
-  if (/pets\s+(allowed|welcome|considered)/.test(blob)) {
+  if (PETS_ALLOWED_RE.test(blob)) {
     out.petsAccepted = true;
-  } else if (/no\s+pets|pets\s+not\s+allowed/.test(blob)) {
+  } else if (NO_PETS_RE.test(blob)) {
     out.petsAccepted = false;
   }
-  if (/students?\s+(welcome|considered|friendly|accepted)/.test(blob)) {
+  if (STUDENTS_ALLOWED_RE.test(blob)) {
     out.studentsAccepted = true;
   }
-  if (/dss\s+(welcome|considered|accepted)/.test(blob)) {
+  if (DSS_ALLOWED_RE.test(blob)) {
     out.dssAccepted = true;
   }
-  if (/families/.test(blob)) {
+  if (FAMILIES_RE.test(blob)) {
     out.familiesAccepted = true;
   }
   return Object.keys(out).length > 0 ? out : undefined;

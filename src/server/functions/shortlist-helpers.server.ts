@@ -21,11 +21,8 @@ import {
   swipes,
   user,
 } from "../../../db/schema";
-import type {
-  MutualMatch,
-  ShortlistMember,
-} from "./shortlist";
 import { getCurrentUser } from "./session";
+import type { MutualMatch, ShortlistMember } from "./shortlist";
 
 /** First grapheme of an email address, upper-cased for avatar initials. */
 function initialOf(email: string): string {
@@ -48,7 +45,6 @@ type ClusterSummaryInput = {
  * Returns `null` when the cluster has no listings backing it (this can
  * happen briefly during scrape / cluster churn).
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: cluster hydration is a single linear pipeline (sort → headline → photos → spread → voters); splitting would scatter the data flow across files.
 export async function hydrateClusterSummary(
   db: ReturnType<typeof getDb>,
   input: ClusterSummaryInput

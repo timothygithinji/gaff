@@ -7,10 +7,12 @@
       "node_modules",
       "coverage",
       ".wrangler",
+      "drizzle",
       "src/routeTree.gen.ts",
       "src/lib/api-clients/epc/generated",
       "src/lib/api-clients/postcodes-io/generated",
-      ".fallowrc.json"
+      ".fallowrc.json",
+      "wrangler.jsonc"
     ]
   },
   "javascript": {
@@ -19,6 +21,7 @@
       "semicolons": "always"
     },
     "globals": [
+      "Bun",
       "KVNamespace",
       "R2Bucket",
       "DurableObject",
@@ -32,12 +35,18 @@
   },
   "overrides": [
     {
-      "include": ["scripts/**"],
+      "include": ["scripts/**", ".claude/**", "tests/**"],
       "linter": {
         "rules": {
           "suspicious": {
             "noConsole": "off",
             "noConsoleLog": "off"
+          },
+          "performance": {
+            "useTopLevelRegex": "off"
+          },
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
           }
         }
       }

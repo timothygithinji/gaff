@@ -12,6 +12,7 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { ReactNode } from "react";
 import {
   PIPELINE_STATUSES,
   type PipelineArchivedReason,
@@ -283,7 +284,7 @@ function ActionBtn({
   disabled,
   label,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
   label: string;

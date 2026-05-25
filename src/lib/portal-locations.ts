@@ -45,11 +45,11 @@ import type {
  * the right portal toggle.
  */
 export class PortalResolveError extends Error {
-  constructor(
-    public readonly portal: "rightmove" | "zoopla" | "openrent",
-    message: string
-  ) {
+  readonly portal: "rightmove" | "zoopla" | "openrent";
+
+  constructor(portal: "rightmove" | "zoopla" | "openrent", message: string) {
     super(message);
+    this.portal = portal;
     this.name = "PortalResolveError";
   }
 }
@@ -105,10 +105,12 @@ async function fetchRightmoveTypeahead(
  * tokens like "uk", "n", "of" carry no disambiguation signal and just
  * inflate scores uniformly.
  */
+const SCORING_TOKEN_SPLIT_RE = /[^a-z0-9]+/;
+
 function tokeniseForScoring(s: string): Set<string> {
   const tokens = s
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    .split(SCORING_TOKEN_SPLIT_RE)
     .filter((t) => t.length > 2);
   return new Set(tokens);
 }
@@ -169,13 +171,17 @@ export async function resolveRightmove(
   // Rightmove's own ordering (first wins), which empirically prefers
   // the narrower neighbourhood over the wider borough — desirable.
   const fmtTokens = tokeniseForScoring(loc.formattedAddress);
-  // The `regions.length === 0` guard above means [0] is defined, but
-  // TS with `noUncheckedIndexedAccess` still types it as possibly
-  // undefined — assert with `!` once and walk the tail.
-  let best = regions[0]!;
+  // `regions` is non-empty (guarded above), but noUncheckedIndexedAccess
+  // still types indexed access as possibly-undefined. Destructure the
+  // head + walk the tail with for-of so every access is provably defined
+  // without a non-null assertion.
+  const [firstRegion, ...restRegions] = regions;
+  if (!firstRegion) {
+    throw new Error("no candidate regions to rank");
+  }
+  let best = firstRegion;
   let bestScore = scoreMatch(best.displayName, fmtTokens);
-  for (let i = 1; i < regions.length; i += 1) {
-    const m = regions[i]!;
+  for (const m of restRegions) {
     const s = scoreMatch(m.displayName, fmtTokens);
     if (s > bestScore) {
       best = m;

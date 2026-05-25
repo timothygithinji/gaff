@@ -36,9 +36,9 @@ import {
 import { type ShortlistTab, ShortlistTabs } from "../components/shortlist/tabs";
 import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
-import {
-  type PipelineArchivedReason,
-  type PipelineStatus,
+import type {
+  PipelineArchivedReason,
+  PipelineStatus,
 } from "../lib/pipeline-status";
 import { queryKeys } from "../lib/query-keys";
 import {
@@ -147,7 +147,6 @@ function totalPipelineCount(columns: PipelineColumns): number {
   );
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: this is the route component; it composes tabs + pipeline + member lists + mutations into one screen and splitting it up would scatter the state.
 function ShortlistPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
