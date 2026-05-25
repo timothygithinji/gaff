@@ -32,6 +32,16 @@ export type Env = TextEnv & {
 const startFetch = createStartHandler(defaultStreamHandler);
 
 /**
+ * Listing-photo object paths. `cache-photos.ts` stores R2 objects under
+ * keys shaped exactly like the request path minus the leading slash:
+ *   clusters/{clusterId}/listings/{listingId}/{position}-{hash}.{ext}
+ * so the pathname IS the R2 key. Keys embed a content hash, so responses
+ * are immutable and safe to cache hard.
+ */
+const PHOTO_PATH_RE =
+  /^\/clusters\/[^/]+\/listings\/[^/]+\/[^/]+\.(?:jpe?g|png|webp|gif|avif)$/i;
+
+/**
  * Custom server entry. `createServerEntry` defines the universal fetch
  * handler shape that both Cloudflare Workers and Node.js adapters consume.
  * Worker bindings come in via `cloudflare:workers`'s `env` import.
@@ -43,11 +53,27 @@ const startFetch = createStartHandler(defaultStreamHandler);
  *   - everything else   → TanStack Start SSR
  */
 export default createServerEntry({
-  fetch(request: Request) {
+  async fetch(request: Request) {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
       return Response.json({ ok: true });
+    }
+
+    // Serve cached listing photos straight off the R2 bucket. Without this
+    // branch these paths fall through to SSR and 404, so any listing whose
+    // photos were cached (r2Key set) shows broken images.
+    if (PHOTO_PATH_RE.test(url.pathname)) {
+      const key = decodeURIComponent(url.pathname.slice(1));
+      const object = await (env as unknown as Env).BUCKET.get(key);
+      if (!object) {
+        return new Response("Not found", { status: 404 });
+      }
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set("etag", object.httpEtag);
+      headers.set("cache-control", "public, max-age=31536000, immutable");
+      return new Response(object.body, { headers });
     }
 
     if (url.pathname.startsWith("/api/auth/")) {
