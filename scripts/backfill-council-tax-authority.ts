@@ -88,7 +88,7 @@ async function main(): Promise<void> {
 
   const limited = args.limit ? rows.slice(0, args.limit) : rows;
   console.log(
-    `Found ${rows.length} cluster(s) ${args.all ? "with a postcode" : "needing an authority code"}; backfilling ${limited.length}`
+    `Found ${rows.length} cluster(s) ${args.all ? "with a location" : "needing an authority code"}; backfilling ${limited.length}`
   );
 
   if (args.dryRun) {
