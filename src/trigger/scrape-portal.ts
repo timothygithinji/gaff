@@ -233,6 +233,41 @@ function filterByExcludeLocations(
 }
 
 /**
+ * Drop listings whose monthly price falls outside the search's band.
+ *
+ * Every portal accepts price params in its search URL, but they don't all
+ * honour them — OpenRent in particular returns its full result set
+ * regardless of `prices_min`/`prices_max` (a tight band and a wide band come
+ * back identical). So we re-check server-side rather than trust the portal,
+ * comparing against the same `price_monthly` we store and the user sees.
+ *
+ * Listings with an unknown price (the parser couldn't read one) are kept: we
+ * can't prove they breach the band, and dropping them would lose valid
+ * listings to a parse miss. `minPrice`/`maxPrice` are inclusive bounds.
+ */
+export function filterByPriceRange(
+  summaries: ListingSummary[],
+  minPrice: number | null,
+  maxPrice: number | null
+): ListingSummary[] {
+  if (minPrice == null && maxPrice == null) {
+    return summaries;
+  }
+  return summaries.filter((s) => {
+    if (typeof s.priceMonthly !== "number") {
+      return true;
+    }
+    if (minPrice != null && s.priceMonthly < minPrice) {
+      return false;
+    }
+    if (maxPrice != null && s.priceMonthly > maxPrice) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
  * The "mutable" subset of `listings` — every column we want refreshed
  * each time the same portal listing reappears in a search sweep.
  * `first_seen_at`, `id`, and the key columns (search/portal/portalListingId)
@@ -588,8 +623,20 @@ export const scrapePortalTask = task({
     }
 
     const parsed = parsePortalHtml(portal, res.html);
-    const summaries = filterByExcludeLocations(parsed, search.excludeLocations);
-    const excludedCount = parsed.length - summaries.length;
+    const locationFiltered = filterByExcludeLocations(
+      parsed,
+      search.excludeLocations
+    );
+    // Re-check price server-side — the portal filters can't be trusted (see
+    // `filterByPriceRange`), so without this listings outside the band leak
+    // into the search and the review queue.
+    const summaries = filterByPriceRange(
+      locationFiltered,
+      search.minPrice,
+      search.maxPrice
+    );
+    const excludedCount = parsed.length - locationFiltered.length;
+    const excludedByPrice = locationFiltered.length - summaries.length;
     const { totalSeen, newCount, touchedPortalListingIds } =
       await upsertListings(db, searchId, portal, summaries);
     const totalListingsFound = totalSeen;
@@ -602,6 +649,7 @@ export const scrapePortalTask = task({
       listingsFound: totalSeen,
       newCount,
       excludedByLocation: excludedCount,
+      excludedByPrice,
     });
 
     // Resolve the touched portal ids to `listings.id` for rows whose
