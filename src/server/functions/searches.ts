@@ -48,7 +48,6 @@ import { z } from "zod";
 import { getDb } from "../../../db";
 import {
   type Search,
-  aiRuns,
   listings,
   scrapeRuns,
   searches,
@@ -594,8 +593,6 @@ export type SearchesPortfolioTotals = {
   /** % delta vs last week. 0 when last week is 0 (no division-by-zero). */
   listingsThisWeekDeltaPct: number;
   inQueueTotal: number;
-  spendThisMonthUsd: number;
-  spendCapUsd: number;
 };
 
 export type SearchesPortfolio = {
@@ -608,12 +605,6 @@ export type SearchesPortfolio = {
    */
   pulseLast7Days: number[];
 };
-
-/**
- * Hardcoded monthly budget cap — move to a settings table when the
- * cap needs to be configurable per household.
- */
-const PORTFOLIO_BUDGET_USD = 15.0;
 
 export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
   async (): Promise<SearchesPortfolio> => {
@@ -633,9 +624,6 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
     const startOfThisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const startOfLastWeek = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
     const start30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const startOfMonth = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-    );
 
     if (searchIds.length === 0) {
       return {
@@ -647,14 +635,12 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
           listingsLastWeek: 0,
           listingsThisWeekDeltaPct: 0,
           inQueueTotal: 0,
-          spendThisMonthUsd: 0,
-          spendCapUsd: PORTFOLIO_BUDGET_USD,
         },
         pulseLast7Days: new Array(7).fill(0),
       };
     }
 
-    // Fire everything in parallel — five small queries.
+    // Fire everything in parallel — seven small queries.
     const [
       thisWeekListings,
       lastWeekListings,
@@ -663,7 +649,6 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       clusterRows,
       mySwipesRows,
       householdSkipRows,
-      spendRows,
     ] = await Promise.all([
       // Listings per search in the last 7d. We also need each row's
       // firstSeenAt so we can bucket the pulse chart in JS.
@@ -740,33 +725,6 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
         .where(
           and(inArray(swipes.userId, memberUserIds), eq(swipes.outcome, "skip"))
         ),
-      // Spend this month (scrape + ai). Cost is stored numeric → string
-      // in the row; cast + sum.
-      Promise.all([
-        db
-          .select({
-            total: sql<string>`COALESCE(SUM(${scrapeRuns.costUsd}), 0)`,
-          })
-          .from(scrapeRuns)
-          .where(
-            and(
-              inArray(scrapeRuns.searchId, searchIds),
-              gte(scrapeRuns.startedAt, startOfMonth)
-            )
-          ),
-        db
-          .select({
-            total: sql<string>`COALESCE(SUM(${aiRuns.costUsd}), 0)`,
-          })
-          .from(aiRuns)
-          .innerJoin(listings, eq(listings.id, aiRuns.listingId))
-          .where(
-            and(
-              inArray(listings.searchId, searchIds),
-              gte(aiRuns.startedAt, startOfMonth)
-            )
-          ),
-      ]),
     ]);
 
     const { listingsThisWeekBySearch, pulseLast7Days } = bucketListingsAndPulse(
@@ -796,10 +754,6 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
         ? 0
         : ((listingsThisWeek - listingsLastWeek) / listingsLastWeek) * 100;
 
-    const [scrapeSpend, aiSpend] = spendRows;
-    const spendThisMonthUsd =
-      Number(scrapeSpend[0]?.total ?? 0) + Number(aiSpend[0]?.total ?? 0);
-
     const inQueueTotal = countDistinct(queueClustersBySearch);
 
     return {
@@ -811,8 +765,6 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
         listingsLastWeek,
         listingsThisWeekDeltaPct,
         inQueueTotal,
-        spendThisMonthUsd,
-        spendCapUsd: PORTFOLIO_BUDGET_USD,
       },
       pulseLast7Days,
     };

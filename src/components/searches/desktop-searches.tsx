@@ -99,10 +99,6 @@ function MetricStrip({
   totals: SearchesPortfolio["totals"];
 }) {
   const deltaLabel = formatDelta(totals.listingsThisWeekDeltaPct);
-  const spendPct =
-    totals.spendCapUsd === 0
-      ? 0
-      : Math.round((totals.spendThisMonthUsd / totals.spendCapUsd) * 100);
   return (
     <div className="mx-10 flex items-stretch border-bone border-y">
       <Metric
@@ -122,12 +118,6 @@ function MetricStrip({
         label="In your queue"
         meta="to review"
         value={totals.inQueueTotal}
-      />
-      <span className="w-px self-stretch bg-bone" />
-      <Metric
-        label="Spend · this month"
-        meta={`${spendPct}% of $${totals.spendCapUsd.toFixed(0)} cap`}
-        rawValue={`$${totals.spendThisMonthUsd.toFixed(2)}`}
       />
     </div>
   );
