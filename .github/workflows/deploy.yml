@@ -19,6 +19,31 @@ jobs:
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN }}
 
+      # Sync the Worker's encrypted secrets from Doppler on every deploy.
+      #
+      # `wrangler deploy` ships code but never touches secrets — it leaves
+      # whatever set already exists on the Worker. CI, meanwhile, always
+      # builds *correct code* against that (possibly stale) secret set. Since
+      # `src/lib/env.ts` validates the ENTIRE schema on the first `env()` call
+      # — which the root route's `beforeLoad` hits on every request — a single
+      # missing secret 500s the whole app while `dev:prod` stays green (it has
+      # the full Doppler set in `process.env`). That exact drift took prod down
+      # once already. Syncing here makes the Worker's secrets track Doppler.
+      #
+      # Runs BEFORE deploy so a newly-required secret is in place before the
+      # code that reads it goes live. `--no-file` + stdin keeps secrets in
+      # memory (never on disk, per the repo's "Doppler runtime injection only"
+      # convention); `secret bulk` uploads them in one shot and prints only
+      # names, never values. The `doppler` CLI is installed by the
+      # fetch-secrets step above. Requires the Worker to already exist — it's
+      # first created (with initial secrets) by `t-stack provision`.
+      - name: Sync Worker secrets to Cloudflare
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: doppler secrets download --no-file --format=json | bunx wrangler secret bulk --name gaff
+
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
