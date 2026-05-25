@@ -329,6 +329,43 @@ function asEpcRating(value: unknown): string | undefined {
 }
 
 /**
+ * SQL predicate (requires `searches` joined on `listings.searchId`): the
+ * listing's monthly price sits within its own search's band. Bounds are
+ * inclusive, a null band edge is unbounded, and a null price is kept (the
+ * parser couldn't read one — mirrors `filterByPriceRange` on the scrape
+ * side). This is the read-time backstop: rows ingested before the
+ * scrape-side filter existed — or any that slip through — never reach the
+ * queue or a review card.
+ */
+function listingWithinSearchBand() {
+  return sql`(
+    ${listings.priceMonthly} IS NULL
+    OR (
+      (${searches.minPrice} IS NULL OR ${listings.priceMonthly} >= ${searches.minPrice})
+      AND (${searches.maxPrice} IS NULL OR ${listings.priceMonthly} <= ${searches.maxPrice})
+    )
+  )`;
+}
+
+/** JS twin of {@link listingWithinSearchBand} for already-fetched rows. */
+function priceWithinBand(
+  price: number | null,
+  min: number | null,
+  max: number | null
+): boolean {
+  if (price == null) {
+    return true;
+  }
+  if (min != null && price < min) {
+    return false;
+  }
+  if (max != null && price > max) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * The "ranked queue" step of the review pipeline, shared by
  * `getNextReviewCard` and `getReviewQueue`.
  *
@@ -377,10 +414,12 @@ async function loadRankedQueueClusterIds(
       ),
     })
     .from(listings)
+    .innerJoin(searches, eq(listings.searchId, searches.id))
     .where(
       and(
         isNotNull(listings.clusterId),
-        inArray(listings.searchId, activeSearchIds)
+        inArray(listings.searchId, activeSearchIds),
+        listingWithinSearchBand()
       )
     )
     .groupBy(listings.clusterId)
@@ -486,7 +525,23 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         listings.priceMonthly
       );
 
-    const sortedListings = [...clusterListings].sort((a, b) => {
+    // Read-time price guard: only consider listings within their own
+    // search's band, so the headline (and "ALSO ON" set derived from it)
+    // can't be an out-of-band listing even when the cluster qualified via a
+    // sibling that IS in band.
+    const bandBySearchId = new Map(
+      activeSearches.map(
+        (s) => [s.id, { min: s.minPrice, max: s.maxPrice }] as const
+      )
+    );
+    const inBandListings = clusterListings.filter((l) => {
+      const band = bandBySearchId.get(l.searchId);
+      return band
+        ? priceWithinBand(l.priceMonthly, band.min, band.max)
+        : true;
+    });
+
+    const sortedListings = [...inBandListings].sort((a, b) => {
       if (a.priceMonthly == null && b.priceMonthly == null) {
         return 0;
       }
@@ -672,10 +727,12 @@ async function hydrateQueueItems(
       priceMonthly: listings.priceMonthly,
     })
     .from(listings)
+    .innerJoin(searches, eq(listings.searchId, searches.id))
     .where(
       and(
         inArray(listings.clusterId, upcomingClusterIds),
-        inArray(listings.searchId, activeSearchIds)
+        inArray(listings.searchId, activeSearchIds),
+        listingWithinSearchBand()
       )
     );
 
