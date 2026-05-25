@@ -170,11 +170,6 @@ function main(): void {
   writeFileSync(TARGET_PATH, rewritten);
   log.success(`Wrote ${TARGET_PATH} (${rewritten.split("\n").length} lines)`);
 
-  // Format with biome so the output matches the rest of the codebase.
-  spawnSync("bunx", ["biome", "format", "--write", TARGET_PATH], {
-    stdio: "ignore",
-  });
-
   // Sanity check — typecheck the new file so we fail loudly if the CLI's
   // output drifted in a way our regex didn't anticipate.
   try {
