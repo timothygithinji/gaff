@@ -4,6 +4,8 @@ import {
   defaultStreamHandler,
 } from "@tanstack/react-start/server";
 import { createServerEntry } from "@tanstack/react-start/server-entry";
+import { and, eq } from "drizzle-orm";
+import { getDb, listingPhotos } from "../db";
 import { createAuth } from "./lib/auth";
 import { parseEnv } from "./lib/env";
 
@@ -66,14 +68,39 @@ export default createServerEntry({
     if (PHOTO_PATH_RE.test(url.pathname)) {
       const key = decodeURIComponent(url.pathname.slice(1));
       const object = await (env as unknown as Env).BUCKET.get(key);
-      if (!object) {
-        return new Response("Not found", { status: 404 });
+      if (object) {
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+        headers.set("cache-control", "public, max-age=31536000, immutable");
+        return new Response(object.body, { headers });
       }
-      const headers = new Headers();
-      object.writeHttpMetadata(headers);
-      headers.set("etag", object.httpEtag);
-      headers.set("cache-control", "public, max-age=31536000, immutable");
-      return new Response(object.body, { headers });
+      // Object isn't in the bound bucket. This is the normal case in local
+      // dev: `cache-photos` uploads to the real remote bucket over the S3
+      // API, so the miniflare bucket `vite dev` binds stays empty — yet the
+      // DB (especially under `dev:prod`) still hands back `clusters/…` keys.
+      // Fall back to the portal URL stored alongside the key so images
+      // render instead of 404ing. In prod the object normally exists so we
+      // never reach here, but an evicted object now degrades gracefully too.
+      // The key is `clusters/{cluster}/listings/{listingId}/{file}`; pull the
+      // listingId out so the lookup rides the listing_id index.
+      const listingId = key.split("/")[3];
+      if (listingId) {
+        const [row] = await getDb()
+          .select({ url: listingPhotos.url })
+          .from(listingPhotos)
+          .where(
+            and(
+              eq(listingPhotos.listingId, listingId),
+              eq(listingPhotos.r2Key, key)
+            )
+          )
+          .limit(1);
+        if (row?.url) {
+          return Response.redirect(row.url, 302);
+        }
+      }
+      return new Response("Not found", { status: 404 });
     }
 
     if (url.pathname.startsWith("/api/auth/")) {
