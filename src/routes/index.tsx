@@ -860,6 +860,7 @@ function buildHeroData(card: ReviewCard): DesktopReviewData["hero"] {
     portalsAlsoOn,
     features,
     epcRating,
+    epcIsEstimate,
     commuteMinutes,
   } = card;
   const photos =
@@ -882,7 +883,7 @@ function buildHeroData(card: ReviewCard): DesktopReviewData["hero"] {
       bedrooms: headlineListing.bedrooms,
       bathrooms: headlineListing.bathrooms,
       sizeSqFt: headlineListing.sizeSqFt,
-      epc: epcRating ?? null,
+      epc: epcRating ? (epcIsEstimate ? `~${epcRating}` : epcRating) : null,
       commuteMinutes,
     }),
     verdicts: buildVerdicts(features),

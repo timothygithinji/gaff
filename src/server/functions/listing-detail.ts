@@ -25,6 +25,7 @@
  * to a search owned by the caller's household. Anything else 404s.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { tasks } from "@trigger.dev/sdk";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
@@ -34,6 +35,7 @@ import {
   householdMembers,
   listingPhotos,
   listings,
+  propertyClusters,
   searches,
   swipes,
   user,
@@ -64,6 +66,8 @@ export type ListingDetailCluster = {
   postcode: string | null;
   lat: string | null;
   lng: string | null;
+  /** Manual full-address override (see `setClusterAddress`), or null. */
+  userAddress: string | null;
 };
 
 export type ListingDetailHeadline = {
@@ -99,6 +103,17 @@ export type ListingDetailEpc = {
   rating: string;
   potential?: string;
   expiresOn?: string;
+  /**
+   * How the rating was derived. "exact" = matched this building's
+   * certificate; "estimate" = the typical rating for the property's full
+   * postcode (the listing didn't expose a house number to match on). The
+   * UI labels the latter as an approximation.
+   */
+  source?: "exact" | "estimate";
+  /** Estimate only: the spread of ratings across the postcode, e.g. C…E. */
+  range?: { min: string; max: string };
+  /** Estimate only: how many certificates the typical rating drew from. */
+  sampleSize?: number;
 };
 
 /**
@@ -286,15 +301,28 @@ function asEpc(value: unknown): ListingDetailEpc | undefined {
     currentRating?: unknown;
     potentialRating?: unknown;
     expiresOn?: unknown;
+    source?: unknown;
+    range?: unknown;
+    sampleSize?: unknown;
   };
   if (typeof obj.currentRating !== "string") {
     return;
   }
+  const range =
+    obj.range &&
+    typeof obj.range === "object" &&
+    typeof (obj.range as { min?: unknown }).min === "string" &&
+    typeof (obj.range as { max?: unknown }).max === "string"
+      ? (obj.range as { min: string; max: string })
+      : undefined;
   return {
     rating: obj.currentRating,
     potential:
       typeof obj.potentialRating === "string" ? obj.potentialRating : undefined,
     expiresOn: typeof obj.expiresOn === "string" ? obj.expiresOn : undefined,
+    source: obj.source === "estimate" || obj.source === "exact" ? obj.source : undefined,
+    ...(range ? { range } : {}),
+    ...(typeof obj.sampleSize === "number" ? { sampleSize: obj.sampleSize } : {}),
   };
 }
 
@@ -685,6 +713,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
         postcode: cluster.postcode,
         lat: cluster.lat,
         lng: cluster.lng,
+        userAddress: cluster.userAddress ?? null,
       },
       headline: {
         listingId: headlineListing.id,
@@ -714,4 +743,56 @@ export const getListingDetail = createServerFn({ method: "GET" })
       searchId: headlineListing.searchId,
       googleMapsApiKey: parsedEnv().GOOGLE_MAPS_API_KEY,
     };
+  });
+
+const setClusterAddressSchema = z.object({
+  clusterId: z.string().trim().min(1),
+  // The full address the user pinned from the photos + Google Maps. An
+  // empty string clears the override (back to the scraped address).
+  address: z.string().trim().max(300),
+});
+
+/**
+ * Manually set a building's full address so EPC can resolve the exact
+ * certificate instead of a postcode-level estimate (see `enrich-epc`).
+ * The portals usually withhold the door number; the user reads it off the
+ * listing photos against Google Maps and pins it here. Writes the override
+ * onto the cluster and re-fires `enrich-epc` to re-resolve with it.
+ *
+ * Authz: the cluster must have a listing in one of the caller's
+ * household's searches — you can only correct a building you can see.
+ */
+export const setClusterAddress = createServerFn({ method: "POST" })
+  .inputValidator(setClusterAddressSchema)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const { householdId } = await requireHouseholdScope();
+    const db = getDb();
+
+    const owned = await db
+      .select({ id: listings.id })
+      .from(listings)
+      .innerJoin(searches, eq(listings.searchId, searches.id))
+      .where(
+        and(
+          eq(listings.clusterId, data.clusterId),
+          eq(searches.householdId, householdId)
+        )
+      )
+      .limit(1);
+    if (owned.length === 0) {
+      throw new Error("cluster_not_found");
+    }
+
+    const userAddress = data.address.length > 0 ? data.address : null;
+    await db
+      .update(propertyClusters)
+      .set({ userAddress })
+      .where(eq(propertyClusters.id, data.clusterId));
+
+    // Re-resolve EPC with the corrected address. Fire-and-forget — the
+    // listing-detail query is invalidated client-side and will pick up the
+    // refreshed enrichment on its next read.
+    await tasks.trigger("enrich-epc", { clusterId: data.clusterId });
+
+    return { ok: true };
   });

@@ -57,6 +57,7 @@ export function ReviewCardView({ card }: Props) {
     portalsAlsoOn,
     features,
     epcRating,
+    epcIsEstimate,
     commuteMinutes,
     nearestStation,
     broadband,
@@ -143,6 +144,7 @@ export function ReviewCardView({ card }: Props) {
         <InfoRow
           broadbandMbps={broadband?.downloadMbps ?? null}
           commuteMinutes={commuteMinutes}
+          epcIsEstimate={epcIsEstimate}
           epcRating={epcRating ?? null}
           stationName={nearestStation?.name ?? null}
           walkMinutes={nearestStation?.walkMinutes ?? null}

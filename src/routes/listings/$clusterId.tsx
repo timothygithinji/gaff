@@ -45,6 +45,16 @@ import { PortalCrossList } from "../../components/listing-detail/portal-cross-li
 import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
 import { WhereItSits } from "../../components/listing-detail/where-it-sits";
+import { Button } from "../../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
@@ -56,6 +66,7 @@ import { queryKeys } from "../../lib/query-keys";
 import {
   type ListingDetailPayload,
   getListingDetail,
+  setClusterAddress,
 } from "../../server/functions/listing-detail";
 import { recordSwipe } from "../../server/functions/review";
 
@@ -201,6 +212,23 @@ function ListingDetailPage() {
     },
   });
 
+  // Manual address override — lets the user pin the exact door (read off
+  // the photos against Google Maps) so EPC resolves the precise cert
+  // instead of a postcode estimate. The server re-fires enrich-epc.
+  const [addrOpen, setAddrOpen] = useState(false);
+  const [addrValue, setAddrValue] = useState("");
+  const setAddress = useMutation({
+    mutationFn: (address: string) =>
+      setClusterAddress({ data: { clusterId, address } }),
+    onSuccess: () => {
+      setAddrOpen(false);
+      // enrich-epc re-fires server-side; its result lands async, so a
+      // plain invalidate now picks up the refreshed EPC on the next read.
+      qc.invalidateQueries({ queryKey: queryOpts.queryKey });
+    },
+    onError: (e: Error) => setError(e.message ?? "Couldn't save address"),
+  });
+
   if (!data) {
     return <ListingDetailSkeleton />;
   }
@@ -222,6 +250,11 @@ function ListingDetailPage() {
     partnerSwipes,
     googleMapsApiKey,
   } = data;
+
+  const openAddressDialog = () => {
+    setAddrValue(cluster.userAddress ?? headline.addressRaw);
+    setAddrOpen(true);
+  };
 
   const portalsTrackingLabel = `${portalSpread.length} portal${portalSpread.length === 1 ? "" : "s"} tracking`;
   const title = shortAddressTitle(headline.addressRaw);
@@ -247,6 +280,7 @@ function ListingDetailPage() {
         data={data}
         disabled={swipe.isPending}
         from={from}
+        onEditAddress={openAddressDialog}
         onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
         pendingAction={pendingAction}
       />
@@ -344,6 +378,15 @@ function ListingDetailPage() {
             {locality ? (
               <p className="text-[14px] text-muted-foreground">{locality}</p>
             ) : null}
+            <button
+              className="mt-1 self-start text-[13px] text-primary underline-offset-2 hover:underline"
+              onClick={openAddressDialog}
+              type="button"
+            >
+              {cluster.userAddress
+                ? "Edit pinned address"
+                : "Fix address for exact EPC"}
+            </button>
           </div>
         </section>
 
@@ -385,6 +428,53 @@ function ListingDetailPage() {
           pendingAction={pendingAction}
         />
       </div>
+
+      <Dialog onOpenChange={setAddrOpen} open={addrOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pin the exact address</DialogTitle>
+            <DialogDescription>
+              Portals usually hide the door number. Read it off the photos
+              against Google Maps and enter the full address (with postcode) so
+              we can pull this building's exact EPC instead of a postcode-level
+              estimate.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (addrValue.trim().length > 0) {
+                setAddress.mutate(addrValue.trim());
+              }
+            }}
+          >
+            <Input
+              onChange={(e) => setAddrValue(e.target.value)}
+              placeholder="e.g. Flat 2, 14 Brownlow Road, London N11 2BP"
+              value={addrValue}
+            />
+            <DialogFooter className="mt-4">
+              {cluster.userAddress ? (
+                <Button
+                  disabled={setAddress.isPending}
+                  onClick={() => setAddress.mutate("")}
+                  type="button"
+                  variant="ghost"
+                >
+                  Clear override
+                </Button>
+              ) : null}
+              <Button
+                disabled={addrValue.trim().length === 0}
+                loading={setAddress.isPending}
+                type="submit"
+              >
+                Save & re-check EPC
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

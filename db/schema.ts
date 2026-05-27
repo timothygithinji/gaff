@@ -242,6 +242,15 @@ export const propertyClusters = pgTable(
     councilTaxAuthorityCode: text("council_tax_authority_code"),
     /** Human-readable billing-authority name, for display alongside the estimate. */
     councilTaxAuthorityName: text("council_tax_authority_name"),
+    /**
+     * User-supplied full address for this building, entered manually when
+     * the portals only exposed a street ("Brownlow Road, N11"). The user
+     * reads the listing photos against Google Maps to pin the exact door,
+     * which lets `enrich-epc` resolve the precise certificate instead of a
+     * postcode-level estimate. NULL = no override; the scraped address +
+     * reverse-geocoded postcode are used. See `setClusterAddress`.
+     */
+    userAddress: text("user_address"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => new Date())
