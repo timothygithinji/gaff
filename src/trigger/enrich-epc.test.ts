@@ -1,16 +1,22 @@
 /**
- * Unit tests for the EPC enrichment mapping.
+ * Unit tests for EPC certificate resolution.
  *
- * Two real bugs lived here: the EPC search endpoint returns
- * `{ "column-names": [...], "rows": [...] }` rather than the bare array the
- * generated spec claims, and the rows use kebab-case keys
- * (`current-energy-rating`) while the app reads camelCase (`currentRating`).
- * These golden-value checks pin both the row extraction and the
- * normalisation so EPC can't silently stop populating again.
+ * Real bugs pinned here: the search endpoint returns
+ * `{ "column-names": [...], "rows": [...] }` (not the bare array the spec
+ * claims), rows use kebab-case keys, EPC rows carry NO coordinates (so we
+ * can't pick "the nearest"), and ~74% of listings are street-only (so we
+ * must NOT assert an exact match without a house number). These checks lock
+ * the row extraction, the conservative exact match, and the postcode-level
+ * estimate fallback.
  */
 
 import { describe, expect, it } from "vitest";
-import { extractCertRows, normaliseEpcCert } from "./enrich-epc";
+import {
+  estimateBlob,
+  exactBlob,
+  extractCertRows,
+  pickExactCert,
+} from "./enrich-epc";
 
 describe("extractCertRows", () => {
   it("pulls rows out of the wrapped search response", () => {
@@ -34,41 +40,100 @@ describe("extractCertRows", () => {
   });
 });
 
-describe("normaliseEpcCert", () => {
-  it("maps kebab-case fields and derives a 10-year expiry", () => {
+describe("pickExactCert", () => {
+  // The actual N11 3PR certificate set shape.
+  const certs = [
+    { address: "21 Hampton Close", "current-energy-rating": "C" },
+    { address: "13 Cannon Hill", "current-energy-rating": "D" },
+    { address: "Flat 7, Bethell Lodge, 31 Springfield Road", "current-energy-rating": "D" },
+  ];
+
+  it("matches on shared house number + street word", () => {
+    const hit = pickExactCert(certs, "13 Cannon Hill, N14");
+    expect(hit?.address).toBe("13 Cannon Hill");
+  });
+
+  it("returns null for a street-only address (no number to anchor on)", () => {
+    expect(pickExactCert(certs, "Hampton Close, New Southgate, N11")).toBeNull();
+  });
+
+  it("does not match on a shared number alone when no street word overlaps", () => {
+    // "13" appears, but "elsewhere" shares no street word with any cert.
+    expect(pickExactCert(certs, "13 Elsewhere Gardens")).toBeNull();
+  });
+
+  it("does not treat a bedroom count as a house number", () => {
+    // "2 Bedroom Flat … Brunswick Park Road" must NOT exact-match the cert
+    // for "2 Brunswick Park Road" — the 2 is a bed count, not a door number.
+    const bedroomCerts = [
+      { address: "2 Brunswick Park Road, New Southgate", "current-energy-rating": "D" },
+    ];
     expect(
-      normaliseEpcCert({
-        "current-energy-rating": "D",
-        "potential-energy-rating": "C",
-        "lodgement-date": "2019-04-24",
-      })
+      pickExactCert(bedroomCerts, "2 bedroom flat brunswick park road n11")
+    ).toBeNull();
+  });
+
+  it("returns null when there are no certs", () => {
+    expect(pickExactCert([], "13 Cannon Hill")).toBeNull();
+  });
+});
+
+describe("exactBlob", () => {
+  it("maps kebab-case fields, derives a 10-year expiry, and tags source", () => {
+    expect(
+      exactBlob(
+        {
+          "current-energy-rating": "d",
+          "potential-energy-rating": "C",
+          "lodgement-date": "2019-04-24",
+          address: "13 Cannon Hill",
+        },
+        "N14 6LP",
+        "13 Cannon Hill"
+      )
     ).toEqual({
       currentRating: "D",
       potentialRating: "C",
       expiresOn: "2029-04-24",
+      source: "exact",
+      matchedAddress: "13 Cannon Hill",
+      postcode: "N14 6LP",
     });
   });
 
-  it("omits optional fields when absent", () => {
-    expect(normaliseEpcCert({ "current-energy-rating": "E" })).toEqual({
-      currentRating: "E",
+  it("returns null when the cert has no usable rating", () => {
+    expect(exactBlob({ address: "x" }, "N14 6LP", "x")).toBeNull();
+  });
+});
+
+describe("estimateBlob", () => {
+  it("summarises a postcode into a modal rating + best..worst range", () => {
+    const certs = [
+      { "current-energy-rating": "C" },
+      { "current-energy-rating": "C" },
+      { "current-energy-rating": "D" },
+      { "current-energy-rating": "E" },
+    ];
+    expect(estimateBlob(certs, "N11 3PR")).toEqual({
+      currentRating: "C",
+      source: "estimate",
+      postcode: "N11 3PR",
+      sampleSize: 4,
+      range: { min: "C", max: "E" },
     });
   });
 
-  it("trims whitespace and treats blank ratings as no certificate", () => {
-    expect(normaliseEpcCert({ "current-energy-rating": "  B " })).toEqual({
-      currentRating: "B",
-    });
-    expect(normaliseEpcCert({ "current-energy-rating": "   " })).toBeNull();
-    expect(normaliseEpcCert({})).toBeNull();
+  it("breaks a modal tie toward the better band", () => {
+    const certs = [
+      { "current-energy-rating": "C" },
+      { "current-energy-rating": "E" },
+    ];
+    const blob = estimateBlob(certs, "N11 3PR");
+    expect(blob?.currentRating).toBe("C");
+    expect(blob?.range).toEqual({ min: "C", max: "E" });
   });
 
-  it("ignores an unparseable lodgement date", () => {
-    expect(
-      normaliseEpcCert({
-        "current-energy-rating": "C",
-        "lodgement-date": "not-a-date",
-      })
-    ).toEqual({ currentRating: "C" });
+  it("ignores unparseable ratings and returns null when none are usable", () => {
+    expect(estimateBlob([{ "current-energy-rating": "?" }, {}], "N11 3PR")).toBeNull();
   });
 });
