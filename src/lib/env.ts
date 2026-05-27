@@ -69,6 +69,14 @@ const envSchema = z.object({
   // Trigger.dev
   TRIGGER_SECRET_KEY: z.string().min(1),
 
+  // Resend (transactional email) — OPTIONAL, same reasoning as R2 below.
+  // Only the notification tasks (send-match-email, daily-digest) read it,
+  // and they run on Trigger.dev workers. Marking it required would make
+  // env() throw on any worker that hasn't had the secret staged yet,
+  // re-running the secret-drift 500 we've already been bitten by. The
+  // email client throws a clear error at send time if it's absent.
+  RESEND_API_KEY: z.string().min(1).optional(),
+
   // R2 (Cloudflare object storage) — OPTIONAL.
   //
   // The Worker runtime never reads these — it talks to R2 through its

@@ -25,6 +25,8 @@ const OPTIONAL_SECRETS = [
   "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY",
   "R2_BUCKET",
+  // Read by the notification tasks (send-match-email, daily-digest).
+  "RESEND_API_KEY",
 ] as const;
 
 // Map Trigger.dev environment slugs to Doppler config names.
