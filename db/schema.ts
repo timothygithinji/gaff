@@ -86,6 +86,14 @@ export const pipelineArchivedReasonEnum = pgEnum("pipeline_archived_reason", [
 export const households = pgTable("households", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  /**
+   * Watermark for the daily new-listings digest: the cutoff the next
+   * digest counts "new since". NULL until the first digest runs (the task
+   * treats null as "the last 24h" so the first email isn't a backlog
+   * dump), then advanced to the send time on every run. See
+   * `src/trigger/daily-digest.ts`.
+   */
+  lastDigestAt: timestamp("last_digest_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .$onUpdate(() => new Date())

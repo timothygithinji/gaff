@@ -1,0 +1,1 @@
+ALTER TABLE "households" ADD COLUMN "last_digest_at" timestamp;
