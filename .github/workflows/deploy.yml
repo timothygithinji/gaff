@@ -14,6 +14,42 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      # Provision Cloudflare infra (KV, R2, the R2 API token, and the Zero
+      # Trust Access policy/app) via Pulumi BEFORE shipping code, so bindings
+      # and the access gate are in place for the Worker deploy that follows.
+      # Runs on every push to main; a no-op when nothing under
+      # infra/cloudflare changed since the last `pulumi up`.
+      #
+      # Placed before "Fetch secrets" so the gaff app secrets that step
+      # exports into $GITHUB_ENV don't bleed into the Pulumi process env.
+      #
+      # infra/cloudflare is NOT part of the root Bun workspace, so the root
+      # Setup install above doesn't cover it — it needs its own install.
+      #
+      # Requires a PULUMI_ACCESS_TOKEN repo secret to reach the Pulumi Cloud
+      # backend (gaff-cloudflare/production). The CLOUDFLARE_* secrets are the
+      # same ones the deploy steps below use and MUST carry full provisioning
+      # scope (Zero Trust Access + account API tokens, not just Workers/KV/R2)
+      # — the Pulumi program mints an account token and manages the Access
+      # app. DOPPLER_TOKEN lets the @pulumiverse/doppler provider read the
+      # R2_* secrets it manages; read-only is fine since those values don't
+      # change here.
+      - name: Install infra dependencies
+        working-directory: infra/cloudflare
+        run: bun install --frozen-lockfile
+
+      - name: Provision infrastructure
+        uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: timothygithinji/production
+          work-dir: infra/cloudflare
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
       - name: Fetch secrets from Doppler
         uses: ./.github/actions/fetch-secrets
         with:
