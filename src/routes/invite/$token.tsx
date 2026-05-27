@@ -24,6 +24,19 @@ export const Route = createFileRoute("/invite/$token")({
   component: InvitePage,
 });
 
+function inviteErrorMessage(code: string): string {
+  switch (code) {
+    case "expired_token":
+      return "This invite link has expired.";
+    case "owner_of_shared_household":
+      // The accepter owns a household someone else has already joined.
+      // We refuse rather than cascade-delete that shared household.
+      return "You already own a household with other members. Remove them (or have them leave) before joining another.";
+    default:
+      return "Could not accept this invite.";
+  }
+}
+
 function InvitePage() {
   const { token } = Route.useParams();
   const navigate = useNavigate();
@@ -67,9 +80,7 @@ function InvitePage() {
         </h1>
         {accept.isError && (
           <p className="mt-3 text-primary text-sm">
-            {(accept.error as Error).message === "expired_token"
-              ? "This invite link has expired."
-              : "Could not accept this invite."}
+            {inviteErrorMessage((accept.error as Error).message)}
           </p>
         )}
       </div>

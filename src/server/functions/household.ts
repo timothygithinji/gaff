@@ -198,17 +198,41 @@ export const acceptInvite = createServerFn({ method: "POST" })
       return { householdId };
     }
 
-    // Drop the auto-created solo household if this user only has one
-    // membership and it's their own auto-created household — we
-    // can't have a user belong to two households cleanly. Reads stay
-    // outside the batch; only the resulting writes are batched.
+    // The user can't cleanly belong to two households, so leaving the old
+    // one(s) is part of joining. Reads stay outside the batch; only the
+    // resulting writes are batched.
     const myMemberships = await db.query.householdMembers.findMany({
       where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
     });
+
+    // Guard before we delete anything: an `owner` row gets its whole
+    // household deleted below, which CASCADES to that household's other
+    // members and all their data (searches -> swipes/scrape_runs, shortlist
+    // pipeline, match notifications). That's only safe for the disposable
+    // solo household the sign-up hook mints. If any household the user owns
+    // has OTHER members, deleting it would silently destroy their
+    // house-hunt — refuse loudly instead.
+    const ownedHouseholdIds = myMemberships
+      .filter((m) => m.role === "owner")
+      .map((m) => m.householdId);
+    if (ownedHouseholdIds.length > 0) {
+      const otherMembers = await db.query.householdMembers.findMany({
+        where: (hm, { and: andOp, inArray: inArrayOp, ne: neOp }) =>
+          andOp(
+            inArrayOp(hm.householdId, ownedHouseholdIds),
+            neOp(hm.userId, session.userId)
+          ),
+      });
+      if (otherMembers.length > 0) {
+        throw new Error("owner_of_shared_household");
+      }
+    }
+
     const cleanupWrites = myMemberships.map((m) =>
       m.role === "owner"
-        ? // Remove the solo household entirely — schema cascades the
-          // membership and any searches the user had there.
+        ? // Sole-member solo household — delete it; schema cascades the
+          // membership and any searches the user had there. (The guard
+          // above guarantees no other members are affected.)
           db
             .delete(households)
             .where(eq(households.id, m.householdId))
