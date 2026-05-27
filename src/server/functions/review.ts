@@ -27,6 +27,7 @@
  * listing is the cheapest, the others surface in the "ALSO ON" badge.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { tasks } from "@trigger.dev/sdk";
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -35,8 +36,10 @@ import {
   enrichments,
   listingPhotos,
   listings,
+  matchNotifications,
   searches,
   swipes,
+  vMutualMatches,
 } from "../../../db/schema";
 import type { Features } from "../../lib/ai/prompt";
 import { resolvePhotoUrl } from "./photo-url";
@@ -911,6 +914,43 @@ export const getTodayReviewStats = createServerFn({ method: "GET" })
     return stats;
   });
 
+/**
+ * If this cluster has just become a mutual match for the household and we
+ * haven't emailed about it yet, claim the notification atomically (the
+ * unique index means concurrent swipes can't double-send) and fire the
+ * instant match email. No-op when not yet mutual or already notified.
+ */
+async function notifyMutualMatchIfNew(
+  db: Db,
+  householdId: string,
+  clusterId: string
+): Promise<void> {
+  const mutual = await db
+    .select({ clusterId: vMutualMatches.clusterId })
+    .from(vMutualMatches)
+    .where(
+      and(
+        eq(vMutualMatches.householdId, householdId),
+        eq(vMutualMatches.clusterId, clusterId)
+      )
+    )
+    .limit(1);
+  if (mutual.length === 0) {
+    return;
+  }
+  const claimed = await db
+    .insert(matchNotifications)
+    .values({ id: nanoid(), householdId, clusterId })
+    .onConflictDoNothing({
+      target: [matchNotifications.householdId, matchNotifications.clusterId],
+    })
+    .returning({ id: matchNotifications.id });
+  if (claimed.length === 0) {
+    return;
+  }
+  await tasks.trigger("send-match-email", { householdId, clusterId });
+}
+
 export const recordSwipe = createServerFn({ method: "POST" })
   .inputValidator(recordSwipeSchema)
   .handler(async ({ data }): Promise<{ ok: true }> => {
@@ -966,6 +1006,18 @@ export const recordSwipe = createServerFn({ method: "POST" })
           createdAt: sql`NOW()`,
         },
       });
+
+    // A keep/shortlist can complete a mutual match — fire the instant
+    // "you both want this" email. Best-effort: the swipe is already
+    // recorded, so a transient notification failure must never fail it.
+    if (data.outcome !== "skip") {
+      try {
+        await notifyMutualMatchIfNew(db, membership.householdId, data.clusterId);
+      } catch {
+        // Best-effort: the swipe is recorded; a notification hiccup
+        // (mutual-match query / Trigger dispatch) must never fail it.
+      }
+    }
 
     return { ok: true };
   });
