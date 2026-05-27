@@ -125,9 +125,19 @@ const r2Token = new cloudflare.AccountToken(`${projectName}-r2-token`, {
   ],
 });
 
-// Cloudflare Access — restrict the domain to members of the org email.
+// Cloudflare Access — restrict the domain to members of the org email,
+// plus explicitly allowlisted individual emails.
 // In @pulumi/cloudflare v6 the policy is declared as a separate resource
 // and then attached via the application's `policies` array.
+//
+// `includes` is OR-matched: a request passes if it matches ANY rule. The
+// emailDomain rule covers the org; the per-email rules let in external
+// guests who don't have a @timothygithinji.com address. Guests sign in
+// via Cloudflare Access One-time PIN (an emailed code) — no GitHub/Google
+// account required — so adding the address here is all that's needed at
+// the gate. Note: a first-time guest lands in their own solo household
+// (see databaseHooks in src/lib/auth.ts) and must accept a household
+// invite to join an existing house-hunt.
 const accessPolicy = new cloudflare.ZeroTrustAccessPolicy(
   `${projectName}-access-policy`,
   {
@@ -137,6 +147,9 @@ const accessPolicy = new cloudflare.ZeroTrustAccessPolicy(
     includes: [
       {
         emailDomain: { domain: "timothygithinji.com" },
+      },
+      {
+        email: { email: "redacted@example.com" },
       },
     ],
   }
