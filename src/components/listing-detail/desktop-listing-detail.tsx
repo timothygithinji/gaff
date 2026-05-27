@@ -63,6 +63,8 @@ type Props = {
   disabled?: boolean;
   from?: ListingFromOrigin;
   onShortlist: () => void;
+  /** Open the manual address-override dialog (owned by the route). */
+  onEditAddress?: () => void;
   pendingAction?: ListingDetailPendingAction;
 };
 
@@ -71,6 +73,7 @@ export function DesktopListingDetail({
   disabled,
   from,
   onShortlist,
+  onEditAddress,
   pendingAction = null,
 }: Props) {
   return (
@@ -88,7 +91,7 @@ export function DesktopListingDetail({
       />
       <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
         <MediaColumn data={data} />
-        <InfoColumn data={data} />
+        <InfoColumn data={data} onEditAddress={onEditAddress} />
       </div>
     </AdminSidebar>
   );
@@ -687,10 +690,16 @@ function LocationCard({
 
 /* ---------------- Info column ---------------- */
 
-function InfoColumn({ data }: { data: ListingDetailPayload }) {
+function InfoColumn({
+  data,
+  onEditAddress,
+}: {
+  data: ListingDetailPayload;
+  onEditAddress?: () => void;
+}) {
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-3.5">
-      <PriceCard data={data} />
+      <PriceCard data={data} onEditAddress={onEditAddress} />
       <AiCard
         highlights={data.highlights}
         summary={data.summary}
@@ -701,7 +710,13 @@ function InfoColumn({ data }: { data: ListingDetailPayload }) {
   );
 }
 
-function PriceCard({ data }: { data: ListingDetailPayload }) {
+function PriceCard({
+  data,
+  onEditAddress,
+}: {
+  data: ListingDetailPayload;
+  onEditAddress?: () => void;
+}) {
   const { headline, portalSpread, cluster } = data;
   const title = shortAddressTitle(headline.addressRaw);
   const subtitle = subtitleFor(headline.postcode, cluster.postcode);
@@ -725,6 +740,15 @@ function PriceCard({ data }: { data: ListingDetailPayload }) {
         <h1 className="font-serif text-[22px] text-foreground">{title}</h1>
         {subtitle ? (
           <p className="text-[13px] text-muted-foreground">{subtitle}</p>
+        ) : null}
+        {onEditAddress ? (
+          <button
+            className="mt-1 self-start text-[12px] text-primary underline-offset-2 hover:underline"
+            onClick={onEditAddress}
+            type="button"
+          >
+            {cluster.userAddress ? "Edit pinned address" : "Fix address for exact EPC"}
+          </button>
         ) : null}
       </div>
       <div className="flex flex-col border-bone border-t pt-3.5">
@@ -1053,6 +1077,18 @@ function buildRecordRows(
 function epcRecordRow(epc: ListingDetailPayload["epc"]): RecordRow | null {
   if (!epc) {
     return null;
+  }
+  // Estimate: the listing had no house number to pin an exact certificate,
+  // so this is the typical rating for the full postcode. Mark it (~) and
+  // show the spread so it doesn't read as fake-precise.
+  if (epc.source === "estimate") {
+    const spread = epc.range ? ` · range ${epc.range.min}–${epc.range.max}` : "";
+    const homes = epc.sampleSize ? ` · ${epc.sampleSize} homes` : "";
+    return {
+      label: "EPC · area estimate",
+      value: `~${epc.rating}`,
+      meta: `Typical for this postcode${spread}${homes}`,
+    };
   }
   return {
     label: "EPC rating",

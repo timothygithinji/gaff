@@ -141,6 +141,12 @@ export type ReviewCard = {
   portalsAlsoOn: ReviewCardAlsoOn[];
   features?: Features;
   epcRating?: string;
+  /**
+   * True when `epcRating` is a postcode-level estimate rather than this
+   * building's own certificate (the listing exposed no house number to
+   * match on). The card marks it with a "~" so it doesn't read as exact.
+   */
+  epcIsEstimate?: boolean;
   /** Soonest commute target, in minutes, when enriched. */
   commuteMinutes: number | null;
   /** Closest scraped station (with derived walk minutes). */
@@ -326,6 +332,15 @@ function asEpcRating(value: unknown): string | undefined {
     return obj.currentRating;
   }
   return;
+}
+
+/** True when the stored EPC blob is a postcode-level estimate. */
+function isEpcEstimate(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { source?: unknown }).source === "estimate"
+  );
 }
 
 /**
@@ -628,6 +643,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       portalsAlsoOn,
       features: asFeatures(enrichment?.features),
       epcRating: asEpcRating(enrichment?.epc),
+      epcIsEstimate: isEpcEstimate(enrichment?.epc),
       commuteMinutes: pickSoonestCommute(enrichment?.commuteMinutes),
       nearestStation: pickNearestStation(headline.rawJson),
       broadband: asBroadband(enrichment?.broadband),

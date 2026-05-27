@@ -1,0 +1,1 @@
+ALTER TABLE "property_clusters" ADD COLUMN "user_address" text;

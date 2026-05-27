@@ -25,6 +25,8 @@ type Props = {
   walkMinutes: number | null;
   stationName?: string | null;
   epcRating: string | null;
+  /** Postcode-level estimate (no exact certificate match) — shown as "~C est". */
+  epcIsEstimate?: boolean;
   broadbandMbps: number | null;
 };
 
@@ -33,6 +35,7 @@ export function InfoRow({
   walkMinutes,
   stationName,
   epcRating,
+  epcIsEstimate,
   broadbandMbps,
 }: Props) {
   return (
@@ -49,7 +52,12 @@ export function InfoRow({
         value={walkMinutes === null ? "—" : `${walkMinutes}`}
         unit={walkMinutes === null ? "" : "min walk"}
       />
-      <Cell icon={FlashIcon} eyebrow="EPC" value={epcRating ?? "—"} unit="" />
+      <Cell
+        icon={FlashIcon}
+        eyebrow="EPC"
+        value={epcRating ? (epcIsEstimate ? `~${epcRating}` : epcRating) : "—"}
+        unit={epcRating && epcIsEstimate ? "est" : ""}
+      />
       <Cell
         icon={Wifi01Icon}
         eyebrow="Fibre"
