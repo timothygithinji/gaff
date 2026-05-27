@@ -604,6 +604,38 @@ export const shortlistPipeline = pgTable(
   ]
 );
 
+/**
+ * One row per household+cluster we've sent a "you both want this" match
+ * email for. Presence = already notified; the unique index lets the swipe
+ * path claim the notification atomically (INSERT … ON CONFLICT DO NOTHING)
+ * so two members swiping near-simultaneously can't both fire the email.
+ */
+export const matchNotifications = pgTable(
+  "match_notifications",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    clusterId: text("cluster_id")
+      .notNull()
+      .references(() => propertyClusters.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    notifiedAt: timestamp("notified_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("match_notifications_household_cluster_uniq").on(
+      t.householdId,
+      t.clusterId
+    ),
+  ]
+);
+
 export const scrapeRuns = pgTable("scrape_runs", {
   id: text("id").primaryKey(),
   searchId: text("search_id")
@@ -878,3 +910,6 @@ export type NewShortlistPipeline = typeof shortlistPipeline.$inferInsert;
 
 export type CouncilTaxRate = typeof councilTaxRates.$inferSelect;
 export type NewCouncilTaxRate = typeof councilTaxRates.$inferInsert;
+
+export type MatchNotification = typeof matchNotifications.$inferSelect;
+export type NewMatchNotification = typeof matchNotifications.$inferInsert;
