@@ -14,26 +14,33 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Fetch secrets from Doppler
+        uses: ./.github/actions/fetch-secrets
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+
       # Provision Cloudflare infra (KV, R2, the R2 API token, and the Zero
       # Trust Access policy/app) via Pulumi BEFORE shipping code, so bindings
       # and the access gate are in place for the Worker deploy that follows.
       # Runs on every push to main; a no-op when nothing under
       # infra/cloudflare changed since the last `pulumi up`.
       #
-      # Placed before "Fetch secrets" so the gaff app secrets that step
-      # exports into $GITHUB_ENV don't bleed into the Pulumi process env.
+      # PULUMI_ACCESS_TOKEN lives in Doppler (gaff/prd) and is exported into
+      # $GITHUB_ENV by the Fetch-secrets step above — which is why this runs
+      # AFTER it. pulumi/actions reads it from the environment (inherited, so
+      # it's not re-listed under env: below). The Sync step further down
+      # strips it before pushing the gaff secret set to the Worker, so this
+      # account-provisioning credential never lands on the edge runtime.
       #
       # infra/cloudflare is NOT part of the root Bun workspace, so the root
-      # Setup install above doesn't cover it — it needs its own install.
+      # Setup install doesn't cover it — it needs its own install.
       #
-      # Requires a PULUMI_ACCESS_TOKEN repo secret to reach the Pulumi Cloud
-      # backend (gaff-cloudflare/production). The CLOUDFLARE_* secrets are the
-      # same ones the deploy steps below use and MUST carry full provisioning
-      # scope (Zero Trust Access + account API tokens, not just Workers/KV/R2)
-      # — the Pulumi program mints an account token and manages the Access
-      # app. DOPPLER_TOKEN lets the @pulumiverse/doppler provider read the
-      # R2_* secrets it manages; read-only is fine since those values don't
-      # change here.
+      # CLOUDFLARE_* come from repo secrets (not gaff/prd) and MUST carry full
+      # provisioning scope (Zero Trust Access + account API tokens, not just
+      # Workers/KV/R2) — the Pulumi program mints an account token and manages
+      # the Access app. DOPPLER_TOKEN lets the @pulumiverse/doppler provider
+      # read the R2_* secrets it manages; read-only is fine since those values
+      # don't change here.
       - name: Install infra dependencies
         working-directory: infra/cloudflare
         run: bun install --frozen-lockfile
@@ -45,15 +52,9 @@ jobs:
           stack-name: timothygithinji/production
           work-dir: infra/cloudflare
         env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-
-      - name: Fetch secrets from Doppler
-        uses: ./.github/actions/fetch-secrets
-        with:
-          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
 
       # Sync the Worker's encrypted secrets from Doppler on every deploy.
       #
@@ -70,7 +71,9 @@ jobs:
       # code that reads it goes live. `--no-file` + stdin keeps secrets in
       # memory (never on disk, per the repo's "Doppler runtime injection only"
       # convention); `secret bulk` uploads them in one shot and prints only
-      # names, never values. The `doppler` CLI is installed by the
+      # names, never values. `jq del(.PULUMI_ACCESS_TOKEN)` drops the Pulumi
+      # token — the Provision step needs it but the Worker must never hold a
+      # provisioning credential. The `doppler` CLI is installed by the
       # fetch-secrets step above. Requires the Worker to already exist — it's
       # first created (with initial secrets) by `t-stack provision`.
       - name: Sync Worker secrets to Cloudflare
@@ -78,7 +81,7 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: doppler secrets download --no-file --format=json | bunx wrangler secret bulk --name gaff
+        run: doppler secrets download --no-file --format=json | jq 'del(.PULUMI_ACCESS_TOKEN)' | bunx wrangler secret bulk --name gaff
 
       - name: Deploy
         env:
