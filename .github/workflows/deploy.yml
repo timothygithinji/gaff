@@ -83,6 +83,32 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: doppler secrets download --no-file --format=json | jq 'del(.PULUMI_ACCESS_TOKEN)' | bunx wrangler secret bulk --name gaff
 
+      # Apply pending Drizzle migrations BEFORE the Worker ships, so the
+      # freshly-deployed code never sees a schema older than what it was
+      # compiled against. drizzle-kit is idempotent — it reads
+      # `drizzle.__drizzle_migrations` and no-ops anything already
+      # applied, so this step is safe on every push.
+      #
+      # Drift incident this guards against: migration 0017
+      # (`station_routes`) added an `ALTER TABLE enrichments ADD COLUMN`
+      # alongside the code that selects the new column. CI passed
+      # (typecheck saw the column on the Drizzle schema; tests don't
+      # touch a DB), deploy shipped the code, and every read of
+      # `enrichments` 500'd until the migration was applied manually.
+      #
+      # `DATABASE_URL` is already in $GITHUB_ENV from the Fetch-secrets
+      # step (Doppler `gaff/prd`). We call drizzle-kit directly rather
+      # than `bun run db:migrate:prod`, which wraps `doppler run` with a
+      # personal-scope flag intended for local dev.
+      #
+      # `migrations.ts --check-only` validates the journal/snapshot
+      # chain before any DDL fires, so an inconsistent metadata state
+      # fails the deploy without partially-applying anything.
+      - name: Apply DB migrations
+        run: |
+          bun scripts/validation/migrations.ts --check-only
+          bunx drizzle-kit migrate
+
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
