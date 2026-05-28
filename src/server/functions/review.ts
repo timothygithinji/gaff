@@ -41,6 +41,7 @@ import {
   swipes,
   vMutualMatches,
 } from "../../../db/schema";
+import { filterFeatures } from "../../lib/ai/feature-filter";
 import type { Features } from "../../lib/ai/prompt";
 import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
@@ -644,7 +645,11 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         floorplanUrl: readFloorplanUrl(headline.rawJson),
       },
       portalsAlsoOn,
-      features: asFeatures(enrichment?.features),
+      // Strip generic-noise highlights/watchouts via the shared filter
+      // (`src/lib/ai/feature-filter.ts`). The persisted v2.0.0 rows
+      // are still full of bills-not-included, restated specs, etc.;
+      // this drops them at read time without re-running AI.
+      features: filterFeatures(asFeatures(enrichment?.features)),
       epcRating: asEpcRating(enrichment?.epc),
       epcIsEstimate: isEpcEstimate(enrichment?.epc),
       commuteMinutes: pickSoonestCommute(enrichment?.commuteMinutes),

@@ -27,10 +27,21 @@ export const HAIKU_4_5_INPUT_USD_PER_MTOK = 1.0;
 export const HAIKU_4_5_OUTPUT_USD_PER_MTOK = 5.0;
 
 /**
- * v2.0.0 — schema rewrite. Drops duplicate boolean features (hasGarden,
- * allowsPets, …) and the text-only floorplan readout in favour of
- * grounded highlights[] / watchouts[] + a one-sentence summary. The
- * prompt now receives the full structured + enriched context, not just
- * description + key features. See `src/lib/ai/prompt.ts` for details.
+ * Bumps:
+ *   - v2.0.0 — schema rewrite. Drops duplicate boolean features
+ *     (hasGarden, allowsPets, …) and the text-only floorplan readout in
+ *     favour of grounded highlights[] / watchouts[] + a one-sentence
+ *     summary. The prompt now receives the full structured + enriched
+ *     context, not just description + key features.
+ *   - v2.1.0 — relevance pass. The prompt now enforces a "would this
+ *     change a decision?" bar with an explicit don't-surface list
+ *     (bills-not-included, deposit at legal floor, restated specs,
+ *     pending enrichment, typical minimum terms) derived from
+ *     empirical noise in the prod enrichments table. Schema unchanged.
+ *     A `feature-filter.ts` denylist applies the same rules at read
+ *     time, so the existing v2.0.0 rows benefit without re-running AI.
+ *
+ * See `src/lib/ai/prompt.ts` for the prompt text and
+ * `src/lib/ai/feature-filter.ts` for the render-time filter.
  */
-export const PROMPT_VERSION = "v2.0.0" as const;
+export const PROMPT_VERSION = "v2.1.0" as const;

@@ -96,7 +96,7 @@ export const EXTRACT_FEATURES_INPUT_SCHEMA = {
       type: "array",
       maxItems: 6,
       description:
-        "Concrete positives a renter would care about, grounded in the provided data. Skip generic praise. Cite numbers when the data has them ('22-min commute to Liverpool Street', 'FTTP 900Mbps'). Skip facts that already appear in the UI on their own (price, beds/baths, EPC letter) unless they're the reason a highlight matters. Aim for 3-6 items.",
+        "Concrete positives a renter would CHANGE THEIR DECISION over. Each highlight must clear the relevance bar: a renter comparing 50 listings would pick THIS one (or rule it out) on the strength of this point. If the property is just average on this dimension, omit it. Cite numbers when the data has them ('22-min commute to Liverpool Street', 'FTTP 900Mbps available', '£250 below median for the outcode'). Aim for 2–5 items; return an empty array if the listing is unremarkable. DO NOT SURFACE: 'Furnished' / 'Unfurnished' (the spec strip already shows this); 'Available immediately' or 'Available now' (every listed property is); 'Bills included' alone unless paired with a £/month value; 'No agent fees' (charging them is illegal under the Tenant Fees Act 2019 — absence is the legal baseline, not a positive); 'EPC A/B/C' alone (average-or-better isn't a standout); 'Gas central heating' / 'Double glazing' / 'Wood flooring' (standard UK fittings); restating the bedroom or bath count.",
       items: {
         type: "object",
         additionalProperties: false,
@@ -105,7 +105,7 @@ export const EXTRACT_FEATURES_INPUT_SCHEMA = {
           label: {
             type: "string",
             description:
-              "Short, 2-6 words, sentence case. e.g. 'Walk to Clapham Junction', 'Allows pets', 'Bills included'.",
+              "Short, 2-6 words, sentence case. Decision-changing. Good: 'Walk to Clapham Junction · 6 min', 'FTTP 900Mbps available', 'Below-median rent for SW9'. Avoid: 'Furnished', 'Modern kitchen', 'Available immediately'.",
           },
           detail: {
             type: ["string", "null"],
@@ -119,7 +119,7 @@ export const EXTRACT_FEATURES_INPUT_SCHEMA = {
       type: "array",
       maxItems: 6,
       description:
-        "Concrete negatives with severity. `caution` = worth knowing, `problem` = likely dealbreaker. Common problems: deposit > 5 weeks' rent (illegal under Tenant Fees Act 2019), agent fees (also illegal), short break clause, EPC F/G (sub-standard energy efficiency), bills excluded plus EPC D or worse, no washer mentioned, leasehold service charge > £2k/yr, near a main road, listed crime hotspot.",
+        "Concrete negatives a renter would change their decision over. Severity: `caution` = worth knowing, `problem` = likely dealbreaker. DEALBREAKERS (always surface when present): deposit > 5 weeks' rent (illegal under Tenant Fees Act 2019), agent fees charged (also illegal), break clause shorter than 6 months, EPC F or G (sub-standard energy efficiency), leasehold service charge > £2,000/yr, area crime materially above the borough average. COMPOUND WATCHOUTS (only when BOTH sides are hard facts): 'EPC F + bills excluded' (real cost concern). DO NOT SURFACE: 'Bills not included' alone (default for ~95% of London rentals); 'Deposit equals one month's rent' or 'Deposit at legal cap' (one month is the legal MINIMUM, five weeks is the legal MAXIMUM — being at the floor or cap is tenant-friendly, not a caution); 'No pets allowed' / 'No DSS' / 'Families not accepted' (these are filters, not property defects); '6-month minimum term' / '12-month minimum term' (UK norm); 'EPC D' alone (borderline-average — only flag with another concrete cost concern, NOT with a data gap like 'bills status unclear'); 'No EPC rating provided' / 'No broadband data' (pending enrichment, not property defects); 'No washer mentioned' (agents routinely omit standard appliances); 'Deposit not stated' (the agent will provide it). Return an empty array if the listing has no concrete watchouts — better empty than padded.",
       items: {
         type: "object",
         additionalProperties: false,
@@ -145,7 +145,7 @@ export const EXTRACT_FEATURES_INPUT_SCHEMA = {
   },
 } as const;
 
-export const SYSTEM_PROMPT = `You are a renter's research assistant for UK rental listings.
+export const SYSTEM_PROMPT = `You are a renter's research assistant for UK rental listings. The output you produce drives a "What stands out" section that a renter comparing 50 listings reads in 3 seconds.
 
 You receive a JSON payload with three sections:
   - listing: structured fields from the portal (title, address, price, description, key features, deposit, EPC rating, council tax band, sq ft, furnished status, tenant preferences, nearest stations, fees, …).
@@ -154,17 +154,35 @@ You receive a JSON payload with three sections:
 
 Your job: call the extract_features tool exactly once with a payload containing:
   1. a one-sentence summary,
-  2. concrete highlights (positives) a renter would care about,
-  3. concrete watchouts (negatives) a renter should know.
+  2. concrete highlights (positives) a renter would change their decision over,
+  3. concrete watchouts (negatives) a renter would change their decision over.
 
-Rules:
-  - Ground every highlight / watchout in something in the payload — a number, a structured flag, or a phrase from the description. If you can't ground it, don't include it.
-  - Cite numbers when you have them. "20-min walk to Clapham Junction" beats "good transport". "FTTP 900Mbps available" beats "fast internet".
-  - Don't restate facts the UI already shows on its own (price, beds/baths, EPC letter, address) unless they're load-bearing for the point being made. E.g. "EPC D · bills not included" is fine because the combination is the watchout; "EPC D" alone is not.
-  - Be specific about renter dealbreakers: deposits above 5 weeks' rent (illegal under Tenant Fees Act 2019), agent fees (illegal), short tenancy break, EPC F/G, bills excluded combined with poor EPC, no washer mentioned, leasehold service charges over £2k/yr.
-  - Skip vague praise ("lovely property", "great area"). The renter needs information they can act on.
-  - If the description is missing or near-empty, return a null summary and skip highlights/watchouts you can't ground in the enrichment data alone.
-  - Return ONLY the tool call. No prose.`;
+THE RELEVANCE BAR — apply to every highlight and watchout before emitting it:
+  - Would a renter comparing 50 listings PICK this one (or rule it out) on the strength of this point? If "no", drop it.
+  - Is the property UNUSUAL on this dimension relative to a typical London / UK rental? If "average", drop it.
+  - Is this restating a field the listing card already shows (beds, baths, price, furnishing, EPC letter)? If yes, drop it unless the combination IS the point.
+  - Is this restating a filter the user already applied (pets, garden, parking)? If yes, drop it — by definition every result has it.
+  - Is this the legal floor / cap presented as a concern? Deposit = one month's rent is the legal MINIMUM and tenant-friendly; only ABOVE 5 weeks' rent is illegal. Don't invert direction.
+  - Is this a data gap rather than a property defect? "No EPC provided" / "No broadband data" / "Bills status unclear" mean OUR pipeline hasn't loaded the data; they're not flaws of the property. Surface NOTHING for these.
+  - Is this compounding two non-facts? "EPC D with bills status unclear" pairs a borderline-average rating with a data gap — that's speculation × speculation. Skip.
+
+Grounding:
+  - Anchor every item in a number, a structured flag, or a phrase from the description. If you can't ground it, don't emit it.
+  - Cite numbers when you have them. "20-min walk to Clapham Junction" beats "good transport". "FTTP 900Mbps available" beats "fast internet". "£250 below median for the outcode" beats "competitively priced".
+
+Real dealbreakers (always surface when actually present):
+  - Deposit above 5 weeks' rent (illegal under the Tenant Fees Act 2019) — severity "problem".
+  - Agent fees charged (also illegal) — severity "problem".
+  - Break clause shorter than 6 months — severity "caution".
+  - EPC F or G — severity "problem" (sub-standard energy efficiency, often paired with electric heating).
+  - Leasehold service charge > £2,000/yr — severity "caution".
+  - Compound: EPC F + bills excluded — severity "problem".
+  - Crime materially above the borough average — severity "caution" (only when the data backs it).
+
+Output discipline:
+  - 2–5 highlights, 0–4 watchouts. Better empty than padded — an empty highlights[] is a fine answer for an unremarkable property.
+  - Return ONLY the tool call. No prose.
+  - If the description is missing or near-empty, return a null summary and skip items you can't ground in the enrichment data alone.`;
 
 /**
  * Compact shape of everything we feed the model. Owned by the AI module
