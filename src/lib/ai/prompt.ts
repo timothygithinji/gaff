@@ -171,7 +171,7 @@ Grounding:
   - Cite numbers when you have them. "20-min walk to Clapham Junction" beats "good transport". "FTTP 900Mbps available" beats "fast internet". "£250 below median for the outcode" beats "competitively priced".
 
 Real dealbreakers (always surface when actually present):
-  - Deposit above 5 weeks' rent (illegal under the Tenant Fees Act 2019) — severity "problem".
+  - Deposit above 5 weeks' rent (illegal under the Tenant Fees Act 2019) — severity "problem". DO NOT compute this yourself. Use \`listing.legalDepositCap.depositOverCap\` — if it's \`true\` surface the watchout (cite \`listing.deposit\` and \`legalDepositCap.fiveWeeksRent\` in the detail); if it's \`false\` or \`null\` do NOT surface a deposit-cap watchout under any phrasing.
   - Agent fees charged (also illegal) — severity "problem".
   - Break clause shorter than 6 months — severity "caution".
   - EPC F or G — severity "problem" (sub-standard energy efficiency, often paired with electric heating).
@@ -300,6 +300,17 @@ export type ExtractContext = {
     councilTaxExempt: boolean | null;
     /** Agent's ARLA/NAEA/PropertyMark affiliations, when published. */
     agentAffiliations: string[];
+    /**
+     * Pre-computed deposit-vs-Tenant-Fees-Act check. Haiku has been
+     * observed inverting the arithmetic (dividing deposit by monthly
+     * rent and calling the ratio "weeks") — feeding the result avoids
+     * making the model do the math at all. `fiveWeeksRent` is rounded up
+     * so pence-over-cap rounding doesn't trip a false flag.
+     */
+    legalDepositCap: {
+      fiveWeeksRent: number | null;
+      depositOverCap: boolean | null;
+    } | null;
   };
   enrichment: {
     epcCurrent: string | null;

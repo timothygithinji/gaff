@@ -57,6 +57,7 @@ const emptyContext: ExtractContext = {
     listedBuilding: null,
     councilTaxExempt: null,
     agentAffiliations: [],
+    legalDepositCap: { fiveWeeksRent: 2885, depositOverCap: false },
   },
   enrichment: {
     epcCurrent: "C",

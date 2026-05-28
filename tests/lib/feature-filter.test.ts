@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  computeFiveWeeksRent,
   filterFeatures,
   isNoiseHighlight,
   isNoiseWatchout,
@@ -219,5 +220,108 @@ describe("filterFeatures", () => {
     expect(filtered?.watchouts).toEqual([
       { severity: "problem", label: "Deposit above legal cap", detail: null },
     ]);
+  });
+
+  it("drops a 'deposit above legal cap' watchout when the arithmetic says it isn't", () => {
+    // Reproduces the production hallucination: £2,000/mo rent → 5wks
+    // cap of £2,307.69 → £2,308 deposit is 31p over the mathematical
+    // line, which is just rounding. The model surfaced "Deposit above
+    // legal cap" with a detail field that talked itself out of the
+    // claim mid-sentence; the filter must drop it.
+    const filtered = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "problem",
+            label: "Deposit above legal cap",
+            detail:
+              "Deposit is £2,308, exceeding 5 weeks' rent — wait, within legal limits. No issue here.",
+          },
+        ],
+      },
+      { deposit: 2308, priceMonthly: 2000 }
+    );
+    expect(filtered?.watchouts).toEqual([]);
+  });
+
+  it("keeps a 'deposit above legal cap' watchout when the deposit really is over", () => {
+    // £2,000/mo → cap is £2,308 (ceil of 2307.69). A £2,800 deposit is
+    // a genuine breach — must survive the filter.
+    const filtered = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "problem",
+            label: "Deposit above legal cap",
+            detail: "£2,800 = 6.07 weeks' rent",
+          },
+        ],
+      },
+      { deposit: 2800, priceMonthly: 2000 }
+    );
+    expect(filtered?.watchouts).toHaveLength(1);
+  });
+
+  it("keeps a deposit-over-cap watchout when checks aren't supplied (existing call sites)", () => {
+    const filtered = filterFeatures({
+      summary: null,
+      highlights: [],
+      watchouts: [
+        { severity: "problem", label: "Deposit above legal cap", detail: null },
+      ],
+    });
+    expect(filtered?.watchouts).toHaveLength(1);
+  });
+
+  it("keeps a deposit-over-cap watchout when deposit or price is missing", () => {
+    const noDeposit = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "problem",
+            label: "Deposit exceeds 5 weeks rent",
+            detail: null,
+          },
+        ],
+      },
+      { deposit: null, priceMonthly: 2000 }
+    );
+    expect(noDeposit?.watchouts).toHaveLength(1);
+
+    const noPrice = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "problem",
+            label: "Deposit exceeds 5 weeks rent",
+            detail: null,
+          },
+        ],
+      },
+      { deposit: 2308, priceMonthly: null }
+    );
+    expect(noPrice?.watchouts).toHaveLength(1);
+  });
+});
+
+describe("computeFiveWeeksRent", () => {
+  it("returns 5 weeks' worth of rent for a positive monthly figure", () => {
+    // £2,000/mo → £24,000/yr → £461.54/wk → £2,307.69 for 5 weeks.
+    expect(computeFiveWeeksRent(2000)).toBeCloseTo(2307.69, 1);
+  });
+
+  it("returns null for missing, zero, or negative rent", () => {
+    expect(computeFiveWeeksRent(null)).toBeNull();
+    expect(computeFiveWeeksRent(undefined)).toBeNull();
+    expect(computeFiveWeeksRent(0)).toBeNull();
+    expect(computeFiveWeeksRent(-100)).toBeNull();
   });
 });

@@ -55,6 +55,7 @@ import * as schema from "../../db/schema";
 import { checkDailyBudget } from "../lib/ai/budget";
 import { extractFeatures } from "../lib/ai/client";
 import { AI_BUDGET, PROMPT_VERSION } from "../lib/ai/config";
+import { computeFiveWeeksRent } from "../lib/ai/feature-filter";
 import type {
   AmenitiesInput,
   CrimeInput,
@@ -424,6 +425,20 @@ export const enrichAiTask = task({
             ? detail.councilTaxExempt
             : null,
         agentAffiliations: detail.agentAffiliations ?? [],
+        legalDepositCap: (() => {
+          const priceMonthly =
+            detail.priceMonthly ?? listing.priceMonthly ?? null;
+          const deposit = detail.deposit ?? null;
+          const cap = computeFiveWeeksRent(priceMonthly);
+          if (cap == null) {
+            return { fiveWeeksRent: null, depositOverCap: null };
+          }
+          const fiveWeeksRent = Math.ceil(cap);
+          if (deposit == null) {
+            return { fiveWeeksRent, depositOverCap: null };
+          }
+          return { fiveWeeksRent, depositOverCap: deposit > fiveWeeksRent };
+        })(),
       },
       enrichment: {
         epcCurrent: toEpcCurrent(geo?.epc ?? null),

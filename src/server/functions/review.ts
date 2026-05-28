@@ -370,6 +370,14 @@ function readBool(rawJson: unknown, key: string): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
+function readDeposit(rawJson: unknown): number | null {
+  if (!rawJson || typeof rawJson !== "object") {
+    return null;
+  }
+  const v = (rawJson as Record<string, unknown>).deposit;
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 /**
  * Pull just the bit of the Rightmove flood disclosure the meta-badge
  * derivation needs. The full shape lives on the listing detail page.
@@ -719,8 +727,14 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       // Strip generic-noise highlights/watchouts via the shared filter
       // (`src/lib/ai/feature-filter.ts`). The persisted v2.0.0 rows
       // are still full of bills-not-included, restated specs, etc.;
-      // this drops them at read time without re-running AI.
-      features: filterFeatures(asFeatures(enrichment?.features)),
+      // this drops them at read time without re-running AI. Pass the
+      // deposit + monthly rent so the filter can also drop hallucinated
+      // "deposit above legal cap" watchouts that contradict the actual
+      // arithmetic.
+      features: filterFeatures(asFeatures(enrichment?.features), {
+        deposit: readDeposit(headline.rawJson),
+        priceMonthly: headline.priceMonthly,
+      }),
       epcRating: asEpcRating(enrichment?.epc),
       epcIsEstimate: isEpcEstimate(enrichment?.epc),
       commuteMinutes: pickSoonestCommute(enrichment?.commuteMinutes),
