@@ -488,6 +488,28 @@ export const enrichments = pgTable(
       withinMeters: number;
       counts: Record<string, number>;
     }>(),
+    /**
+     * Per-station travel times from the cluster to its nearest stations,
+     * computed via Google Routes v2 in `enrich-station-routes.ts`.
+     *
+     *   - `walkMinutes`: realistic walking time via actual paths
+     *     (Google's WALK mode), not the linear `distanceMiles × 20`
+     *     heuristic the review card uses.
+     *   - `transitMinutes`: time by public transit (bus / tube / rail
+     *     combined) for an 09:00 London-weekday arrival, same as
+     *     `commuteMinutes`.
+     *
+     * Each entry's `name` matches a `rawJson.nearestStations[].name`.
+     * Sourced from Rightmove parsed data only — Zoopla / OpenRent don't
+     * expose station lists, so this is undefined for those listings.
+     */
+    stationRoutes: jsonb("station_routes").$type<
+      Array<{
+        name: string;
+        walkMinutes: number | null;
+        transitMinutes: number | null;
+      }>
+    >(),
     aiRunId: text("ai_run_id").references(() => aiRuns.id, {
       onDelete: "set null",
       onUpdate: "cascade",

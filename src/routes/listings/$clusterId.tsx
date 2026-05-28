@@ -245,6 +245,7 @@ function ListingDetailPage() {
     fineprint,
     epc,
     commuteMinutes,
+    stationRoutes,
     publicRecords,
     mySwipe,
     partnerSwipes,
@@ -408,6 +409,7 @@ function ListingDetailPage() {
           commuteMinutes={commuteMinutes}
           lat={cluster.lat}
           lng={cluster.lng}
+          stationRoutes={stationRoutes}
           title={whereTitle || "Where it sits"}
         />
 

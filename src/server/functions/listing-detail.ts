@@ -191,6 +191,18 @@ export type ListingDetailBroadband = {
   fttpAvailable: boolean;
 };
 
+/**
+ * One nearest-station row with Google-Routes-computed travel times.
+ * `walkMinutes` / `transitMinutes` are independently nullable — a
+ * station might have a walking estimate but no transit option, or
+ * vice versa.
+ */
+export type ListingDetailStationRoute = {
+  name: string;
+  walkMinutes: number | null;
+  transitMinutes: number | null;
+};
+
 export type ListingDetailCrime = {
   month: string;
   total: number;
@@ -238,6 +250,13 @@ export type ListingDetailPayload = {
   watchouts: ListingDetailWatchout[];
   epc?: ListingDetailEpc;
   commuteMinutes?: Record<string, number>;
+  /**
+   * Realistic walking + transit minutes to each of the cluster's
+   * nearest stations, computed at enrichment time. Omitted when the
+   * cluster has no Rightmove-sourced nearestStations to anchor on, or
+   * when `enrich-station-routes` hasn't run yet.
+   */
+  stationRoutes?: ListingDetailStationRoute[];
   publicRecords?: ListingDetailPublicRecords;
   fineprint: ListingDetailFineprint;
   mySwipe?: "keep" | "skip" | "shortlist";
@@ -348,6 +367,38 @@ function asCommuteMinutes(value: unknown): Record<string, number> | undefined {
     }
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function asStationRoutes(
+  value: unknown
+): ListingDetailStationRoute[] | undefined {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const out: ListingDetailStationRoute[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const r = entry as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name : null;
+    if (!name) {
+      continue;
+    }
+    const walk =
+      typeof r.walkMinutes === "number" && Number.isFinite(r.walkMinutes)
+        ? r.walkMinutes
+        : null;
+    const transit =
+      typeof r.transitMinutes === "number" && Number.isFinite(r.transitMinutes)
+        ? r.transitMinutes
+        : null;
+    if (walk === null && transit === null) {
+      continue;
+    }
+    out.push({ name, walkMinutes: walk, transitMinutes: transit });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function asBroadband(value: unknown): ListingDetailBroadband | undefined {
@@ -641,6 +692,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       typeof features?.summary === "string" ? features.summary : null;
     const epc = asEpc(enrichment?.epc);
     const commuteMinutes = asCommuteMinutes(enrichment?.commuteMinutes);
+    const stationRoutes = asStationRoutes(enrichment?.stationRoutes);
     const broadband = asBroadband(enrichment?.broadband);
     // Crime + area-baseline comparison: lets "398 in 1mi" render as
     // "12% below London avg" so the raw count actually informs a
@@ -765,6 +817,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       watchouts,
       ...(epc ? { epc } : {}),
       ...(commuteMinutes ? { commuteMinutes } : {}),
+      ...(stationRoutes ? { stationRoutes } : {}),
       ...(publicRecords ? { publicRecords } : {}),
       fineprint,
       ...(mySwipe ? { mySwipe } : {}),
