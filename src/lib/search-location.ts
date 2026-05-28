@@ -58,10 +58,17 @@ export type OpenrentLocationRef = {
   term: string;
 };
 
+/**
+ * Per-portal token shape. A `postal_code` location resolves to a single
+ * ref (the existing single-outcode path). A `locality` / `sublocality` /
+ * `neighborhood` location resolves to an array — one ref per covering
+ * outcode (see `coveringOutcodes` below) — and scrape-portal iterates.
+ * Readers MUST normalise with `Array.isArray` before iterating.
+ */
 export type SearchLocationPortalRefs = {
-  rightmove?: RightmoveLocationRef;
-  zoopla?: ZooplaLocationRef;
-  openrent?: OpenrentLocationRef;
+  rightmove?: RightmoveLocationRef | RightmoveLocationRef[];
+  zoopla?: ZooplaLocationRef | ZooplaLocationRef[];
+  openrent?: OpenrentLocationRef | OpenrentLocationRef[];
 };
 
 export type SearchLocation = {
@@ -79,6 +86,15 @@ export type SearchLocation = {
   lat: number;
   lng: number;
   bounds: LocationBounds;
+  /**
+   * Postcode outcodes (e.g. `["N1", "N4", "NW1"]`) that the area covers.
+   * Populated at save time by `findCoveringOutcodes` for non-postcode
+   * locations; left absent for `postal_code` locations (the `name` IS
+   * the outcode). Exposed to the form so the user can deselect outcodes
+   * before saving; the user's edits flow back into `portalRefs` via a
+   * re-stamp.
+   */
+  coveringOutcodes?: string[];
   portalRefs: SearchLocationPortalRefs;
 };
 
@@ -110,11 +126,38 @@ const openrentRefSchema = z.object({
   term: z.string().trim().min(1),
 });
 
+/**
+ * Each portal ref is either a single object (postal_code path, kept for
+ * backwards compatibility with rows written before the area-search
+ * feature) or an array of objects (one per covering outcode). A union
+ * of the two — rather than always-array — means existing N1 / NW3-style
+ * postal_code searches don't need a backfill on read.
+ */
+const rightmoveRefOrArraySchema = z.union([
+  rightmoveRefSchema,
+  z.array(rightmoveRefSchema).min(1),
+]);
+const zooplaRefOrArraySchema = z.union([
+  zooplaRefSchema,
+  z.array(zooplaRefSchema).min(1),
+]);
+const openrentRefOrArraySchema = z.union([
+  openrentRefSchema,
+  z.array(openrentRefSchema).min(1),
+]);
+
 const portalRefsSchema = z.object({
-  rightmove: rightmoveRefSchema.optional(),
-  zoopla: zooplaRefSchema.optional(),
-  openrent: openrentRefSchema.optional(),
+  rightmove: rightmoveRefOrArraySchema.optional(),
+  zoopla: zooplaRefOrArraySchema.optional(),
+  openrent: openrentRefOrArraySchema.optional(),
 });
+
+const outcodeSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(4)
+  .regex(/^[A-Z]{1,2}[0-9][A-Z0-9]?$/, "outcode must look like 'N1' / 'NW3'");
 
 export const searchLocationSchema = z.object({
   placeId: z.string(),
@@ -124,5 +167,24 @@ export const searchLocationSchema = z.object({
   lat: z.number().finite(),
   lng: z.number().finite(),
   bounds: boundsSchema,
+  coveringOutcodes: z.array(outcodeSchema).max(500).optional(),
   portalRefs: portalRefsSchema,
 });
+
+// -----------------------------------------------------------------------------
+// Read-helpers
+// -----------------------------------------------------------------------------
+
+/**
+ * Normalise a portal ref to an array, so iteration code can stay
+ * single-shaped without caring whether the value was written as a
+ * postal_code (single ref) or area (array of refs).
+ */
+export function asPortalRefArray<T>(
+  ref: T | T[] | undefined
+): readonly T[] {
+  if (ref === undefined) {
+    return [];
+  }
+  return Array.isArray(ref) ? ref : [ref];
+}

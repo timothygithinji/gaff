@@ -116,6 +116,11 @@ export type OutcodeResponse = {
     result: Outcode;
 };
 
+export type OutcodesNearestResponse = {
+    status: number;
+    result: Array<Outcode>;
+};
+
 export type ErrorResponse = {
     status: number;
     error?: string;
@@ -168,6 +173,39 @@ export type BulkLookupPostcodesResponses = {
 };
 
 export type BulkLookupPostcodesResponse = BulkLookupPostcodesResponses[keyof BulkLookupPostcodesResponses];
+
+export type NearestOutcodesData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Longitude of the query point.
+         */
+        lon: number;
+        /**
+         * Latitude of the query point.
+         */
+        lat: number;
+        /**
+         * Search radius in metres. Defaults to 5000; the server caps it higher up but values around 25 000–50 000 are typical for area resolution.
+         */
+        radius?: number;
+        /**
+         * Maximum results to return (server caps this at 100).
+         */
+        limit?: number;
+    };
+    url: '/outcodes';
+};
+
+export type NearestOutcodesResponses = {
+    /**
+     * Outcodes within radius, sorted by distance from the query point.
+     */
+    200: OutcodesNearestResponse;
+};
+
+export type NearestOutcodesResponse = NearestOutcodesResponses[keyof NearestOutcodesResponses];
 
 export type LookupOutcodeData = {
     body?: never;

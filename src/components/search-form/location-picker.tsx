@@ -18,7 +18,9 @@
 
 import { Cancel01Icon, Location01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useMutation } from "@tanstack/react-query";
 import type { SearchLocation } from "../../lib/search-location";
+import { resolveAreaOutcodes } from "../../server/functions/searches";
 import { PlaceAutocomplete } from "./place-autocomplete";
 
 // -----------------------------------------------------------------------------
@@ -31,6 +33,54 @@ type SingleProps = {
 };
 
 export function SingleLocationPicker({ value, onChange }: SingleProps) {
+  // Covering outcodes are resolved at pick-time from inside `handlePick`
+  // below — keeps the side-effect at the source (user selects a place →
+  // we fetch) instead of in a useEffect that fires off whatever the
+  // parent's identity-stability happens to be. The mutation is also
+  // available here so the chip list can show a "Resolving…" row while
+  // it's in flight.
+  const resolveOutcodes = useMutation({
+    mutationFn: resolveAreaOutcodes,
+  });
+
+  const handlePick = async (loc: SearchLocation) => {
+    // Postcode picks: the `name` already IS the outcode; nothing to
+    // resolve. Stamp directly.
+    if (loc.type === "postal_code") {
+      onChange(loc);
+      return;
+    }
+    // Show the pill immediately with an undefined `coveringOutcodes`
+    // sentinel — `AreaOutcodes` renders the "Resolving…" message until
+    // the mutation settles.
+    onChange(loc);
+    try {
+      const result = await resolveOutcodes.mutateAsync({
+        data: { lat: loc.lat, lng: loc.lng, bounds: loc.bounds },
+      });
+      onChange({ ...loc, coveringOutcodes: result.outcodes });
+    } catch {
+      // Network blip — empty list short-circuits the chip render and
+      // the save-path resolver falls back to its single-ref behaviour.
+      onChange({ ...loc, coveringOutcodes: [] });
+    }
+  };
+
+  const removeOutcode = (oc: string) => {
+    if (!value?.coveringOutcodes) {
+      return;
+    }
+    onChange({
+      ...value,
+      coveringOutcodes: value.coveringOutcodes.filter((c) => c !== oc),
+    });
+  };
+
+  const isArea = value !== null && value.type !== "postal_code";
+  const chips = value?.coveringOutcodes ?? null;
+  const resolving = isArea && resolveOutcodes.isPending;
+  const allRemoved = isArea && chips !== null && chips.length === 0;
+
   return (
     <div className="space-y-2">
       <div className="flex items-baseline justify-between">
@@ -39,50 +89,127 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
         </span>
       </div>
       {value ? (
-        // Card row mirroring CadencePicker's visual language so the
-        // form's "single chosen value, click to change" controls stay
-        // consistent. The whole row is the clear-button so the affordance
-        // is obvious; the inner × is purely decorative + accessible.
-        <button
-          className="flex w-full items-center justify-between rounded-2xl bg-muted px-4 py-4 text-left"
-          onClick={() => onChange(null)}
-          type="button"
-        >
-          <span className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <HugeiconsIcon
-                icon={Location01Icon}
-                size={18}
-                strokeWidth={1.8}
-              />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-foreground text-sm">
-                {value.name}
+        <div className="flex flex-col gap-3 rounded-2xl bg-muted px-4 py-4">
+          {/* Card row mirroring CadencePicker's visual language so the
+            * form's "single chosen value, click to change" controls stay
+            * consistent. */}
+          <button
+            className="flex w-full items-center justify-between text-left"
+            onClick={() => onChange(null)}
+            type="button"
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <HugeiconsIcon
+                  icon={Location01Icon}
+                  size={18}
+                  strokeWidth={1.8}
+                />
               </span>
-              {value.formattedAddress &&
-              value.formattedAddress !== value.name ? (
-                <span className="block truncate text-muted-foreground text-xs">
-                  {value.formattedAddress}
+              <span className="min-w-0">
+                <span className="block truncate text-foreground text-sm">
+                  {value.name}
                 </span>
-              ) : null}
+                {value.formattedAddress &&
+                value.formattedAddress !== value.name ? (
+                  <span className="block truncate text-muted-foreground text-xs">
+                    {value.formattedAddress}
+                  </span>
+                ) : null}
+              </span>
             </span>
-          </span>
-          <HugeiconsIcon
-            aria-hidden
-            className="shrink-0 text-muted-foreground"
-            icon={Cancel01Icon}
-            size={16}
-            strokeWidth={2}
-          />
-          <span className="sr-only">Clear {value.name}</span>
-        </button>
+            <HugeiconsIcon
+              aria-hidden
+              className="shrink-0 text-muted-foreground"
+              icon={Cancel01Icon}
+              size={16}
+              strokeWidth={2}
+            />
+            <span className="sr-only">Clear {value.name}</span>
+          </button>
+          {isArea ? (
+            <AreaOutcodes
+              chips={chips}
+              loading={resolving}
+              allRemoved={allRemoved}
+              onRemove={removeOutcode}
+            />
+          ) : null}
+        </div>
       ) : (
         <PlaceAutocomplete
-          onSelect={(loc) => onChange(loc)}
+          onSelect={(loc) => {
+            void handlePick(loc);
+          }}
           placeholder="Postcode, area, or town…"
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Covering-outcodes chip list for area-typed picks. Each chip is a
+ * removable pill — clicking the × drops it from the location's
+ * `coveringOutcodes`, which `stampPortalRefs` then honours at save
+ * time. Renders a single-row placeholder while the server function
+ * resolves, and a warning row if the user has dropped every outcode
+ * (the search would scrape nothing).
+ */
+function AreaOutcodes({
+  chips,
+  loading,
+  allRemoved,
+  onRemove,
+}: {
+  chips: readonly string[] | null;
+  loading: boolean;
+  allRemoved: boolean;
+  onRemove: (outcode: string) => void;
+}) {
+  if (loading) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        Resolving covering postcodes…
+      </p>
+    );
+  }
+  if (allRemoved) {
+    return (
+      <p className="text-[11px] text-primary">
+        No postcodes selected — add some back or pick a different area to
+        scrape anything.
+      </p>
+    );
+  }
+  if (!chips || chips.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+        Covers {chips.length} postcode{chips.length === 1 ? "" : "s"}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((oc) => (
+          <button
+            className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-card px-2.5 py-1 font-medium text-[11px] text-foreground hover:bg-card/70"
+            key={oc}
+            onClick={() => onRemove(oc)}
+            type="button"
+          >
+            <span>{oc}</span>
+            <HugeiconsIcon
+              aria-hidden
+              className="text-muted-foreground"
+              icon={Cancel01Icon}
+              size={10}
+              strokeWidth={2}
+            />
+            <span className="sr-only">Remove {oc}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
