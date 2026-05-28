@@ -12,9 +12,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  certsForBuilding,
   estimateBlob,
   exactBlob,
   extractCertRows,
+  isHouseType,
   pickExactCert,
 } from "./enrich-epc";
 
@@ -135,5 +137,78 @@ describe("estimateBlob", () => {
 
   it("ignores unparseable ratings and returns null when none are usable", () => {
     expect(estimateBlob([{ "current-energy-rating": "?" }, {}], "N11 3PR")).toBeNull();
+  });
+});
+
+describe("isHouseType", () => {
+  it.each([
+    "terraced",
+    "Terraced",
+    "semi_detached",
+    "Semi-detached House",
+    "Detached Bungalow",
+    "End of Terrace House",
+    "Mews",
+    "Cottage",
+  ])("recognises %s as a house", (type) => {
+    expect(isHouseType(type)).toBe(true);
+  });
+
+  it.each([
+    "flat",
+    "Flat",
+    "Apartment",
+    "maisonette",
+    "Studio Flat",
+    // "Room in a Shared House" contains the token "house", but the
+    // multi-unit guard knocks it out — geocoding a shared house still
+    // pins the building, not the room.
+    "Room in a Shared House",
+    "Room in a Shared Flat",
+  ])("does NOT treat %s as a house", (type) => {
+    expect(isHouseType(type)).toBe(false);
+  });
+
+  it("defaults missing types to flat (returns false)", () => {
+    expect(isHouseType(null)).toBe(false);
+    expect(isHouseType(undefined)).toBe(false);
+    expect(isHouseType("")).toBe(false);
+  });
+});
+
+describe("certsForBuilding", () => {
+  const certs = [
+    { address: "Flat 1, 23 Bowes Road" },
+    { address: "Flat 2, 23 Bowes Road" },
+    { address: "Flat 1, 25 Bowes Road" },
+    { address: "Flat 1, 23 Elsewhere Street" },
+    { address: "10 Bowes Road" },
+  ] as { address: string }[];
+
+  it("filters to certs sharing the building's number AND street word", () => {
+    const result = certsForBuilding(certs, "23 Bowes Road, London N11 1AB");
+    expect(result.map((c) => c.address)).toEqual([
+      "Flat 1, 23 Bowes Road",
+      "Flat 2, 23 Bowes Road",
+    ]);
+  });
+
+  it("passes certs through unchanged when the address has no number", () => {
+    expect(certsForBuilding(certs, "Bowes Road, London N11").length).toBe(
+      certs.length
+    );
+  });
+
+  it("returns [] when no cert matches the building (caller falls back)", () => {
+    expect(certsForBuilding(certs, "99 Bowes Road, London N11")).toEqual([]);
+  });
+
+  it("does not treat a bedroom count as a building number", () => {
+    // "2 Bedroom Flat" must not collapse the building filter onto
+    // every cert whose address contains a 2.
+    expect(
+      certsForBuilding(certs, "2 bedroom flat bowes road n11")
+        .map((c) => c.address)
+    ).toEqual(certs.map((c) => c.address));
   });
 });
