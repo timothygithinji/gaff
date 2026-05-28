@@ -222,6 +222,66 @@ export function isNoiseWatchout(label: string): boolean {
 }
 
 /**
+ * Labels the model uses when it thinks the deposit exceeds the Tenant
+ * Fees Act cap (5 weeks' rent for annual rent under £50k). We verify
+ * these arithmetically — Haiku has been observed to write
+ * "Deposit above legal cap" with a self-contradicting detail field that
+ * does the math wrong (e.g. dividing deposit by monthly rent and calling
+ * the ratio "weeks"), then ship the alarm anyway because the structured
+ * tool output commits label + severity before reasoning completes.
+ */
+const DEPOSIT_OVER_CAP_PATTERN =
+  /^deposit (above|over|exceeds?|exceeding) (the )?(legal (cap|limit|maximum)|(5|five) weeks'? rent)$/i;
+
+/**
+ * Five weeks' rent — the Tenant Fees Act 2019 cap for annual rent under
+ * £50k. Returns null when monthly rent is missing or non-positive, so
+ * callers can distinguish "unknown" from "zero".
+ */
+export function computeFiveWeeksRent(
+  priceMonthly: number | null | undefined
+): number | null {
+  if (
+    priceMonthly == null ||
+    !Number.isFinite(priceMonthly) ||
+    priceMonthly <= 0
+  ) {
+    return null;
+  }
+  return (priceMonthly * 12 * 5) / 52;
+}
+
+/**
+ * Side data filterFeatures uses to verify watchouts that make
+ * deterministic claims about the listing (currently: deposit-over-cap).
+ */
+export type LegalChecks = {
+  deposit?: number | null;
+  priceMonthly?: number | null;
+};
+
+/**
+ * True when a deposit-over-cap watchout label is *contradicted* by the
+ * actual numbers. Uses ceil() on the cap so pence-over-cap rounding
+ * (e.g. £2,308 deposit against £2,307.69 cap on £2,000 rent) reads as
+ * "at cap" rather than a legal breach — matching how landlords and
+ * Shelter treat sub-£1 overages in practice.
+ */
+function isFalseDepositOverCap(
+  label: string,
+  checks: LegalChecks | undefined
+): boolean {
+  if (!checks || !DEPOSIT_OVER_CAP_PATTERN.test(label.trim())) {
+    return false;
+  }
+  const cap = computeFiveWeeksRent(checks.priceMonthly);
+  if (cap == null || checks.deposit == null) {
+    return false;
+  }
+  return checks.deposit <= Math.ceil(cap);
+}
+
+/**
  * Apply both denylists to a persisted Features blob. Items with empty
  * or whitespace-only labels are dropped too — they slip past the
  * Anthropic tool-input validator but render as visual gaps.
@@ -230,15 +290,21 @@ export function isNoiseWatchout(label: string): boolean {
  * undefined) so callers can pass either the listing-detail (null) or
  * the review-card (undefined) shape without type juggling.
  */
-export function filterFeatures(features: Features | null): Features | null;
 export function filterFeatures(
-  features: Features | undefined
+  features: Features | null,
+  checks?: LegalChecks
+): Features | null;
+export function filterFeatures(
+  features: Features | undefined,
+  checks?: LegalChecks
 ): Features | undefined;
 export function filterFeatures(
-  features: Features | null | undefined
+  features: Features | null | undefined,
+  checks?: LegalChecks
 ): Features | null | undefined;
 export function filterFeatures(
-  features: Features | null | undefined
+  features: Features | null | undefined,
+  checks?: LegalChecks
 ): Features | null | undefined {
   if (features == null) {
     return features;
@@ -253,7 +319,7 @@ export function filterFeatures(
       ? features.highlights.filter(keepHighlight)
       : [],
     watchouts: Array.isArray(features.watchouts)
-      ? features.watchouts.filter(keepWatchout)
+      ? features.watchouts.filter((w) => keepWatchout(w, checks))
       : [],
   };
 }
@@ -266,10 +332,16 @@ function keepHighlight(h: HighlightItem): boolean {
   return !isNoiseHighlight(label);
 }
 
-function keepWatchout(w: WatchoutItem): boolean {
+function keepWatchout(w: WatchoutItem, checks?: LegalChecks): boolean {
   const label = w.label?.trim() ?? "";
   if (!label) {
     return false;
   }
-  return !isNoiseWatchout(label);
+  if (isNoiseWatchout(label)) {
+    return false;
+  }
+  if (isFalseDepositOverCap(label, checks)) {
+    return false;
+  }
+  return true;
 }

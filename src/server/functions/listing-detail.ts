@@ -812,7 +812,10 @@ export const getListingDetail = createServerFn({ method: "GET" })
     // Pull the persisted features, then strip generic-noise items via
     // the shared filter. Lets the v2.0.0 enrichments that pre-date the
     // tightened prompt benefit immediately — no re-run cost.
-    const features = filterFeatures(asFeatures(enrichment?.features));
+    const features = filterFeatures(asFeatures(enrichment?.features), {
+      deposit: readDetail(headlineListing.rawJson)?.deposit ?? null,
+      priceMonthly: headlineListing.priceMonthly,
+    });
     const highlights = Array.isArray(features?.highlights)
       ? features.highlights
       : [];
