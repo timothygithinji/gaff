@@ -53,13 +53,20 @@ import {
   searches,
   swipes,
 } from "../../../db/schema";
+import { findCoveringOutcodes } from "../../lib/area-outcodes";
 import {
   resolveOpenrent,
+  resolveOpenrentOutcode,
   resolveRightmove,
+  resolveRightmoveOutcode,
   resolveZoopla,
+  resolveZooplaOutcode,
 } from "../../lib/portal-locations";
 import {
+  type OpenrentLocationRef,
+  type RightmoveLocationRef,
   type SearchLocation,
+  type ZooplaLocationRef,
   searchLocationSchema,
 } from "../../lib/search-location";
 import {
@@ -282,6 +289,42 @@ export const getSearch = createServerFn({ method: "GET" })
   });
 
 // -----------------------------------------------------------------------------
+// Area → outcodes preview
+// -----------------------------------------------------------------------------
+
+const resolveAreaOutcodesSchema = z.object({
+  // Slim subset of `SearchLocation` so the client doesn't have to send
+  // the full object (or its half-resolved portalRefs) when previewing.
+  lat: z.number().finite(),
+  lng: z.number().finite(),
+  bounds: z
+    .object({
+      ne: z.object({ lat: z.number().finite(), lng: z.number().finite() }),
+      sw: z.object({ lat: z.number().finite(), lng: z.number().finite() }),
+    })
+    .nullable(),
+});
+
+export type ResolveAreaOutcodesResult = {
+  outcodes: string[];
+  /** True when postcodes.io capped the response at 100 candidates. */
+  truncated: boolean;
+};
+
+/**
+ * Client-driven preview of the outcodes an area search will cover.
+ * Called from the search form when the user picks a non-postcode
+ * location, so the chip list renders before save. Re-running this at
+ * save time is harmless — `stampPortalRefs` respects whatever subset
+ * the form submits via `location.coveringOutcodes`.
+ */
+export const resolveAreaOutcodes = createServerFn({ method: "POST" })
+  .inputValidator(resolveAreaOutcodesSchema)
+  .handler(({ data }): Promise<ResolveAreaOutcodesResult> =>
+    findCoveringOutcodes(data)
+  );
+
+// -----------------------------------------------------------------------------
 // Resolve helpers
 // -----------------------------------------------------------------------------
 
@@ -301,11 +344,31 @@ async function stampPortalRefs(
   location: SearchLocation,
   portals: ("rightmove" | "zoopla" | "openrent")[]
 ): Promise<SearchLocation> {
-  const portalRefs: SearchLocation["portalRefs"] = {};
+  // Two-path resolver:
+  //
+  //   - postal_code: keep the existing single-ref shape so old N1 / NW3
+  //     rows stay readable and the resolver still throws on a typo
+  //     (helpful — the user typed a bad outcode and we want them to know
+  //     before the scrape runs and silently returns nothing).
+  //
+  //   - locality / sublocality / neighborhood: expand to covering
+  //     outcodes via postcodes.io and stamp one ref per outcode per
+  //     portal. If the user pre-edited `location.coveringOutcodes` (via
+  //     the form's chip list), respect that list instead of re-querying.
+  //     Rightmove failures per-outcode are silently dropped (the
+  //     resolver returns null) so one missing OUTCODE doesn't sink the
+  //     save.
+  if (location.type === "postal_code") {
+    return stampSingleRef(location, portals);
+  }
+  return stampAreaRefs(location, portals);
+}
 
-  // Run independent resolvers in parallel — Rightmove's is the only
-  // one that does network I/O, but the shape stays consistent if we
-  // ever add a portal whose resolver also fetches.
+async function stampSingleRef(
+  location: SearchLocation,
+  portals: ("rightmove" | "zoopla" | "openrent")[]
+): Promise<SearchLocation> {
+  const portalRefs: SearchLocation["portalRefs"] = {};
   const tasks: Promise<void>[] = [];
   if (portals.includes("rightmove")) {
     tasks.push(
@@ -315,15 +378,65 @@ async function stampPortalRefs(
     );
   }
   if (portals.includes("zoopla")) {
-    // Sync resolver — wrapped in a promise so the array stays uniform.
     portalRefs.zoopla = resolveZoopla(location);
   }
   if (portals.includes("openrent")) {
     portalRefs.openrent = resolveOpenrent(location);
   }
   await Promise.all(tasks);
-
   return { ...location, portalRefs };
+}
+
+async function stampAreaRefs(
+  location: SearchLocation,
+  portals: ("rightmove" | "zoopla" | "openrent")[]
+): Promise<SearchLocation> {
+  // Honour any pre-filtered outcodes the form sent (user removed some
+  // chips); otherwise resolve from the bounds.
+  let outcodes = location.coveringOutcodes;
+  if (!outcodes || outcodes.length === 0) {
+    const result = await findCoveringOutcodes(location);
+    outcodes = result.outcodes;
+  }
+
+  if (outcodes.length === 0) {
+    // No outcodes resolved → fall through to the original (single-ref)
+    // path so the resolver still throws a useful error rather than
+    // silently writing an empty search. The form's existing inline
+    // error UI surfaces it.
+    return stampSingleRef(location, portals);
+  }
+
+  const portalRefs: SearchLocation["portalRefs"] = {};
+  const tasks: Promise<void>[] = [];
+
+  if (portals.includes("rightmove")) {
+    tasks.push(
+      Promise.all(outcodes.map(resolveRightmoveOutcode)).then((results) => {
+        const refs = results.filter(
+          (r): r is RightmoveLocationRef => r !== null
+        );
+        if (refs.length > 0) {
+          portalRefs.rightmove = refs;
+        }
+      })
+    );
+  }
+  if (portals.includes("zoopla")) {
+    const refs: ZooplaLocationRef[] = outcodes.map(resolveZooplaOutcode);
+    if (refs.length > 0) {
+      portalRefs.zoopla = refs;
+    }
+  }
+  if (portals.includes("openrent")) {
+    const refs: OpenrentLocationRef[] = outcodes.map(resolveOpenrentOutcode);
+    if (refs.length > 0) {
+      portalRefs.openrent = refs;
+    }
+  }
+  await Promise.all(tasks);
+
+  return { ...location, coveringOutcodes: outcodes, portalRefs };
 }
 
 function stripExcludeRefs(excludes: SearchLocation[]): SearchLocation[] {

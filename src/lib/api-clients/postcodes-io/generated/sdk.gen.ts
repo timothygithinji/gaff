@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { BulkLookupPostcodesData, BulkLookupPostcodesResponses, LookupOutcodeData, LookupOutcodeErrors, LookupOutcodeResponses, LookupPostcodeData, LookupPostcodeErrors, LookupPostcodeResponses } from './types.gen';
+import type { BulkLookupPostcodesData, BulkLookupPostcodesResponses, LookupOutcodeData, LookupOutcodeErrors, LookupOutcodeResponses, LookupPostcodeData, LookupPostcodeErrors, LookupPostcodeResponses, NearestOutcodesData, NearestOutcodesResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -34,6 +34,13 @@ export const bulkLookupPostcodes = <ThrowOnError extends boolean = false>(option
         ...options.headers
     }
 });
+
+/**
+ * List outcodes near a lat/lng (with each outcode's centroid).
+ *
+ * Returns outcodes whose centroid is within `radius` metres of (`lat`, `lon`), sorted by distance. Hard-capped at 100 results regardless of the requested `limit`. Used by the area-search resolver to find every outcode covering a Google Places viewport.
+ */
+export const nearestOutcodes = <ThrowOnError extends boolean = false>(options: Options<NearestOutcodesData, ThrowOnError>) => (options.client ?? client).get<NearestOutcodesResponses, unknown, ThrowOnError>({ url: '/outcodes', ...options });
 
 /**
  * Lookup an outcode (the part of a postcode before the space)

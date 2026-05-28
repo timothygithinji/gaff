@@ -51,7 +51,10 @@ import {
 } from "../lib/portal-urls";
 import { storeRawHtml } from "../lib/raw-html";
 import { findScheduleByExternalId } from "../lib/schedule-lookup";
-import type { SearchLocation } from "../lib/search-location";
+import {
+  type SearchLocation,
+  asPortalRefArray,
+} from "../lib/search-location";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { clusterTask } from "./cluster";
 import { scrapeQueue } from "./queues";
@@ -89,18 +92,18 @@ type SearchFilters = {
 };
 
 /**
- * Build the portal-specific search URL from the row's cached
- * `location.portalRefs`. Returns `null` if the portal's ref is missing
- * — that only happens for the degenerate-backfill row from migration
- * 0010, or if a previous resolver failure left the ref unset. Caller
- * logs a warning and skips the portal scrape in that case.
+ * Build every portal-specific search URL we need to scrape for this
+ * portal. Returns one URL for postal_code locations (the historical
+ * single-ref path) and N URLs for area locations (one per covering
+ * outcode). Empty array means the portal has no usable refs — the
+ * caller logs and skips the scrape.
  */
-function buildSearchUrl(
+function buildSearchUrls(
   portal: Portal,
   location: SearchLocation,
   search: SearchFilters,
   maxDaysSinceAdded: number | undefined
-): string | null {
+): Array<{ url: string; label: string }> {
   const filters = {
     minBedrooms: search.minBedrooms,
     maxBedrooms: search.maxBedrooms,
@@ -110,31 +113,50 @@ function buildSearchUrl(
     radiusMiles: search.radiusMiles,
   };
   if (portal === "rightmove") {
-    const ref = location.portalRefs.rightmove;
-    if (!ref) {
-      return null;
-    }
-    return rightmoveSearchUrl({
-      locationIdentifier: ref.locationIdentifier,
-      ...filters,
-      maxDaysSinceAdded,
-    });
+    const refs = asPortalRefArray(location.portalRefs.rightmove);
+    return refs.map((ref) => ({
+      url: rightmoveSearchUrl({
+        locationIdentifier: ref.locationIdentifier,
+        ...filters,
+        maxDaysSinceAdded,
+      }),
+      label: extractOutcodeLabel(ref.locationIdentifier) ?? location.name,
+    }));
   }
   if (portal === "zoopla") {
-    const ref = location.portalRefs.zoopla;
-    if (!ref) {
-      return null;
-    }
-    return zooplaSearchUrl({ q: ref.q, ...filters });
+    const refs = asPortalRefArray(location.portalRefs.zoopla);
+    return refs.map((ref) => ({
+      url: zooplaSearchUrl({ q: ref.q, ...filters }),
+      label: ref.q,
+    }));
   }
-  const ref = location.portalRefs.openrent;
-  if (!ref) {
-    return null;
-  }
-  return openrentSearchUrl({
-    term: ref.term,
-    ...filters,
-  });
+  const refs = asPortalRefArray(location.portalRefs.openrent);
+  return refs.map((ref) => ({
+    url: openrentSearchUrl({ term: ref.term, ...filters }),
+    label: ref.term,
+  }));
+}
+
+/**
+ * Pull the bare outcode out of a Rightmove `OUTCODE^…` ref so the R2
+ * scope and log lines name the actual outcode instead of "Camden-1"
+ * style indices. Returns null for `REGION^…` refs (the legacy
+ * single-ref non-postcode path) or anything else unparseable.
+ */
+const OUTCODE_REF_RE = /^OUTCODE\^(.+)$/;
+
+function extractOutcodeLabel(locationIdentifier: string): string | null {
+  const m = locationIdentifier.match(OUTCODE_REF_RE);
+  return m?.[1] ?? null;
+}
+
+/**
+ * Mirror the sanitisation `storeRawHtml` applies to the scope segment
+ * — used here to keep the per-outcode log label and the on-disk key
+ * fragment in lock-step.
+ */
+function sanitiseScopeFragment(s: string): string {
+  return s.replace(/[^A-Za-z0-9_-]/g, "");
 }
 
 /**
@@ -540,7 +562,7 @@ export const scrapePortalTask = task({
     }
 
     const location = search.location;
-    const url = buildSearchUrl(
+    const urls = buildSearchUrls(
       portal,
       location,
       {
@@ -556,7 +578,7 @@ export const scrapePortalTask = task({
       maxDaysSinceAdded
     );
 
-    if (!url) {
+    if (urls.length === 0) {
       // portalRefs missing — degenerate-backfill row or a save-time
       // resolver failure. Skip the portal cleanly; the run finishes
       // with zero listings and a clear warning, and the user can
@@ -575,82 +597,100 @@ export const scrapePortalTask = task({
       };
     }
 
-    logger.log("scrape-portal: fetching", {
-      portal,
-      location: location.name,
-      url,
-    });
-
     // Rightmove + Zoopla need the browser tier to get past CF and
     // hydrate __NEXT_DATA__. OpenRent is plain server-side HTML.
     const useBrowser = portal === "rightmove" || portal === "zoopla";
-    const res = await zyteFetch({
-      apiKey: zyteKey,
-      url,
-      geolocation: "GB",
-      browserHtml: useBrowser ? true : undefined,
-      httpResponseBody: useBrowser ? undefined : true,
-    });
+    // R2 archive base scope: kebabbed place name (e.g. "camden-town").
+    // Per-outcode iterations append the outcode label so each iteration
+    // gets a unique key — otherwise the storeRawHtml writes would
+    // overwrite each other within the same run.
+    const baseScope = rawKeyScope(location);
 
-    const totalCost = res.cost ?? portalCostFallback;
+    let totalCost = 0;
+    let totalListingsFound = 0;
+    let totalNew = 0;
+    const allTouchedPortalListingIds: string[] = [];
+    let primaryRawKey: string | null = null;
 
-    // Archive the raw HTML to R2 (best-effort). Failures don't
-    // propagate — the scrape succeeds either way; the run row just
-    // won't carry a raw_key.
-    // R2 archive scope: kebabbed place name (e.g. "camden-town") so the
-    // key is human-scannable. Falls back to placeId for unusually long
-    // / non-ASCII names; both are stable per-search-per-portal.
-    const scope = rawKeyScope(location);
-
-    let rawKey: string | null = null;
-    try {
-      const stored = await storeRawHtml({
+    // Sequential iteration: Zyte rate-limits aggressive parallelism and
+    // we'd rather one slow scrape than a whole search getting throttled.
+    // For a postal_code location this loop runs exactly once.
+    for (const { url, label } of urls) {
+      logger.log("scrape-portal: fetching", {
         portal,
-        scope,
-        runId,
-        html: res.html,
+        location: location.name,
+        outcode: label,
+        url,
       });
-      if (stored) {
-        rawKey = stored.key;
+
+      const res = await zyteFetch({
+        apiKey: zyteKey,
+        url,
+        geolocation: "GB",
+        browserHtml: useBrowser ? true : undefined,
+        httpResponseBody: useBrowser ? undefined : true,
+      });
+
+      totalCost += res.cost ?? portalCostFallback;
+
+      // Archive the raw HTML to R2 (best-effort). Failures don't
+      // propagate — the scrape succeeds either way; the run row just
+      // won't carry a raw_key.
+      const scope =
+        urls.length === 1 ? baseScope : `${baseScope}-${sanitiseScopeFragment(label)}`;
+      try {
+        const stored = await storeRawHtml({
+          portal,
+          scope,
+          runId,
+          html: res.html,
+        });
+        if (stored && !primaryRawKey) {
+          primaryRawKey = stored.key;
+        }
+      } catch (err) {
+        logger.warn("scrape-portal: raw-html upload failed", {
+          portal,
+          scope,
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-    } catch (err) {
-      logger.warn("scrape-portal: raw-html upload failed", {
+
+      const parsed = parsePortalHtml(portal, res.html);
+      const locationFiltered = filterByExcludeLocations(
+        parsed,
+        search.excludeLocations
+      );
+      // Re-check price server-side — the portal filters can't be trusted
+      // (see `filterByPriceRange`), so without this listings outside the
+      // band leak into the search and the review queue.
+      const summaries = filterByPriceRange(
+        locationFiltered,
+        search.minPrice,
+        search.maxPrice
+      );
+      const excludedByLocation = parsed.length - locationFiltered.length;
+      const excludedByPrice = locationFiltered.length - summaries.length;
+
+      const { totalSeen, newCount, touchedPortalListingIds } =
+        await upsertListings(db, searchId, portal, summaries);
+      totalListingsFound += totalSeen;
+      totalNew += newCount;
+      allTouchedPortalListingIds.push(...touchedPortalListingIds);
+
+      logger.log("scrape-portal: outcode done", {
         portal,
-        scope,
-        runId,
-        error: err instanceof Error ? err.message : String(err),
+        location: location.name,
+        outcode: label,
+        listingsFound: totalSeen,
+        newCount,
+        excludedByLocation,
+        excludedByPrice,
       });
     }
 
-    const parsed = parsePortalHtml(portal, res.html);
-    const locationFiltered = filterByExcludeLocations(
-      parsed,
-      search.excludeLocations
-    );
-    // Re-check price server-side — the portal filters can't be trusted (see
-    // `filterByPriceRange`), so without this listings outside the band leak
-    // into the search and the review queue.
-    const summaries = filterByPriceRange(
-      locationFiltered,
-      search.minPrice,
-      search.maxPrice
-    );
-    const excludedCount = parsed.length - locationFiltered.length;
-    const excludedByPrice = locationFiltered.length - summaries.length;
-    const { totalSeen, newCount, touchedPortalListingIds } =
-      await upsertListings(db, searchId, portal, summaries);
-    const totalListingsFound = totalSeen;
-    const totalNew = newCount;
-    const allTouchedPortalListingIds = touchedPortalListingIds;
-
-    logger.log("scrape-portal: location done", {
-      portal,
-      location: location.name,
-      listingsFound: totalSeen,
-      newCount,
-      excludedByLocation: excludedCount,
-      excludedByPrice,
-    });
+    const rawKey = primaryRawKey;
 
     // Resolve the touched portal ids to `listings.id` for rows whose
     // cluster is still NULL, then fan out to the cluster task. This
