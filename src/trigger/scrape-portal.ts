@@ -392,16 +392,22 @@ async function upsertListings(
         schema.listings.portalListingId,
       ],
       set: {
+        // url/title/addressRaw/price legitimately mutate between scrapes
+        // (price drops, agent re-titles) — overwrite outright.
         url: sql`excluded.url`,
         title: sql`excluded.title`,
         addressRaw: sql`excluded.address_raw`,
-        postcode: sql`excluded.postcode`,
-        bedrooms: sql`excluded.bedrooms`,
-        bathrooms: sql`excluded.bathrooms`,
         priceMonthly: sql`excluded.price_monthly`,
-        propertyType: sql`excluded.property_type`,
-        lat: sql`excluded.lat`,
-        lng: sql`excluded.lng`,
+        // Fields that don't change for a given listing but that some portal
+        // search summaries omit (OpenRent never has lat/lng at search-tier,
+        // Zoopla often misses lat/lng/bedrooms). Coalesce so a null in the
+        // search summary can't wipe a value scrape-detail filled in.
+        postcode: sql`COALESCE(excluded.postcode, listings.postcode)`,
+        bedrooms: sql`COALESCE(excluded.bedrooms, listings.bedrooms)`,
+        bathrooms: sql`COALESCE(excluded.bathrooms, listings.bathrooms)`,
+        propertyType: sql`COALESCE(excluded.property_type, listings.property_type)`,
+        lat: sql`COALESCE(excluded.lat, listings.lat)`,
+        lng: sql`COALESCE(excluded.lng, listings.lng)`,
         lastSeenAt: sql`NOW()`,
       },
     });
