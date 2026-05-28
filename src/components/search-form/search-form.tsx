@@ -214,8 +214,14 @@ export function SearchForm({
       <form.Field name="name" validators={{ onChange: nameSchema }}>
         {(field) => (
           <input
+            // `text-3xl sm:text-4xl` on mobile keeps the default
+            // "A flat in North London" placeholder from clipping at
+            // 390 px — text-4xl (36 px serif) overflows the input's
+            // available width inside the px-6 gutters at that size.
+            // Longer custom names rely on native input horizontal
+            // scrolling.
             className={`-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-foreground leading-[1.05] outline-none placeholder:text-muted-foreground/50 focus:bg-muted/60 ${
-              isDesktop ? "text-5xl" : "text-4xl"
+              isDesktop ? "text-5xl" : "text-3xl sm:text-4xl"
             }`}
             onBlur={field.handleBlur}
             onChange={(e) => {
