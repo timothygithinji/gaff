@@ -361,8 +361,12 @@ export function openrentSearchUrl(params: OpenrentSearchUrlParams): string {
   }
   if (params.exclusions?.includes("student")) {
     // `acceptStudents=false` hides listings marketed to students.
-    // `retirement` and `house_share` no-op on OR — those categories
-    // don't exist on the platform.
+    // `retirement` is genuinely not a category on OR. `house_share` IS
+    // a category (OR returns `Room in a Shared Flat` / `Room in a
+    // Shared House` listings) but has no URL switch — see
+    // `filterByExclusions` in `src/trigger/scrape-portal.ts` for the
+    // post-scrape drop and `listingPassesExclusions` in
+    // `src/server/functions/review.ts` for the read-time backstop.
     usp.set("acceptStudents", "false");
   }
   return `https://www.openrent.co.uk/properties-to-rent/?${usp.toString()}`;
