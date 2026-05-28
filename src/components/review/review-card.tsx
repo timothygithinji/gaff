@@ -16,10 +16,16 @@
  */
 import { FloorPlanIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  daysSince,
+  deriveListingMetaBadges,
+  formatDaysListed,
+} from "../../lib/listing-meta";
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
 import { FeaturePills } from "./feature-pills";
 import { InfoRow } from "./info-row";
 import { KeyStatsRow } from "./key-stats-row";
+import { MetaBadges } from "./meta-badges";
 
 type Props = {
   card: ReviewCardData;
@@ -71,6 +77,15 @@ export function ReviewCardView({ card }: Props) {
           .map((p) => portalLabel(p.portal).toUpperCase())
           .join(" · ")}`
       : null;
+
+  // Prefer the portal's "first listed" date; fall back to our first-seen
+  // for the ~half of listings missing publishedAt.
+  const daysListed = daysSince(hl.publishedAt ?? hl.firstSeenAt);
+  const listedLabel = formatDaysListed(daysListed);
+  const metaBadges = deriveListingMetaBadges({
+    tags: hl.tags,
+    daysListed,
+  });
 
   return (
     <article className="mx-4 overflow-hidden rounded-2xl bg-card">
@@ -129,9 +144,13 @@ export function ReviewCardView({ card }: Props) {
             {hl.addressRaw}
           </h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            {hl.outcode || "—"} · Listed via {portalLabel(hl.portal)}
+            {hl.outcode || "—"}
+            {listedLabel ? ` · ${listedLabel}` : ""} · via{" "}
+            {portalLabel(hl.portal)}
           </p>
         </div>
+
+        <MetaBadges badges={metaBadges} />
 
         <KeyStatsRow
           bathrooms={hl.bathrooms}

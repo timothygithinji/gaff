@@ -104,6 +104,20 @@ export type ReviewCardHeadlineListing = {
   photos: string[];
   outcode: string;
   firstSeenAt: Date;
+  /**
+   * Portal's own "first listed" date (Rightmove `listingHistory`, Zoopla
+   * `publishedOn`, OpenRent — not exposed). Drives the "Listed N ago"
+   * card sub-line; null when the portal didn't say or scrape-detail
+   * hasn't run yet — caller falls back to `firstSeenAt`.
+   */
+  publishedAt: Date | null;
+  /**
+   * Free-form portal badges off the listing card ("Reduced", "Just
+   * added", "Available from 1 June 2026", "House share"). Surfaced
+   * through `deriveListingMetaBadges` on the UI; raw shape preserved
+   * here so the same data can drive other surfaces later.
+   */
+  tags: string[];
   sizeSqFt: number | null;
   /** Direct R2 / portal URL for the floor plan image, if scraped. */
   floorplanUrl: string | null;
@@ -321,6 +335,19 @@ function readFloorplanUrl(rawJson: unknown): string | null {
   }
   const u = (rawJson as Record<string, unknown>).floorplanUrl;
   return typeof u === "string" && u.length > 0 ? u : null;
+}
+
+function readTags(rawJson: unknown): string[] {
+  if (!rawJson || typeof rawJson !== "object") {
+    return [];
+  }
+  const tags = (rawJson as Record<string, unknown>).tags;
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+  return tags.filter(
+    (t): t is string => typeof t === "string" && t.length > 0
+  );
 }
 
 /**
@@ -641,6 +668,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         photos: photoUrls,
         outcode: outcodeOf(headline.postcode ?? cluster.postcode),
         firstSeenAt: headline.firstSeenAt,
+        publishedAt: headline.publishedAt,
+        tags: readTags(headline.rawJson),
         sizeSqFt: headline.sizeSqFt,
         floorplanUrl: readFloorplanUrl(headline.rawJson),
       },
