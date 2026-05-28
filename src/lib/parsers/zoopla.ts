@@ -391,6 +391,23 @@ function zooplaPublishedAt(o: Record<string, unknown>): string | undefined {
   return Number.isNaN(new Date(iso).getTime()) ? undefined : iso;
 }
 
+function zooplaSizeSource(o: Record<string, unknown>): string | undefined {
+  const ingested = o.ingested as { sizeSource?: unknown } | undefined;
+  return toStringSafe(ingested?.sizeSource);
+}
+
+function zooplaAdministrationFeesText(
+  o: Record<string, unknown>
+): string | undefined {
+  const raw = toStringSafe(o.administrationFees);
+  if (!raw) {
+    return undefined;
+  }
+  // Some agents paste a single character or copy-paste error — drop those
+  // so the UI doesn't render a one-letter blob.
+  return raw.trim().length >= 12 ? raw : undefined;
+}
+
 function zooplaSizeSqFt(o: Record<string, unknown>): number | undefined {
   const floorArea = o.floorArea as
     | { value?: unknown; unitsLabel?: unknown }
@@ -672,5 +689,7 @@ export function parseZooplaDetail(html: string): ListingDetail {
     tags: zooplaTags(c),
     tenantPreferences: zooplaTenantPreferences(c),
     billsIncluded: ntsBillsIncluded,
+    sizeSource: zooplaSizeSource(c),
+    administrationFeesText: zooplaAdministrationFeesText(c),
   };
 }

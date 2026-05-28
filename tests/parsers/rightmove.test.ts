@@ -144,6 +144,36 @@ describe("parseRightmoveDetail", () => {
     expect(detail.feesText?.length ?? 0).toBeGreaterThan(0);
   });
 
+  it("captures coordsAccurate from location.pinType", () => {
+    expect(detail.coordsAccurate).toBe(true);
+  });
+
+  it("captures internalRef from text.disclaimer", () => {
+    expect(detail.internalRef).toMatch(/^\d+$/);
+  });
+
+  it("captures brochureUrl + agentLogoUrl + agentAffiliations + agentDescriptionHtml", () => {
+    expect(detail.brochureUrl).toMatch(/\.pdf$/);
+    expect(detail.agentLogoUrl?.length ?? 0).toBeGreaterThan(0);
+    expect((detail.agentAffiliations ?? []).length).toBeGreaterThan(0);
+    expect(detail.agentDescriptionHtml?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("captures materialInfo from features.{heating,parking,water,…}", () => {
+    expect(detail.materialInfo).toBeDefined();
+    expect(detail.materialInfo?.heating?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("captures councilTaxExempt as a boolean when livingCosts emits it", () => {
+    expect(typeof detail.councilTaxExempt).toBe("boolean");
+  });
+
+  it("captures infoReelItems as a non-empty array with typed entries", () => {
+    expect((detail.infoReelItems ?? []).length).toBeGreaterThan(0);
+    const first = (detail.infoReelItems ?? [])[0];
+    expect(first?.type?.length ?? 0).toBeGreaterThan(0);
+  });
+
   it("throws when __PAGE_MODEL is absent", () => {
     expect(() =>
       parseRightmoveDetail("<html><body>nope</body></html>")

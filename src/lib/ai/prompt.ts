@@ -178,6 +178,9 @@ Real dealbreakers (always surface when actually present):
   - Leasehold service charge > £2,000/yr — severity "caution".
   - Compound: EPC F + bills excluded — severity "problem".
   - Crime materially above the borough average — severity "caution" (only when the data backs it).
+  - listing.floodDisclosure.floodedInLastFiveYears === true — severity "problem" (landlord-disclosed historic flooding overrides area-level "very-low" tiles).
+  - listing.materialInfo.heating contains "electric" AND listing.billsIncluded !== true — severity "caution" (electric-only heating is typically 2–3× gas-central cost for a renter paying their own bills).
+  - listing.listedBuilding === true — severity "caution" (statutory restrictions on alterations, satellite dishes, external aerials).
 
 Output discipline:
   - 2–5 highlights, 0–4 watchouts. Better empty than padded — an empty highlights[] is a fine answer for an unremarkable property.
@@ -264,6 +267,39 @@ export type ExtractContext = {
     floorplanUrl: string | null;
     nearestStations: PromptNearestStation[];
     tenantPreferences: PromptTenantPreferences | null;
+    /**
+     * Rightmove's structured Material Information (UK statutory
+     * disclosure). When the property has electric-only heating or
+     * non-mains water/sewerage, the model can ground a cost-of-living
+     * watchout on it. Null when the portal didn't expose it (Zoopla /
+     * OpenRent).
+     */
+    materialInfo: {
+      heating: string | null;
+      parking: string | null;
+      garden: string | null;
+      electricity: string | null;
+      water: string | null;
+      sewerage: string | null;
+      accessibility: string | null;
+    } | null;
+    /**
+     * Landlord's personal flood disclosure (Rightmove). Distinct from
+     * the area-level EA tile in `enrichment.flood` — surface this when
+     * `floodedInLastFiveYears` is true, even if the area tile reads
+     * "very-low".
+     */
+    floodDisclosure: {
+      floodedInLastFiveYears: boolean | null;
+      floodDefences: boolean | null;
+      floodSources: string[];
+    } | null;
+    /** True when the building is listed (statutory alteration restrictions). */
+    listedBuilding: boolean | null;
+    /** True when council tax is exempt (rare — typically all-bills HMOs). */
+    councilTaxExempt: boolean | null;
+    /** Agent's ARLA/NAEA/PropertyMark affiliations, when published. */
+    agentAffiliations: string[];
   };
   enrichment: {
     epcCurrent: string | null;

@@ -43,6 +43,7 @@ import { FloorplanAnalysis } from "../../components/listing-detail/floorplan-ana
 import { Highlights } from "../../components/listing-detail/highlights";
 import { PhotoGallery } from "../../components/listing-detail/photo-gallery";
 import { PortalCrossList } from "../../components/listing-detail/portal-cross-list";
+import { PropertyFacts } from "../../components/listing-detail/property-facts";
 import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
 import { WhereItSits } from "../../components/listing-detail/where-it-sits";
@@ -248,6 +249,8 @@ function ListingDetailPage() {
     commuteMinutes,
     stationRoutes,
     publicRecords,
+    propertyFacts,
+    agentExtras,
     mySwipe,
     partnerSwipes,
     googleMapsApiKey,
@@ -423,6 +426,9 @@ function ListingDetailPage() {
 
         {/* "Public records" */}
         <PublicRecords epc={epc} publicRecords={publicRecords} />
+
+        {/* Material info + flood/listed disclosures + agent extras */}
+        <PropertyFacts agent={agentExtras} facts={propertyFacts} />
 
         {/* Tenancy terms / agent contact / fees disclosure */}
         <Fineprint fineprint={fineprint} />

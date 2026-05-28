@@ -31,6 +31,9 @@ const EMPTY_FINEPRINT: ListingDetailFineprint = {
   councilTax: null,
   furnished: null,
   sizeSqFt: null,
+  sizeSource: null,
+  councilTaxExempt: null,
+  administrationFeesText: null,
   nearestStations: [],
 };
 

@@ -76,10 +76,24 @@ function computeCosts({ priceMonthly, fineprint }: Props): Computed {
     monthlyTotal += priceMonthly;
   }
 
+  // Council tax — explicit exemption beats a band lookup. Rightmove
+  // sometimes flags an exempt property (e.g. all-bills HMO) where a
+  // band would otherwise still resolve a non-zero figure.
+  if (fineprint.councilTaxExempt === true) {
+    rows.push({
+      label: "Council tax",
+      monthlyText: "Exempt",
+      sub: "landlord-disclosed",
+      informational: true,
+    });
+  }
   // Council tax — only when the listing's specific band is known.
   // Falling back to Band D when the band is unknown would silently
   // round £1,500/yr properties up to £2,200/yr ones (or down).
-  const ctMonthly = pickCouncilTaxMonthly(fineprint.councilTax);
+  const ctMonthly =
+    fineprint.councilTaxExempt === true
+      ? null
+      : pickCouncilTaxMonthly(fineprint.councilTax);
   if (ctMonthly !== null) {
     rows.push({
       label: "Council tax",
@@ -87,7 +101,7 @@ function computeCosts({ priceMonthly, fineprint }: Props): Computed {
       sub: councilTaxSub(fineprint.councilTax),
     });
     monthlyTotal += ctMonthly;
-  } else if (fineprint.councilTax) {
+  } else if (fineprint.councilTax && fineprint.councilTaxExempt !== true) {
     // Authority known, band not — the fineprint table still tells the
     // user roughly where they'll land; flag it here without inflating
     // the total.
@@ -165,7 +179,13 @@ function computeCosts({ priceMonthly, fineprint }: Props): Computed {
   return { rows, monthlyTotal, totalHasUnknowns };
 }
 
-function CostsBody({ data }: { data: Computed }) {
+function CostsBody({
+  data,
+  administrationFeesText,
+}: {
+  data: Computed;
+  administrationFeesText?: string | null;
+}) {
   const { rows, monthlyTotal, totalHasUnknowns } = data;
   return (
     <>
@@ -213,6 +233,15 @@ function CostsBody({ data }: { data: Computed }) {
           </span>
         </div>
       ) : null}
+
+      {administrationFeesText ? (
+        <p className="text-[11px] text-muted-foreground leading-[140%]">
+          <span className="font-semibold uppercase tracking-[0.12em]">
+            Admin fees disclosure
+          </span>
+          <span className="mt-0.5 block">{administrationFeesText}</span>
+        </p>
+      ) : null}
     </>
   );
 }
@@ -233,7 +262,10 @@ export function Costs(props: Props) {
           Costs
         </h2>
       </header>
-      <CostsBody data={data} />
+      <CostsBody
+        administrationFeesText={props.fineprint.administrationFeesText}
+        data={data}
+      />
     </section>
   );
 }
@@ -252,7 +284,10 @@ export function CostsCard(props: Props) {
         </span>
         <h2 className="font-serif text-[22px] text-foreground">Costs</h2>
       </header>
-      <CostsBody data={data} />
+      <CostsBody
+        administrationFeesText={props.fineprint.administrationFeesText}
+        data={data}
+      />
     </article>
   );
 }

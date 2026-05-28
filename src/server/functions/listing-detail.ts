@@ -181,7 +181,61 @@ export type ListingDetailFineprint = {
   councilTax: ListingDetailCouncilTax | null;
   furnished: "furnished" | "unfurnished" | "part_furnished" | null;
   sizeSqFt: number | null;
+  /**
+   * Provenance for the sqft figure (Zoopla `ingested.sizeSource` —
+   * e.g. "structured_data"). Lets the UI tag the chip with a
+   * confidence cue. Null when no source was published.
+   */
+  sizeSource: string | null;
+  /**
+   * True when council tax is exempt for this property (Rightmove
+   * `livingCosts.councilTaxExempt`). Surfaced on the Costs row so the
+   * household notices the saving.
+   */
+  councilTaxExempt: boolean | null;
+  /**
+   * Zoopla's free-text administration-fees / Client Money Protection
+   * disclosure. Distinct from `feesText` (Rightmove's equivalent).
+   */
+  administrationFeesText: string | null;
   nearestStations: NearestStation[];
+};
+
+/**
+ * Optional "Property facts" block lifted off the Rightmove parser.
+ * Renders on the detail page as a small table of statutory disclosures —
+ * heating type, parking, flood history, listed-building flag, etc.
+ * Whole block is omitted when none of the underlying fields are present.
+ */
+export type ListingDetailPropertyFacts = {
+  materialInfo: {
+    heating: string | null;
+    parking: string | null;
+    garden: string | null;
+    electricity: string | null;
+    water: string | null;
+    sewerage: string | null;
+    accessibility: string | null;
+  } | null;
+  floodDisclosure: {
+    floodedInLastFiveYears: boolean | null;
+    floodDefences: boolean | null;
+    floodSources: string[];
+  } | null;
+  listedBuilding: boolean | null;
+};
+
+/**
+ * Extras off the agent customer record — Rightmove only today. The
+ * `descriptionHtml` is the agent's own copy; callers must sanitize
+ * before rendering. `brochureUrl` is a CTA-grade direct link to the
+ * letting brochure PDF.
+ */
+export type ListingDetailAgentExtras = {
+  descriptionHtml: string | null;
+  logoUrl: string | null;
+  affiliations: string[];
+  brochureUrl: string | null;
 };
 
 export type ListingDetailBroadband = {
@@ -258,6 +312,17 @@ export type ListingDetailPayload = {
    */
   stationRoutes?: ListingDetailStationRoute[];
   publicRecords?: ListingDetailPublicRecords;
+  /**
+   * Material Information + flood/listed-building disclosures, when the
+   * source portal exposed them (Rightmove today). Omitted when nothing
+   * to show — the UI suppresses the whole section in that case.
+   */
+  propertyFacts?: ListingDetailPropertyFacts;
+  /**
+   * Agent extras (brochure URL, branch description HTML, logo,
+   * affiliations). Omitted when the source portal didn't publish them.
+   */
+  agentExtras?: ListingDetailAgentExtras;
   fineprint: ListingDetailFineprint;
   mySwipe?: "keep" | "skip" | "shortlist";
   partnerSwipes: ListingDetailPartnerSwipe[];
@@ -549,8 +614,74 @@ function buildFineprint(
     councilTax: buildCouncilTax(councilTaxBand, councilTax),
     furnished: d?.furnished ?? null,
     sizeSqFt: d?.sizeSqFt ?? headline.sizeSqFt ?? null,
+    sizeSource: d?.sizeSource ?? null,
+    councilTaxExempt:
+      typeof d?.councilTaxExempt === "boolean" ? d.councilTaxExempt : null,
+    administrationFeesText: d?.administrationFeesText ?? null,
     nearestStations: Array.isArray(d?.nearestStations) ? d.nearestStations : [],
   };
+}
+
+/**
+ * Lift the Rightmove material-info + flood-disclosure + listed-building
+ * block off the listing's rawJson. Returns `null` (not a sparse object)
+ * when nothing is present, so the caller can skip rendering the whole
+ * section instead of showing an empty card.
+ */
+function buildPropertyFacts(
+  headline: typeof listings.$inferSelect
+): ListingDetailPropertyFacts | null {
+  const d = readDetail(headline.rawJson);
+  if (!d) {
+    return null;
+  }
+  const mi = d.materialInfo;
+  const fd = d.floodDisclosure;
+  const lb = typeof d.listedBuilding === "boolean" ? d.listedBuilding : null;
+  const materialInfo = mi
+    ? {
+        heating: mi.heating ?? null,
+        parking: mi.parking ?? null,
+        garden: mi.garden ?? null,
+        electricity: mi.electricity ?? null,
+        water: mi.water ?? null,
+        sewerage: mi.sewerage ?? null,
+        accessibility: mi.accessibility ?? null,
+      }
+    : null;
+  const floodDisclosure = fd
+    ? {
+        floodedInLastFiveYears: fd.floodedInLastFiveYears ?? null,
+        floodDefences: fd.floodDefences ?? null,
+        floodSources: Array.isArray(fd.floodSources) ? fd.floodSources : [],
+      }
+    : null;
+  if (!(materialInfo || floodDisclosure) && lb === null) {
+    return null;
+  }
+  return { materialInfo, floodDisclosure, listedBuilding: lb };
+}
+
+function buildAgentExtras(
+  headline: typeof listings.$inferSelect
+): ListingDetailAgentExtras | null {
+  const d = readDetail(headline.rawJson);
+  if (!d) {
+    return null;
+  }
+  const descriptionHtml = d.agentDescriptionHtml ?? null;
+  const logoUrl = d.agentLogoUrl ?? null;
+  const affiliations = Array.isArray(d.agentAffiliations)
+    ? d.agentAffiliations
+    : [];
+  const brochureUrl = d.brochureUrl ?? null;
+  if (
+    !(descriptionHtml || logoUrl || brochureUrl) &&
+    affiliations.length === 0
+  ) {
+    return null;
+  }
+  return { descriptionHtml, logoUrl, affiliations, brochureUrl };
 }
 
 // -----------------------------------------------------------------------------
@@ -786,6 +917,8 @@ export const getListingDetail = createServerFn({ method: "GET" })
     }
 
     const fineprint = buildFineprint(headlineListing, councilTaxContext);
+    const propertyFacts = buildPropertyFacts(headlineListing);
+    const agentExtras = buildAgentExtras(headlineListing);
 
     return {
       cluster: {
@@ -819,6 +952,8 @@ export const getListingDetail = createServerFn({ method: "GET" })
       ...(commuteMinutes ? { commuteMinutes } : {}),
       ...(stationRoutes ? { stationRoutes } : {}),
       ...(publicRecords ? { publicRecords } : {}),
+      ...(propertyFacts ? { propertyFacts } : {}),
+      ...(agentExtras ? { agentExtras } : {}),
       fineprint,
       ...(mySwipe ? { mySwipe } : {}),
       partnerSwipes,
