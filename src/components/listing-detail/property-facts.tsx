@@ -34,7 +34,22 @@ type Props = {
 
 type Row = { label: string; value: string };
 
+const HTTP_URL_RE = /^https?:\/\//i;
 const HTML_TAG_RE = /<[^>]+>/g;
+
+/**
+ * Belt-and-braces scheme check before rendering a third-party URL as a
+ * clickable `href`. The Rightmove parser also drops non-HTTP schemes
+ * at ingestion, so this is defense-in-depth — should a future code path
+ * skip the parser (e.g. a manually-pasted brochure URL), the render
+ * still refuses to surface `javascript:` / `data:` etc.
+ */
+function safeHttpUrl(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  return HTTP_URL_RE.test(url) ? url : null;
+}
 const HTML_ENTITY_NBSP_RE = /&nbsp;/g;
 const HTML_ENTITY_AMP_RE = /&amp;/g;
 const HTML_ENTITY_LT_RE = /&lt;/g;
@@ -126,6 +141,7 @@ function PropertyFactsBody({ facts, agent }: Props) {
   const miRows = facts ? materialInfoRows(facts.materialInfo) : [];
   const flood = facts ? floodSummary(facts.floodDisclosure) : null;
   const listed = facts?.listedBuilding === true;
+  const brochureHref = safeHttpUrl(agent?.brochureUrl);
 
   return (
     <div className="flex flex-col gap-4">
@@ -160,10 +176,10 @@ function PropertyFactsBody({ facts, agent }: Props) {
         </p>
       ) : null}
 
-      {agent?.brochureUrl ? (
+      {brochureHref ? (
         <a
           className="self-start rounded-md bg-muted px-3 py-1.5 text-[12px] text-foreground hover:bg-bone"
-          href={agent.brochureUrl}
+          href={brochureHref}
           rel="noopener noreferrer"
           target="_blank"
         >
