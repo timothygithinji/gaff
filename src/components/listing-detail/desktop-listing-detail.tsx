@@ -89,7 +89,7 @@ export function DesktopListingDetail({
           .map((s) => s.name)}
         pendingAction={pendingAction}
       />
-      <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
+      <div className="flex min-w-0 flex-1 gap-6 px-6 pt-6 pb-8 lg:px-10">
         <MediaColumn data={data} />
         <InfoColumn data={data} onEditAddress={onEditAddress} />
       </div>
@@ -120,7 +120,7 @@ function TopBar({
   const title = shortAddressTitle(headline.addressRaw);
   const origin = resolveFromOrigin(from);
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-bone border-b bg-ground/85 px-10 py-4 backdrop-blur">
+    <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-bone border-b bg-ground/85 px-6 py-4 backdrop-blur lg:px-10">
       <div className="flex min-w-0 items-center gap-3.5">
         <button
           aria-label="Back"
@@ -286,7 +286,7 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
 
   return (
-    <section className="flex w-[720px] shrink-0 flex-col gap-3.5">
+    <section className="flex min-w-0 flex-[2] flex-col gap-3.5">
       <HeroPhoto
         activeIndex={activeIndex}
         alt={headline.addressRaw}

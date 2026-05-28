@@ -68,6 +68,9 @@ infra/cloudflare/node_modules/
 gaff-dev.log
 gaff-dev.pid
 
+# Per-feature git worktrees live here (created via `git worktree add ./worktrees/<slug>`)
+worktrees/
+
 # Claude Code local project memory
 .claude/projects/
 .fallow/

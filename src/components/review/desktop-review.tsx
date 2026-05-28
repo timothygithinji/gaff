@@ -168,7 +168,7 @@ export function DesktopReview({
   return (
     <AdminSidebar mode="desktop-only">
       <DesktopReviewHeader data={data} onSelectSearch={onSelectSearch} />
-      <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
+      <div className="flex min-h-0 flex-1 gap-5 px-6 pb-8 lg:px-10">
         <QueueRail
           items={data.queue.items}
           onSelectCluster={onSelectCluster}
@@ -203,7 +203,7 @@ function DesktopReviewHeader({
     : null;
   const pillLabel = selectedSearch ? selectedSearch.name : "All searches";
   return (
-    <header className="flex items-end justify-between px-10 pt-9 pb-6">
+    <header className="flex items-end justify-between gap-4 px-6 pt-9 pb-6 lg:px-10">
       <div className="flex flex-col gap-2.5">
         <div className="flex flex-col gap-1">
           <Eyebrow>Your queue</Eyebrow>
@@ -312,7 +312,7 @@ function QueueRail({
   }, [selectedClusterId]);
 
   return (
-    <aside className="flex min-h-0 w-[260px] shrink-0 flex-col">
+    <aside className="flex min-h-0 w-56 shrink-0 flex-col xl:w-[260px]">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex shrink-0 items-baseline justify-between border-bone border-b px-4 py-3">
           <Eyebrow>Up next</Eyebrow>
@@ -451,7 +451,7 @@ function HeroColumn({
   pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <section className="flex min-h-0 w-[540px] flex-1 shrink-0 flex-col gap-3.5">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3.5">
       <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
         <HeroPhoto
           onLightboxOpenChange={onLightboxOpenChange}

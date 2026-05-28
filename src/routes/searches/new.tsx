@@ -114,7 +114,7 @@ function NewSearchPage() {
         onSubmit={(v) => create.mutate(v)}
         pending={create.isPending}
       />
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <SearchForm
           mode="create"
           onCancel={() => navigate({ to: "/searches" })}
