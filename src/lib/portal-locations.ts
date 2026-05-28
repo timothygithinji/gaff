@@ -126,6 +126,47 @@ function scoreMatch(displayName: string, fmtTokens: Set<string>): number {
   return score;
 }
 
+/**
+ * Per-outcode Rightmove resolution for area searches. Uses the same
+ * typeahead the postal_code path uses, but takes a bare outcode string
+ * (e.g. "NW3") and returns `null` instead of throwing when Rightmove
+ * doesn't index it. The area path runs N of these in parallel and
+ * silently drops the misses, since one missing outcode shouldn't
+ * sink the whole search.
+ */
+export async function resolveRightmoveOutcode(
+  outcode: string
+): Promise<RightmoveLocationRef | null> {
+  const query = sanitiseRightmoveQuery(outcode);
+  if (!query) {
+    return null;
+  }
+  try {
+    const matches = await fetchRightmoveTypeahead(query);
+    const o = matches.find(
+      (m) =>
+        m.type === "OUTCODE" &&
+        m.displayName.toUpperCase() === query.toUpperCase()
+    );
+    return o ? { locationIdentifier: `OUTCODE^${o.id}` } : null;
+  } catch {
+    // Network blips during a multi-outcode resolve shouldn't abort the
+    // whole save — return null so the caller skips this outcode on
+    // Rightmove (Zoopla / OpenRent still pick it up via free-text).
+    return null;
+  }
+}
+
+/** Per-outcode Zoopla ref. Zoopla resolves bare outcodes server-side. */
+export function resolveZooplaOutcode(outcode: string): ZooplaLocationRef {
+  return { q: outcode };
+}
+
+/** Per-outcode OpenRent ref. OpenRent resolves bare outcodes server-side. */
+export function resolveOpenrentOutcode(outcode: string): OpenrentLocationRef {
+  return { term: outcode };
+}
+
 export async function resolveRightmove(
   loc: SearchLocation
 ): Promise<RightmoveLocationRef> {

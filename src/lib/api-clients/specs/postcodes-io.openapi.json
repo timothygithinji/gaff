@@ -82,6 +82,54 @@
         }
       }
     },
+    "/outcodes": {
+      "get": {
+        "operationId": "nearestOutcodes",
+        "summary": "List outcodes near a lat/lng (with each outcode's centroid).",
+        "description": "Returns outcodes whose centroid is within `radius` metres of (`lat`, `lon`), sorted by distance. Hard-capped at 100 results regardless of the requested `limit`. Used by the area-search resolver to find every outcode covering a Google Places viewport.",
+        "tags": ["outcodes"],
+        "parameters": [
+          {
+            "name": "lon",
+            "in": "query",
+            "required": true,
+            "description": "Longitude of the query point.",
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "description": "Latitude of the query point.",
+            "schema": { "type": "number" }
+          },
+          {
+            "name": "radius",
+            "in": "query",
+            "required": false,
+            "description": "Search radius in metres. Defaults to 5000; the server caps it higher up but values around 25 000–50 000 are typical for area resolution.",
+            "schema": { "type": "integer", "default": 5000 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum results to return (server caps this at 100).",
+            "schema": { "type": "integer", "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outcodes within radius, sorted by distance from the query point.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OutcodesNearestResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/outcodes/{outcode}": {
       "get": {
         "operationId": "lookupOutcode",
@@ -275,6 +323,17 @@
         "properties": {
           "status": { "type": "integer", "example": 200 },
           "result": { "$ref": "#/components/schemas/Outcode" }
+        }
+      },
+      "OutcodesNearestResponse": {
+        "type": "object",
+        "required": ["status", "result"],
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "result": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Outcode" }
+          }
         }
       },
       "ErrorResponse": {
