@@ -79,14 +79,19 @@ function crimeRow(crime: ListingDetailPublicRecords["crime"]): Row | null {
   if (!crime) {
     return null;
   }
-  const top = crime.topCategory
-    ? `${humaniseCategory(crime.topCategory.category)} · ${crime.topCategory.count}`
-    : null;
+  // Prefer the area-baseline comparison ("12% below London avg") over
+  // the top crime category — a comparison gives the user something to
+  // act on; the category alone is trivia.
+  const sub = crime.comparison
+    ? crime.comparison.label
+    : crime.topCategory
+      ? `${humaniseCategory(crime.topCategory.category)} · ${crime.topCategory.count}`
+      : null;
   return {
     icon: Shield01Icon,
     label: `Crime · ${crime.month}`,
     headline: `${crime.total} in 1mi`,
-    sub: top,
+    sub,
   };
 }
 
