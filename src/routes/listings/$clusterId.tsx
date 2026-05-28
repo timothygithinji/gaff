@@ -35,6 +35,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { Costs } from "../../components/listing-detail/costs";
 import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
 import { Fineprint } from "../../components/listing-detail/fineprint";
@@ -393,6 +394,13 @@ function ListingDetailPage() {
 
         {/* Portal cross-list */}
         <PortalCrossList portals={portalSpread} />
+
+        {/* Consolidated costs — rent + council tax + service charge +
+            amortised deposit, with bills as an indicator. */}
+        <Costs
+          fineprint={fineprint}
+          priceMonthly={headline.priceMonthly}
+        />
 
         {/* "Why it's worth a look" — AI highlights + one-line summary */}
         <Highlights items={highlights} summary={summary} />

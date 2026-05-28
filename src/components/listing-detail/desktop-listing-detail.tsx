@@ -50,6 +50,7 @@ import type {
 } from "../../server/functions/listing-detail";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
+import { CostsCard } from "./costs";
 
 type Outcome = "keep" | "skip" | "shortlist";
 
@@ -759,6 +760,10 @@ function InfoColumn({
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-3.5">
       <PriceCard data={data} onEditAddress={onEditAddress} />
+      <CostsCard
+        fineprint={data.fineprint}
+        priceMonthly={data.headline.priceMonthly}
+      />
       <AiCard
         highlights={data.highlights}
         summary={data.summary}
