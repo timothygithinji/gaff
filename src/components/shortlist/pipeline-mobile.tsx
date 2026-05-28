@@ -77,7 +77,11 @@ export function PipelineMobile({
   const cards = columns[active];
   return (
     <div className="flex flex-col">
-      <div className="flex gap-1.5 overflow-x-auto border-border border-b px-6 pb-3">
+      {/* Wrap to multiple rows on narrow phones — `overflow-x-auto` is
+       * fine functionally but renders without a scroll indicator on
+       * mobile Safari, so the last tabs look truncated. `flex-wrap` makes
+       * every pipeline stage visible at a glance. */}
+      <div className="flex flex-wrap gap-x-1.5 gap-y-2 border-border border-b px-6 pb-3">
         {PIPELINE_STATUSES.map((status) => {
           const isActive = status === active;
           const count = columns[status].length;
