@@ -15,7 +15,7 @@ type Props = {
 
 export function CostEstimate({ ctaLabel, disabled, pending, onSubmit }: Props) {
   return (
-    <div className="sticky right-0 bottom-0 left-0 z-10 mt-8 flex items-center justify-end border-border border-t bg-card px-10 py-3">
+    <div className="sticky right-0 bottom-0 left-0 z-10 mt-8 flex items-center justify-end border-border border-t bg-card px-6 py-3 lg:px-10">
       <Button
         className="rounded-full px-6"
         disabled={disabled}

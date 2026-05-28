@@ -455,7 +455,7 @@ function ReviewPage() {
         navigate,
       })}
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 md:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 lg:hidden">
         <ReviewHeader
           leftToday={card?.leftToday ?? 0}
           searchPill={card?.searchPill}

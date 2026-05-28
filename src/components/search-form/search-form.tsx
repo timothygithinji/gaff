@@ -462,7 +462,7 @@ export function SearchForm({
           form.handleSubmit();
         }}
       >
-        <div className="flex-1 space-y-10 px-10 pt-7 pb-8">
+        <div className="flex-1 space-y-10 px-6 pt-7 pb-8 lg:px-10">
           {/* Headline + Reset, full width */}
           <div className="flex items-start justify-between gap-6">
             <div className="flex-1">{headlineSection}</div>

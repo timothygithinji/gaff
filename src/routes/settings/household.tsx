@@ -65,7 +65,7 @@ function HouseholdSettingsPage() {
         />
       </AdminSidebar>
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 md:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 lg:hidden">
         <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
           <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
             Household
