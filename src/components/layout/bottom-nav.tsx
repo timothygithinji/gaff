@@ -1,5 +1,5 @@
 /**
- * Mobile bottom nav. Hidden on `md+` where the AdminSidebar takes
+ * Mobile bottom nav. Hidden on `lg+` where the AdminSidebar takes
  * over. Always shows the three primary tabs (Review · Shortlist ·
  * Searches) so the layout stays consistent across household sizes —
  * solo users land on the Shortlist screen's empty state rather than
@@ -76,7 +76,10 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-border border-t bg-card md:hidden"
+      // `pb-[env(safe-area-inset-bottom)]` keeps the tab labels above the home
+      // indicator on notched iPhones; on devices without an inset the value
+      // resolves to 0 and the nav renders flush against the viewport edge.
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-border border-t bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {TABS.map((tab) => {
         const active = tab.match(pathname);

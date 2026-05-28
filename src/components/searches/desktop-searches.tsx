@@ -53,7 +53,7 @@ export function DesktopSearches({
     <AdminSidebar mode="desktop-only">
       <PageHeader />
       <MetricStrip totals={portfolio.totals} />
-      <div className="flex min-w-0 flex-1 flex-wrap content-start gap-4 px-10 py-6">
+      <div className="flex min-w-0 flex-1 flex-wrap content-start gap-4 px-6 py-6 lg:px-10">
         {searches.length === 0 ? (
           <EmptyState />
         ) : (
@@ -75,7 +75,7 @@ export function DesktopSearches({
 
 function PageHeader() {
   return (
-    <header className="flex items-end justify-between px-10 pt-9 pb-4">
+    <header className="flex items-end justify-between gap-4 px-6 pt-9 pb-4 lg:px-10">
       <div className="flex flex-col gap-1">
         <Eyebrow>Your watch list</Eyebrow>
         <h1 className="font-serif text-[40px] text-foreground leading-[44px] tracking-tight">

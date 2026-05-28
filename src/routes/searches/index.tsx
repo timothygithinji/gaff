@@ -82,7 +82,7 @@ function SearchesIndexPage() {
         searches={data}
       />
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 md:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 lg:hidden">
         <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
           <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
             Searches
@@ -164,14 +164,16 @@ function SearchList({
               params={{ id: s.id }}
               to="/searches/$id"
             >
-              <div className="flex items-baseline justify-between">
-                <h2 className="font-serif text-foreground text-xl">{s.name}</h2>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h2 className="min-w-0 flex-1 truncate font-serif text-foreground text-xl">
+                  {s.name}
+                </h2>
                 {s.active ? (
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary uppercase tracking-wide">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary uppercase tracking-wide">
                     {cadence ? `Active · ${cadence}` : "Active"}
                   </span>
                 ) : (
-                  <span className="rounded-full bg-muted-foreground/15 px-2 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-muted-foreground/15 px-2 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide">
                     Paused
                   </span>
                 )}
@@ -185,7 +187,7 @@ function SearchList({
                 {s.portals.join(", ")}
               </p>
               {stats ? (
-                <div className="mt-3 flex items-center gap-4 border-border border-t pt-3 text-[11px] text-muted-foreground">
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-border border-t pt-3 text-[11px] text-muted-foreground">
                   <span>
                     <span className="font-semibold text-foreground">
                       {stats.listingsThisWeek}

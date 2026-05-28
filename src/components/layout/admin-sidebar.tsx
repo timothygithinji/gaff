@@ -120,10 +120,14 @@ function useHouseLinks(): NavLink[] {
 }
 
 /**
- * Optional `mode="desktop-only"` hides the entire shell below `md` so
+ * Optional `mode="desktop-only"` hides the entire shell below `lg` so
  * the existing mobile flow can render alongside it (the same pattern
  * the desktop layouts used pre-migration). Default `mode="responsive"`
  * keeps the shell visible everywhere.
+ *
+ * The boundary lives at `lg` (1024 px) — not `md` — because the
+ * three-column desktop layouts assume at least a laptop's width. iPad
+ * portrait (768–1023 px) gets the mobile layout instead.
  */
 type Props = {
   children?: ReactNode;
@@ -134,7 +138,7 @@ export function AdminSidebar({ children, mode = "responsive" }: Props) {
   const desktopOnly = mode === "desktop-only";
   const houseLinks = useHouseLinks();
   return (
-    <div className={desktopOnly ? "hidden md:contents" : "contents"}>
+    <div className={desktopOnly ? "hidden lg:contents" : "contents"}>
       {/* Pin the whole shell to the viewport so the inset becomes a
        * scrollable region of fixed height rather than a page that
        * grows past the fold. Children that need to scroll handle it

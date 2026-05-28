@@ -234,7 +234,7 @@ function EditSearchPage() {
         pauseAction={pauseAction}
         pending={pending}
       />
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <SearchForm
           initial={initial}
           mode="edit"

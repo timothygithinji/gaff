@@ -84,7 +84,7 @@ export function DesktopShortlist({
         sortKey={sortKey}
       />
       {tabs.length > 0 ? (
-        <div className="border-bone border-b px-10 pb-4">
+        <div className="border-bone border-b px-6 pb-4 lg:px-10">
           <ShortlistTabs
             activeId={activeTab}
             onChange={onTabChange}
@@ -92,7 +92,7 @@ export function DesktopShortlist({
           />
         </div>
       ) : null}
-      <div className="flex min-w-0 flex-1 flex-col gap-5 px-10 py-7">
+      <div className="flex min-w-0 flex-1 flex-col gap-5 px-6 py-7 lg:px-10">
         {bodySlot ? (
           bodySlot
         ) : (
@@ -133,7 +133,7 @@ function Header({
   showSort?: boolean;
 }) {
   return (
-    <header className="flex items-end justify-between px-10 pt-9 pb-4">
+    <header className="flex items-end justify-between gap-4 px-6 pt-9 pb-4 lg:px-10">
       <div className="flex flex-col gap-1">
         {partnerLabel ? (
           <Eyebrow>You & {partnerLabel}</Eyebrow>
