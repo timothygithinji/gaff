@@ -40,6 +40,7 @@ import {
   swipes,
   user,
 } from "../../../db/schema";
+import { filterFeatures } from "../../lib/ai/feature-filter";
 import type {
   Features,
   HighlightItem,
@@ -613,7 +614,10 @@ export const getListingDetail = createServerFn({ method: "GET" })
       .orderBy(desc(enrichments.promptVersion))
       .limit(1);
     const enrichment = enrichmentRows[0];
-    const features = asFeatures(enrichment?.features);
+    // Pull the persisted features, then strip generic-noise items via
+    // the shared filter. Lets the v2.0.0 enrichments that pre-date the
+    // tightened prompt benefit immediately — no re-run cost.
+    const features = filterFeatures(asFeatures(enrichment?.features));
     const highlights = Array.isArray(features?.highlights)
       ? features.highlights
       : [];
