@@ -269,6 +269,8 @@ function rightmoveSizeSqFt(sizings: unknown): number | undefined {
 
 const ADDED_ON_RE =
   /Added on (\d{1,2})\/(\d{1,2})\/(\d{4})|Reduced on (\d{1,2})\/(\d{1,2})\/(\d{4})/i;
+const INFO_REEL_DATE_RE = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+const RM_INTERNAL_REF_RE = /Property reference\s+([A-Za-z0-9_-]+)/i;
 
 /**
  * Turn Rightmove's `listingHistory.listingUpdateReason` ("Added on
@@ -415,6 +417,242 @@ function rightmoveEpc(epcGraphs: unknown): string | undefined {
 }
 
 /**
+ * Pull `displayText` strings out of a Rightmove `features.<category>`
+ * array. The category arrays are `[{ alias, displayText }]` — empty
+ * array means "not stated"; we collapse to a single comma-joined string
+ * for the common single-value case, or undefined when nothing is set.
+ */
+function rightmoveFeatureText(arr: unknown): string | undefined {
+  if (!Array.isArray(arr) || arr.length === 0) {
+    return undefined;
+  }
+  const labels: string[] = [];
+  for (const item of arr) {
+    if (item && typeof item === "object") {
+      const label = toStringSafe((item as Record<string, unknown>).displayText);
+      if (label) {
+        labels.push(label);
+      }
+    }
+  }
+  return labels.length > 0 ? labels.join(", ") : undefined;
+}
+
+function rightmoveMaterialInfo(
+  features: Record<string, unknown> | undefined
+):
+  | NonNullable<ListingDetail["materialInfo"]>
+  | undefined {
+  if (!features) {
+    return undefined;
+  }
+  const out: NonNullable<ListingDetail["materialInfo"]> = {};
+  const heating = rightmoveFeatureText(features.heating);
+  const parking = rightmoveFeatureText(features.parking);
+  const garden = rightmoveFeatureText(features.garden);
+  const electricity = rightmoveFeatureText(features.electricity);
+  const water = rightmoveFeatureText(features.water);
+  const sewerage = rightmoveFeatureText(features.sewerage);
+  const accessibility = rightmoveFeatureText(features.accessibility);
+  if (heating) {
+    out.heating = heating;
+  }
+  if (parking) {
+    out.parking = parking;
+  }
+  if (garden) {
+    out.garden = garden;
+  }
+  if (electricity) {
+    out.electricity = electricity;
+  }
+  if (water) {
+    out.water = water;
+  }
+  if (sewerage) {
+    out.sewerage = sewerage;
+  }
+  if (accessibility) {
+    out.accessibility = accessibility;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function rightmoveFloodDisclosure(
+  risks: Record<string, unknown> | undefined
+):
+  | NonNullable<ListingDetail["floodDisclosure"]>
+  | undefined {
+  if (!risks) {
+    return undefined;
+  }
+  const out: NonNullable<ListingDetail["floodDisclosure"]> = {};
+  if (typeof risks.floodedInLastFiveYears === "boolean") {
+    out.floodedInLastFiveYears = risks.floodedInLastFiveYears;
+  }
+  if (typeof risks.floodDefences === "boolean") {
+    out.floodDefences = risks.floodDefences;
+  }
+  if (Array.isArray(risks.floodSources)) {
+    const srcs = (risks.floodSources as unknown[])
+      .map((s) => toStringSafe(s))
+      .filter((s): s is string => Boolean(s));
+    if (srcs.length > 0) {
+      out.floodSources = srcs;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function rightmoveInfoReel(
+  arr: unknown
+): NonNullable<ListingDetail["infoReelItems"]> | undefined {
+  if (!Array.isArray(arr) || arr.length === 0) {
+    return undefined;
+  }
+  const out: NonNullable<ListingDetail["infoReelItems"]> = [];
+  for (const item of arr) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const o = item as Record<string, unknown>;
+    const entry: NonNullable<ListingDetail["infoReelItems"]>[number] = {};
+    const type = toStringSafe(o.type);
+    const title = toStringSafe(o.title);
+    const primary = toStringSafe(o.primaryText);
+    const secondary = toStringSafe(o.secondaryText);
+    const tooltip = toStringSafe(o.tooltipText);
+    if (type) {
+      entry.type = type;
+    }
+    if (title) {
+      entry.title = title;
+    }
+    if (primary) {
+      entry.primaryText = primary;
+    }
+    if (secondary) {
+      entry.secondaryText = secondary;
+    }
+    if (tooltip) {
+      entry.tooltipText = tooltip;
+    }
+    if (Object.keys(entry).length > 0) {
+      out.push(entry);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Gap-fill `publishedAt` when `listingHistory.listingUpdateReason` says
+ * something other than "Added on …" (e.g. "Reduced on …", "Featured").
+ * `infoReelItems` carries a "Date added" / "Added" item with a DD/MM/YYYY
+ * date — surface that as a fallback.
+ */
+function rightmoveInfoReelPublishedAt(
+  reel: NonNullable<ListingDetail["infoReelItems"]> | undefined
+): string | undefined {
+  if (!reel) {
+    return undefined;
+  }
+  for (const item of reel) {
+    const type = (item.type ?? "").toLowerCase();
+    const title = (item.title ?? "").toLowerCase();
+    if (!(type.includes("date") || title.includes("added"))) {
+      continue;
+    }
+    const blob = `${item.primaryText ?? ""} ${item.secondaryText ?? ""}`;
+    const m = blob.match(INFO_REEL_DATE_RE);
+    if (!m) {
+      continue;
+    }
+    const [, day, month, year] = m;
+    if (!(day && month && year)) {
+      continue;
+    }
+    const iso = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00.000Z`;
+    if (!Number.isNaN(new Date(iso).getTime())) {
+      return iso;
+    }
+  }
+  return undefined;
+}
+
+function rightmoveBrochure(brochures: unknown): string | undefined {
+  if (!Array.isArray(brochures) || brochures.length === 0) {
+    return undefined;
+  }
+  const first = brochures[0];
+  if (typeof first === "string") {
+    return first;
+  }
+  if (first && typeof first === "object") {
+    return toStringSafe((first as Record<string, unknown>).url);
+  }
+  return undefined;
+}
+
+function rightmoveAffiliations(arr: unknown): string[] | undefined {
+  if (!Array.isArray(arr) || arr.length === 0) {
+    return undefined;
+  }
+  const out: string[] = [];
+  for (const item of arr) {
+    if (item && typeof item === "object") {
+      const name = toStringSafe((item as Record<string, unknown>).name);
+      if (name) {
+        out.push(name);
+      }
+    } else {
+      const s = toStringSafe(item);
+      if (s) {
+        out.push(s);
+      }
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function rightmoveFloorplanResized(floorplans: unknown): string[] | undefined {
+  if (!Array.isArray(floorplans) || floorplans.length === 0) {
+    return undefined;
+  }
+  const first = floorplans[0];
+  if (!(first && typeof first === "object")) {
+    return undefined;
+  }
+  const sizes = (first as Record<string, unknown>).resizedFloorplanUrls;
+  if (!Array.isArray(sizes) || sizes.length === 0) {
+    return undefined;
+  }
+  const out: string[] = [];
+  for (const s of sizes) {
+    if (typeof s === "string") {
+      out.push(s);
+    } else if (s && typeof s === "object") {
+      const url =
+        toStringSafe((s as Record<string, unknown>).url) ??
+        toStringSafe((s as Record<string, unknown>).srcUrl);
+      if (url) {
+        out.push(url);
+      }
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function rightmoveInternalRef(text: unknown): string | undefined {
+  const s = toStringSafe(text);
+  if (!s) {
+    return undefined;
+  }
+  // `text.disclaimer` is HTML, e.g. "<b>Disclaimer</b> - Property reference 31242395. …"
+  const m = s.match(RM_INTERNAL_REF_RE);
+  return m?.[1];
+}
+
+/**
  * Parse a Rightmove property detail page.
  * Throws if `window.__PAGE_MODEL` can't be located.
  */
@@ -437,6 +675,15 @@ export function parseRightmoveDetail(html: string): ListingDetail {
   const listingHistory =
     (pd.listingHistory as Record<string, unknown> | undefined) ?? {};
   const feesApply = (pd.feesApply as Record<string, unknown> | undefined) ?? {};
+  const featuresBlock =
+    (pd.features as Record<string, unknown> | undefined) ?? undefined;
+  const risks = featuresBlock?.risks as Record<string, unknown> | undefined;
+  const obligations = featuresBlock?.obligations as
+    | Record<string, unknown>
+    | undefined;
+  const customerDescription = customer.customerDescription as
+    | Record<string, unknown>
+    | undefined;
 
   const id =
     toStringSafe(pd.id) ??
@@ -461,8 +708,36 @@ export function parseRightmoveDetail(html: string): ListingDetail {
 
   const photos = rightmovePhotos(pd.images);
   const floorplanUrl = rightmoveFloorplan(pd.floorplans);
+  const floorplanResizedUrls = rightmoveFloorplanResized(pd.floorplans);
   const stations = rightmoveStations(pd.nearestStations);
   const epcRating = rightmoveEpc(pd.epcGraphs);
+  const infoReelItems = rightmoveInfoReel(pd.infoReelItems);
+  const materialInfo = rightmoveMaterialInfo(featuresBlock);
+  const floodDisclosure = rightmoveFloodDisclosure(risks);
+  const listedBuilding =
+    obligations && typeof obligations.listed === "boolean"
+      ? obligations.listed
+      : undefined;
+  // pinType is the source of truth — anything other than "ACCURATE_POINT"
+  // (typically "ESTIMATE") means the lat/lng is an area centroid, not the
+  // door. Undefined when missing so callers can distinguish "didn't say"
+  // from "said it's not accurate".
+  const pinType = toStringSafe(location.pinType);
+  const coordsAccurate =
+    pinType === undefined ? undefined : pinType === "ACCURATE_POINT";
+  // Council-tax exemption — Rightmove emits this when the property is
+  // exempt from council tax (e.g. an all-bills HMO). Distinct from
+  // `councilTaxIncluded`, which means the rent covers the bill.
+  const councilTaxExempt =
+    typeof livingCosts.councilTaxExempt === "boolean"
+      ? livingCosts.councilTaxExempt
+      : undefined;
+  // publishedAt: prefer listingHistory.listingUpdateReason ("Added on …")
+  // and fall back to the date in infoReelItems when the reason is
+  // "Reduced on …" / "Featured" / etc.
+  const publishedAt =
+    rightmovePublishedAt(listingHistory.listingUpdateReason) ??
+    rightmoveInfoReelPublishedAt(infoReelItems);
   const keyFeaturesRaw = pd.keyFeatures;
   const keyFeatures = Array.isArray(keyFeaturesRaw)
     ? (keyFeaturesRaw as unknown[])
@@ -499,7 +774,7 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     nearestStations: stations,
     sizeSqFt: rightmoveSizeSqFt(pd.sizings),
     councilTaxBand: toStringSafe(livingCosts.councilTaxBand),
-    publishedAt: rightmovePublishedAt(listingHistory.listingUpdateReason),
+    publishedAt,
     minimumTermMonths: toNumber(lettings.minimumTermInMonths),
     letType: toStringSafe(lettings.letType),
     serviceChargeAnnual: toNumber(livingCosts.annualServiceCharge),
@@ -513,6 +788,20 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     tags: rightmoveTags(pd),
     tenantPreferences: rightmoveTenantPreferences(pd),
     billsIncluded: livingCosts.councilTaxIncluded === true ? true : undefined,
+    coordsAccurate,
+    materialInfo,
+    floodDisclosure,
+    listedBuilding,
+    internalRef: rightmoveInternalRef(text.disclaimer),
+    brochureUrl: rightmoveBrochure(pd.brochures),
+    agentDescriptionHtml:
+      toStringSafe(customerDescription?.descriptionHTML) ??
+      toStringSafe(customerDescription?.truncatedDescriptionHTML),
+    agentLogoUrl: toStringSafe(customer.logoPath),
+    agentAffiliations: rightmoveAffiliations(pd.industryAffiliations),
+    councilTaxExempt,
+    floorplanResizedUrls,
+    infoReelItems,
   };
 }
 

@@ -51,6 +51,7 @@ import type {
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import { CostsCard } from "./costs";
+import { PropertyFactsCard } from "./property-facts";
 
 type Outcome = "keep" | "skip" | "shortlist";
 
@@ -308,6 +309,7 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
       ) : null}
       <FloorplanCard
         floorplanUrl={floorplan?.url}
+        sizeSource={fineprint.sizeSource}
         sizeSqFt={fineprint.sizeSqFt}
       />
       <LocationCard
@@ -476,12 +478,24 @@ function PhotoStrip({
 
 function FloorplanCard({
   sizeSqFt,
+  sizeSource,
   floorplanUrl,
 }: {
   sizeSqFt?: number | null;
+  /**
+   * Portal-published provenance for the sqft figure, e.g.
+   * `"structured_data"` from Zoopla's `ingested.sizeSource`. Surfaced
+   * as a `title` tooltip on the chip so the household can tell a
+   * portal-confirmed size from a landlord-typed one without cluttering
+   * the layout. Undefined when the portal didn't say.
+   */
+  sizeSource?: string | null;
   floorplanUrl?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const sizeTooltip = sizeSource
+    ? `Size source: ${sizeSource.replace(/_/g, " ")}`
+    : undefined;
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
       <header className="flex items-end justify-between px-6 pt-5 pb-3.5">
@@ -492,7 +506,10 @@ function FloorplanCard({
           </h2>
         </div>
         {sizeSqFt ? (
-          <span className="inline-flex items-center rounded-full bg-bone px-2.5 py-1.5 font-semibold text-[11px] text-primary">
+          <span
+            className="inline-flex items-center rounded-full bg-bone px-2.5 py-1.5 font-semibold text-[11px] text-primary"
+            title={sizeTooltip}
+          >
             {sizeSqFt.toLocaleString("en-GB")} sq ft
           </span>
         ) : null}
@@ -770,6 +787,10 @@ function InfoColumn({
         watchouts={data.watchouts}
       />
       <RecordsCard epc={data.epc} publicRecords={data.publicRecords} />
+      <PropertyFactsCard
+        agent={data.agentExtras}
+        facts={data.propertyFacts}
+      />
     </section>
   );
 }

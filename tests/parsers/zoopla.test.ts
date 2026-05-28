@@ -121,6 +121,10 @@ describe("parseZooplaDetail", () => {
     expect((detail.tags ?? []).length).toBeGreaterThan(0);
   });
 
+  it("captures sizeSource from ingested.sizeSource", () => {
+    expect(detail.sizeSource?.length ?? 0).toBeGreaterThan(0);
+  });
+
   it("throws when no RSC flight chunks are present", () => {
     expect(() =>
       parseZooplaDetail("<html><body>nope</body></html>")

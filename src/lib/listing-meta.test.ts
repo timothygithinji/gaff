@@ -101,4 +101,47 @@ describe("deriveListingMetaBadges", () => {
     });
     expect(bs).toStrictEqual([]);
   });
+
+  it("emits listed-building badge when Rightmove flagged it", () => {
+    const bs = deriveListingMetaBadges({
+      tags: null,
+      daysListed: null,
+      listedBuilding: true,
+    });
+    expect(bs.find((b) => b.key === "listed")?.label).toBe("Listed building");
+  });
+
+  it("does not emit listed-building badge when null or false", () => {
+    expect(
+      deriveListingMetaBadges({
+        tags: null,
+        daysListed: null,
+        listedBuilding: false,
+      }).find((b) => b.key === "listed")
+    ).toBeUndefined();
+    expect(
+      deriveListingMetaBadges({
+        tags: null,
+        daysListed: null,
+        listedBuilding: null,
+      }).find((b) => b.key === "listed")
+    ).toBeUndefined();
+  });
+
+  it("emits flood-disclosure badge only when landlord said yes", () => {
+    expect(
+      deriveListingMetaBadges({
+        tags: null,
+        daysListed: null,
+        floodDisclosure: { floodedInLastFiveYears: true },
+      }).find((b) => b.key === "flooded")?.variant
+    ).toBe("problem");
+    expect(
+      deriveListingMetaBadges({
+        tags: null,
+        daysListed: null,
+        floodDisclosure: { floodedInLastFiveYears: false },
+      }).find((b) => b.key === "flooded")
+    ).toBeUndefined();
+  });
 });

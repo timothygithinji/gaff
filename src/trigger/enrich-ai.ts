@@ -396,6 +396,34 @@ export const enrichAiTask = task({
         floorplanUrl: detail.floorplanUrl ?? null,
         nearestStations: toNearestStations(detail.nearestStations),
         tenantPreferences: toTenantPreferences(detail.tenantPreferences),
+        materialInfo: detail.materialInfo
+          ? {
+              heating: detail.materialInfo.heating ?? null,
+              parking: detail.materialInfo.parking ?? null,
+              garden: detail.materialInfo.garden ?? null,
+              electricity: detail.materialInfo.electricity ?? null,
+              water: detail.materialInfo.water ?? null,
+              sewerage: detail.materialInfo.sewerage ?? null,
+              accessibility: detail.materialInfo.accessibility ?? null,
+            }
+          : null,
+        floodDisclosure: detail.floodDisclosure
+          ? {
+              floodedInLastFiveYears:
+                detail.floodDisclosure.floodedInLastFiveYears ?? null,
+              floodDefences: detail.floodDisclosure.floodDefences ?? null,
+              floodSources: detail.floodDisclosure.floodSources ?? [],
+            }
+          : null,
+        listedBuilding:
+          typeof detail.listedBuilding === "boolean"
+            ? detail.listedBuilding
+            : null,
+        councilTaxExempt:
+          typeof detail.councilTaxExempt === "boolean"
+            ? detail.councilTaxExempt
+            : null,
+        agentAffiliations: detail.agentAffiliations ?? [],
       },
       enrichment: {
         epcCurrent: toEpcCurrent(geo?.epc ?? null),

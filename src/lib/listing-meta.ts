@@ -105,6 +105,21 @@ export function formatDaysListed(days: number | null): string | null {
 export function deriveListingMetaBadges(opts: {
   tags: string[] | null | undefined;
   daysListed: number | null;
+  /**
+   * True when Rightmove flagged the property as listed (statutory
+   * alteration restrictions). Surfaced as a caution badge so the
+   * household notices before scheduling a viewing.
+   */
+  listedBuilding?: boolean | null;
+  /**
+   * Landlord's personal historic-flooding disclosure (Rightmove). Only
+   * `floodedInLastFiveYears === true` produces a badge — the field is
+   * a self-declared yes/no, distinct from the area-level Environment
+   * Agency tile in `enrichments.flood`.
+   */
+  floodDisclosure?: {
+    floodedInLastFiveYears?: boolean | null;
+  } | null;
 }): ListingMetaBadge[] {
   const out: ListingMetaBadge[] = [];
   const seen = new Set<string>();
@@ -150,6 +165,13 @@ export function deriveListingMetaBadges(opts: {
         });
       }
     }
+  }
+
+  if (opts.listedBuilding === true) {
+    push({ key: "listed", label: "Listed building", variant: "caution" });
+  }
+  if (opts.floodDisclosure?.floodedInLastFiveYears === true) {
+    push({ key: "flooded", label: "Flooded in 5y", variant: "problem" });
   }
 
   return out;

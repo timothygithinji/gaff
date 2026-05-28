@@ -52,6 +52,11 @@ const emptyContext: ExtractContext = {
       },
     ],
     tenantPreferences: { petsAccepted: true },
+    materialInfo: null,
+    floodDisclosure: null,
+    listedBuilding: null,
+    councilTaxExempt: null,
+    agentAffiliations: [],
   },
   enrichment: {
     epcCurrent: "C",

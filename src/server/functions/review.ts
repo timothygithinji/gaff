@@ -121,6 +121,18 @@ export type ReviewCardHeadlineListing = {
   sizeSqFt: number | null;
   /** Direct R2 / portal URL for the floor plan image, if scraped. */
   floorplanUrl: string | null;
+  /**
+   * Rightmove's `features.obligations.listed` flag — true when the
+   * building is listed. Read off `rawJson` and forwarded so the swipe
+   * card can render a caution badge without pulling the full detail.
+   */
+  listedBuilding: boolean | null;
+  /**
+   * Landlord-disclosed historic flooding (Rightmove only — minimal
+   * shape, just enough for `deriveListingMetaBadges`). Full disclosure
+   * lives on the listing detail page.
+   */
+  floodDisclosure: { floodedInLastFiveYears: boolean | null } | null;
 };
 
 export type ReviewCardAlsoOn = {
@@ -348,6 +360,34 @@ function readTags(rawJson: unknown): string[] {
   return tags.filter(
     (t): t is string => typeof t === "string" && t.length > 0
   );
+}
+
+function readBool(rawJson: unknown, key: string): boolean | null {
+  if (!rawJson || typeof rawJson !== "object") {
+    return null;
+  }
+  const v = (rawJson as Record<string, unknown>)[key];
+  return typeof v === "boolean" ? v : null;
+}
+
+/**
+ * Pull just the bit of the Rightmove flood disclosure the meta-badge
+ * derivation needs. The full shape lives on the listing detail page.
+ */
+function readFloodDisclosureForBadges(
+  rawJson: unknown
+): { floodedInLastFiveYears: boolean | null } | null {
+  if (!rawJson || typeof rawJson !== "object") {
+    return null;
+  }
+  const fd = (rawJson as Record<string, unknown>).floodDisclosure;
+  if (!fd || typeof fd !== "object") {
+    return null;
+  }
+  const flooded = (fd as Record<string, unknown>).floodedInLastFiveYears;
+  return {
+    floodedInLastFiveYears: typeof flooded === "boolean" ? flooded : null,
+  };
 }
 
 /**
@@ -672,6 +712,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         tags: readTags(headline.rawJson),
         sizeSqFt: headline.sizeSqFt,
         floorplanUrl: readFloorplanUrl(headline.rawJson),
+        listedBuilding: readBool(headline.rawJson, "listedBuilding"),
+        floodDisclosure: readFloodDisclosureForBadges(headline.rawJson),
       },
       portalsAlsoOn,
       // Strip generic-noise highlights/watchouts via the shared filter

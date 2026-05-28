@@ -85,6 +85,8 @@ export function ReviewCardView({ card }: Props) {
   const metaBadges = deriveListingMetaBadges({
     tags: hl.tags,
     daysListed,
+    listedBuilding: hl.listedBuilding,
+    floodDisclosure: hl.floodDisclosure,
   });
 
   return (
