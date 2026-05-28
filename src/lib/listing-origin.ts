@@ -7,14 +7,14 @@
 import { z } from "zod";
 
 export const listingFromOriginSchema = z
-  .enum(["review", "shortlist", "matches"])
+  .enum(["review", "shortlist", "matches", "compare"])
   .optional();
 
 export type ListingFromOrigin = z.infer<typeof listingFromOriginSchema>;
 
 type OriginMeta = {
   /** Path the back button + breadcrumb anchor should target. */
-  path: "/" | "/shortlist" | "/matches";
+  path: "/" | "/shortlist" | "/matches" | "/compare";
   /** Label rendered in the breadcrumb. */
   label: string;
   /** Sidebar nav `to` to mark active when on /listings/*. */
@@ -31,6 +31,10 @@ const ORIGIN_TABLE: Record<NonNullable<ListingFromOrigin>, OriginMeta> = {
   // Matches lives under Shortlist in the IA, so the sidebar still
   // highlights Shortlist even though the breadcrumb says Matches.
   matches: { path: "/matches", label: "Matches", sidebarTo: "/shortlist" },
+  // `/compare` is reached from Shortlist (the only place you'd select
+  // two listings to compare), so the back button + sidebar both
+  // resolve to Shortlist on the listing-detail page when `from=compare`.
+  compare: { path: "/compare", label: "Compare", sidebarTo: "/shortlist" },
 };
 
 const DEFAULT_ORIGIN: OriginMeta = ORIGIN_TABLE.review;
