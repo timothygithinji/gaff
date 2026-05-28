@@ -196,7 +196,12 @@ export const searches = pgTable(
      * lives in `src/lib/portal-urls.ts`:
      *   - Rightmove: `dontShow=studentLet,retirement,houseShare` (comma list)
      *   - Zoopla: `include_*=false` per category
-     *   - OpenRent: no URL support — parser-side filter (best-effort)
+     *   - OpenRent: no URL support — `filterByExclusions` in
+     *     `src/trigger/scrape-portal.ts` drops shares post-scrape and
+     *     `listingPassesExclusions` in `src/server/functions/review.ts`
+     *     is the read-time backstop. OR does host rooms-in-shared-flats
+     *     ("Room in a Shared House — …" titles); it just doesn't expose
+     *     a URL filter for them.
      */
     exclusions: text("exclusions").array().notNull().default(sql`'{}'::text[]`),
     commuteTargets: jsonb("commute_targets")

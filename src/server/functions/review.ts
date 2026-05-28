@@ -441,6 +441,42 @@ function listingWithinSearchBand() {
   )`;
 }
 
+/**
+ * SQL backstop mirroring `filterByBedroomRange` in scrape-portal.ts.
+ * OpenRent's `bedrooms_min` URL filter is silently ignored — 1-bed flats,
+ * studios, and shared rooms come back regardless. Without this predicate
+ * those rows reach the queue.
+ */
+function listingMatchesBedroomBand() {
+  return sql`(
+    ${listings.bedrooms} IS NULL
+    OR (
+      (${searches.minBedrooms} IS NULL OR ${listings.bedrooms} >= ${searches.minBedrooms})
+      AND (${searches.maxBedrooms} IS NULL OR ${listings.bedrooms} <= ${searches.maxBedrooms})
+    )
+  )`;
+}
+
+/**
+ * SQL backstop mirroring `filterByExclusions` in scrape-portal.ts.
+ * Today only `house_share` is enforced here — every portal that hosts
+ * student / retirement listings has dedicated URL switches that work,
+ * OpenRent is the gap (it has rooms-in-shared but no URL filter for
+ * them). Matches the same `propertyType`/`title` heuristics the scrape
+ * filter uses.
+ */
+function listingPassesExclusions() {
+  return sql`NOT (
+    'house_share' = ANY(${searches.exclusions})
+    AND (
+      ${listings.propertyType} ~* '^room\\M'
+      OR ${listings.propertyType} ~* '\\mshared\\M'
+      OR ${listings.title} ~* '^room in a shared\\M'
+      OR ${listings.title} ~* '\\mhmo\\M'
+    )
+  )`;
+}
+
 /** JS twin of {@link listingWithinSearchBand} for already-fetched rows. */
 function priceWithinBand(
   price: number | null,
@@ -454,6 +490,48 @@ function priceWithinBand(
     return false;
   }
   if (max != null && price > max) {
+    return false;
+  }
+  return true;
+}
+
+/** JS twin of {@link listingMatchesBedroomBand} for already-fetched rows. */
+function bedroomsWithinBand(
+  bedrooms: number | null,
+  min: number | null,
+  max: number | null
+): boolean {
+  if (bedrooms == null) {
+    return true;
+  }
+  if (min != null && bedrooms < min) {
+    return false;
+  }
+  if (max != null && bedrooms > max) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * JS twin of {@link listingPassesExclusions} for already-fetched rows.
+ * Kept in sync with `looksLikeRoomShare` in `scrape-portal.ts` — both
+ * read the same `propertyType` / `title` strings the parser writes.
+ */
+function passesExclusions(
+  propertyType: string | null,
+  title: string | null,
+  exclusions: readonly string[]
+): boolean {
+  if (!exclusions.includes("house_share")) {
+    return true;
+  }
+  const pt = propertyType ?? "";
+  const t = title ?? "";
+  if (/^room\b/i.test(pt) || /\bshared\b/i.test(pt)) {
+    return false;
+  }
+  if (/^room in a shared\b/i.test(t) || /\bhmo\b/i.test(t)) {
     return false;
   }
   return true;
@@ -513,7 +591,9 @@ async function loadRankedQueueClusterIds(
       and(
         isNotNull(listings.clusterId),
         inArray(listings.searchId, activeSearchIds),
-        listingWithinSearchBand()
+        listingWithinSearchBand(),
+        listingMatchesBedroomBand(),
+        listingPassesExclusions()
       )
     )
     .groupBy(listings.clusterId)
@@ -619,20 +699,36 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         listings.priceMonthly
       );
 
-    // Read-time price guard: only consider listings within their own
-    // search's band, so the headline (and "ALSO ON" set derived from it)
-    // can't be an out-of-band listing even when the cluster qualified via a
-    // sibling that IS in band.
+    // Read-time guard: only consider listings within their own search's
+    // band on price, beds, and category exclusions — so the headline (and
+    // "ALSO ON" set derived from it) can't be an out-of-band listing even
+    // when the cluster qualified via a sibling that IS in band. Mirrors
+    // the scrape-side filters in `scrape-portal.ts`.
     const bandBySearchId = new Map(
       activeSearches.map(
-        (s) => [s.id, { min: s.minPrice, max: s.maxPrice }] as const
+        (s) =>
+          [
+            s.id,
+            {
+              minPrice: s.minPrice,
+              maxPrice: s.maxPrice,
+              minBedrooms: s.minBedrooms,
+              maxBedrooms: s.maxBedrooms,
+              exclusions: s.exclusions,
+            },
+          ] as const
       )
     );
     const inBandListings = clusterListings.filter((l) => {
       const band = bandBySearchId.get(l.searchId);
-      return band
-        ? priceWithinBand(l.priceMonthly, band.min, band.max)
-        : true;
+      if (!band) {
+        return true;
+      }
+      return (
+        priceWithinBand(l.priceMonthly, band.minPrice, band.maxPrice) &&
+        bedroomsWithinBand(l.bedrooms, band.minBedrooms, band.maxBedrooms) &&
+        passesExclusions(l.propertyType, l.title, band.exclusions)
+      );
     });
 
     const sortedListings = [...inBandListings].sort((a, b) => {
@@ -841,7 +937,9 @@ async function hydrateQueueItems(
       and(
         inArray(listings.clusterId, upcomingClusterIds),
         inArray(listings.searchId, activeSearchIds),
-        listingWithinSearchBand()
+        listingWithinSearchBand(),
+        listingMatchesBedroomBand(),
+        listingPassesExclusions()
       )
     );
 

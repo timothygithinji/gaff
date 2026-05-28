@@ -290,6 +290,80 @@ export function filterByPriceRange(
 }
 
 /**
+ * Drop listings whose bedroom count falls outside the search's band.
+ *
+ * Same trust model as {@link filterByPriceRange}: portals advertise
+ * `bedrooms_min`/`_max` (RM/ZP/OR all accept them) but OpenRent ignores
+ * them in practice — N14 with `bedrooms_min=2` still returns 1-bed
+ * flats, studios, and `Room in a Shared Flat`. We re-check against the
+ * `bedrooms` we store; unknown bedrooms are kept so a parse miss doesn't
+ * drop a real listing. Bounds are inclusive.
+ */
+export function filterByBedroomRange(
+  summaries: ListingSummary[],
+  minBedrooms: number | null,
+  maxBedrooms: number | null
+): ListingSummary[] {
+  if (minBedrooms == null && maxBedrooms == null) {
+    return summaries;
+  }
+  return summaries.filter((s) => {
+    if (typeof s.bedrooms !== "number") {
+      return true;
+    }
+    if (minBedrooms != null && s.bedrooms < minBedrooms) {
+      return false;
+    }
+    if (maxBedrooms != null && s.bedrooms > maxBedrooms) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Title- and propertyType-based detector for "room in a shared X"
+ * listings. OpenRent's parser writes `propertyType = "Room in a Shared
+ * Flat"` / `"Room in a Shared House"`; Rightmove and Zoopla don't surface
+ * a comparable string but their URL filter (`dontShow=houseShare` /
+ * `is_shared_accommodation=false`) drops shares before we ever see them,
+ * so a propertyType/title check is enough for defense-in-depth across
+ * all three portals.
+ */
+function looksLikeRoomShare(summary: ListingSummary): boolean {
+  const propertyType = summary.propertyType ?? "";
+  const title = summary.title ?? "";
+  return (
+    /^room\b/i.test(propertyType) ||
+    /\bshared\b/i.test(propertyType) ||
+    /^room in a shared\b/i.test(title) ||
+    /\bhmo\b/i.test(title)
+  );
+}
+
+/**
+ * Drop listings that fall into any category the user has excluded.
+ *
+ * Today this covers `house_share` only — `student` and `retirement` have
+ * dedicated URL switches on every portal that does host those categories
+ * (RM/ZP) and OpenRent doesn't host them at all, so the URL layer
+ * already handles those two. Shares are the gap: OpenRent has no URL
+ * switch (the platform comment in `portal-urls.ts` calling it a "no-op"
+ * is wrong — OR DOES list rooms in shared houses, it just doesn't expose
+ * a filter for them), and prod data shows ~18 such listings leaking into
+ * the queue. This is the backstop.
+ */
+export function filterByExclusions(
+  summaries: ListingSummary[],
+  exclusions: readonly string[]
+): ListingSummary[] {
+  if (!exclusions.includes("house_share")) {
+    return summaries;
+  }
+  return summaries.filter((s) => !looksLikeRoomShare(s));
+}
+
+/**
  * The "mutable" subset of `listings` — every column we want refreshed
  * each time the same portal listing reappears in a search sweep.
  * `first_seen_at`, `id`, and the key columns (search/portal/portalListingId)
@@ -668,16 +742,26 @@ export const scrapePortalTask = task({
         parsed,
         search.excludeLocations
       );
-      // Re-check price server-side — the portal filters can't be trusted
-      // (see `filterByPriceRange`), so without this listings outside the
-      // band leak into the search and the review queue.
-      const summaries = filterByPriceRange(
+      // Re-check price/beds/exclusions server-side — the portal filters
+      // can't be trusted (see `filterByPriceRange`). Without these,
+      // out-of-band listings, 1-bed flats / studios, and
+      // `Room in a Shared X` listings (OpenRent has no URL switch for
+      // shares) leak into the search and the review queue.
+      const priceFiltered = filterByPriceRange(
         locationFiltered,
         search.minPrice,
         search.maxPrice
       );
+      const bedFiltered = filterByBedroomRange(
+        priceFiltered,
+        search.minBedrooms,
+        search.maxBedrooms
+      );
+      const summaries = filterByExclusions(bedFiltered, search.exclusions);
       const excludedByLocation = parsed.length - locationFiltered.length;
-      const excludedByPrice = locationFiltered.length - summaries.length;
+      const excludedByPrice = locationFiltered.length - priceFiltered.length;
+      const excludedByBeds = priceFiltered.length - bedFiltered.length;
+      const excludedByExclusions = bedFiltered.length - summaries.length;
 
       const { totalSeen, newCount, touchedPortalListingIds } =
         await upsertListings(db, searchId, portal, summaries);
@@ -693,6 +777,8 @@ export const scrapePortalTask = task({
         newCount,
         excludedByLocation,
         excludedByPrice,
+        excludedByBeds,
+        excludedByExclusions,
       });
     }
 
