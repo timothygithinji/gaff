@@ -12,34 +12,47 @@
  * allows, in this order:
  *
  *   1. Resolve a FULL postcode. The scraped `postcode` is usually only an
- *      outcode, so we snap the listing's true lat/lng (promoted from
- *      rawJson) to its nearest unit postcode via postcodes.io. This
- *      narrows the EPC search from a whole district to one street/block.
- *   2. EXACT match — when the listing address carries a house/flat number,
- *      match the cert whose address shares that number + street. Stored
- *      with `source: "exact"`.
- *   3. ESTIMATE fallback — when the address is street-only (the common
- *      case), summarise the full postcode's certificates into a typical
- *      rating + range. Stored with `source: "estimate"` so the UI can
- *      label it as an approximation rather than fake-precise.
+ *      outcode, so we ask Google Maps to reverse-geocode the cluster's
+ *      true lat/lng — when it returns a ROOFTOP UK result we use both
+ *      its postcode and (where present) its street number. postcodes.io
+ *      is the fallback when Google declines.
+ *   2. EXACT match — only for clusters whose listing is a *house* (a
+ *      reverse-geocoded address pins the building, not the unit, so the
+ *      same door number could be Flat 1 or Flat 9). When the address
+ *      carries a number + street word that some cert shares, we stamp
+ *      `source: "exact"`.
+ *   3. ESTIMATE fallback — for flats and anything we can't classify
+ *      (treated as flats, by design), summarise the postcode's
+ *      certificates into a modal rating + best…worst range. When the
+ *      geocoder gave us a building's street number, narrow the sample
+ *      to just that building's certs before summarising. Stored with
+ *      `source: "estimate"` so the UI labels it as an approximation
+ *      rather than fake-precise.
  *   4. Otherwise blank — better than the old behaviour, which stamped one
  *      arbitrary district cert onto every cluster.
  *
- * A future manual address override (user pins the door from the photos)
- * feeds this same engine by supplying a precise address/postcode.
+ * A manual address override (user pins the door from the photos) wins
+ * over the reverse-geocoded address and skips the Google call entirely.
  *
- * No AI cost. The EPC API and postcodes.io are both free (with attribution).
+ * Cost: one Google Geocoding call per cluster (~$5/1000), plus the free
+ * EPC + postcodes.io calls.
  */
 
 import { logger, task } from "@trigger.dev/sdk";
+import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
+import * as schema from "../../db/schema";
 import {
   type Certificate,
   createEpcClient,
   getDomesticSearch,
 } from "../lib/api-clients/epc";
 import { env } from "../lib/env";
-import { reverseGeocodePostcode } from "../lib/geocode";
+import {
+  type ReverseGeocodedAddress,
+  reverseGeocodeAddress,
+  reverseGeocodePostcode,
+} from "../lib/geocode";
 import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
@@ -230,6 +243,70 @@ export function exactBlob(
   };
 }
 
+// Tokens that imply a multi-unit listing even when "house" appears
+// elsewhere in the string (e.g. "Room in a Shared House"). Reverse-
+// geocoding pins the building, not the unit, so these must drop through
+// to the estimate path.
+const MULTI_UNIT_RE = /\b(room|shared|flat|apartment|maisonette|studio)\b/;
+
+// Single-unit-building tokens. "terrac" matches "terrace" + "terraced";
+// "house" matches the bare word and "townhouse". Match must succeed AND
+// no multi-unit token may be present.
+const HOUSE_TYPE_RE =
+  /\b(detached|semi[- ]?detached|terrac\w*|bungalow|cottage|house|townhouse|mews|end[- ]?of[- ]?terrace)\b/;
+
+// Property-type fields are sometimes snake-case ("semi_detached"); the
+// `_` is a word character so `\b` doesn't fire between halves. Normalise
+// to plain whitespace for the token-matching regexes.
+const TYPE_SEPARATORS_RE = /[_/-]+/g;
+
+/** True when the listing's portal-reported type is clearly a single-unit
+ * building (terrace, semi, detached, bungalow, etc.). Returns false for
+ * flats, apartments, maisonettes, studios, rooms, and — by design —
+ * anything we couldn't classify, so the "exact via geocoded address"
+ * path can never fire on an ambiguous record. */
+export function isHouseType(propertyType: string | null | undefined): boolean {
+  if (!propertyType) {
+    return false;
+  }
+  const normalised = propertyType.toLowerCase().replace(TYPE_SEPARATORS_RE, " ");
+  if (MULTI_UNIT_RE.test(normalised)) {
+    return false;
+  }
+  return HOUSE_TYPE_RE.test(normalised);
+}
+
+/**
+ * Filter `certs` to those whose address shares the cluster's building
+ * number plus a street word — i.e. the same building. The full-postcode
+ * sample is already street-scale, but a long-tail block can hold a dozen
+ * units; this narrows it to one address group. Returns the same array
+ * when no number is available (so the caller falls back to postcode
+ * scope) or an empty array when no cert in the postcode matches.
+ */
+export function certsForBuilding(
+  certs: Certificate[],
+  buildingAddress: string
+): Certificate[] {
+  const cleaned = buildingAddress.replace(BEDROOM_COUNT_RE, " ");
+  const nums = numberTokens(cleaned);
+  if (nums.size === 0) {
+    return certs;
+  }
+  const streetWords = streetTokens(cleaned);
+  return certs.filter((cert) => {
+    const address = epcString(cert.address);
+    if (!address) {
+      return false;
+    }
+    const sharesNumber = [...numberTokens(address)].some((n) => nums.has(n));
+    if (!sharesNumber) {
+      return false;
+    }
+    return [...streetTokens(address)].some((t) => streetWords.has(t));
+  });
+}
+
 /**
  * Summarise a full postcode's certificates into a typical rating + range.
  * `currentRating` is the modal band (ties broken toward the better band);
@@ -305,31 +382,98 @@ type ClusterLocation = {
 };
 
 /**
- * Decide which postcode to search EPC by and which address to match
- * certificates against. A manual override (user pinned the door) wins for
- * both; otherwise we search the reverse-geocoded full postcode and match
- * the scraped address. `searchPostcode` falls back to the bare outcode as
- * a last resort (exact-only — no estimate from an outcode).
+ * Resolved EPC matching context for a cluster.
+ *
+ * `geocoded` carries Google's rooftop result when one was obtained — it
+ * lifts a street-only scraped address into something with a door number,
+ * which lets `pickExactCert` fire for houses and lets the caller narrow
+ * the postcode estimate sample to a single building for flats.
  */
-async function resolveEpcContext(cluster: ClusterLocation): Promise<{
+type EpcContext = {
   searchPostcode: string | null;
   fullPostcode: string | null;
   matchAddress: string;
-}> {
+  geocoded: ReverseGeocodedAddress | null;
+};
+
+/**
+ * Decide which postcode to search EPC by and which address to match
+ * certificates against. A manual override (user pinned the door) wins
+ * for both. Otherwise we ask Google Maps to reverse-geocode the
+ * cluster's lat/lng — if it returns a ROOFTOP-precision UK address with
+ * a street number, that becomes the match address (a real door number
+ * scraped addresses don't carry). Falls back to the scraped postcode +
+ * normalised address when geocoding fails. `searchPostcode` falls back
+ * to the bare outcode as a last resort (exact-only — no estimate from
+ * an outcode).
+ */
+async function resolveEpcContext(
+  cluster: ClusterLocation,
+  googleMapsApiKey: string
+): Promise<EpcContext> {
   const override = cluster.userAddress?.trim() || null;
-  const matchAddress = override ?? cluster.normalisedAddress;
+  if (override) {
+    const fullPostcode =
+      extractFullPostcode(override) ??
+      (await resolveFullPostcode(
+        cluster.postcode,
+        parseNumeric(cluster.lat),
+        parseNumeric(cluster.lng)
+      ));
+    return {
+      searchPostcode: fullPostcode ?? cluster.postcode,
+      fullPostcode,
+      matchAddress: override,
+      geocoded: null,
+    };
+  }
+
+  const lat = parseNumeric(cluster.lat);
+  const lng = parseNumeric(cluster.lng);
+  const geocoded =
+    lat != null && lng != null
+      ? await reverseGeocodeAddress(lat, lng, googleMapsApiKey)
+      : null;
+  const geocodePostcode = geocoded?.postcode
+    ?.toUpperCase()
+    .replace(WHITESPACE_RE, "");
   const fullPostcode =
-    (override ? extractFullPostcode(override) : null) ??
-    (await resolveFullPostcode(
-      cluster.postcode,
-      parseNumeric(cluster.lat),
-      parseNumeric(cluster.lng)
-    ));
+    (geocodePostcode && FULL_POSTCODE_RE.test(geocodePostcode)
+      ? geocodePostcode
+      : null) ?? (await resolveFullPostcode(cluster.postcode, lat, lng));
+  // Use the geocoded address as the match key only when it actually
+  // gives us a street number. Without one, `pickExactCert` would fall
+  // through anyway and we'd want the scraped address (which sometimes
+  // carries a number from "13 Cannon Hill" patterns).
+  const matchAddress =
+    geocoded?.locationType === "ROOFTOP" && geocoded.streetNumber
+      ? geocoded.formattedAddress
+      : cluster.normalisedAddress;
   return {
     searchPostcode: fullPostcode ?? cluster.postcode,
     fullPostcode,
     matchAddress,
+    geocoded,
   };
+}
+
+/** Read the cluster's primary listing propertyType. We pick the first
+ * non-null we find — portals describe the same building consistently
+ * enough that the order doesn't matter for our flat-vs-house split. */
+async function readClusterPropertyType(
+  db: ReturnType<typeof getDb>,
+  clusterId: string
+): Promise<string | null> {
+  const rows = await db
+    .select({ propertyType: schema.listings.propertyType })
+    .from(schema.listings)
+    .where(eq(schema.listings.clusterId, clusterId));
+  for (const r of rows) {
+    if (r.propertyType && r.propertyType.length > 0) {
+      return r.propertyType;
+    }
+  }
+  return null;
 }
 
 /** Run the EPC domestic search and return the (defensively-extracted) rows. */
@@ -361,7 +505,7 @@ export const enrichEpcTask = task({
   run: async (payload: EnrichEpcPayload): Promise<EnrichEpcOutput> => {
     const db = getDb();
     const { clusterId } = payload;
-    const { EPC_OPENDATA_TOKEN } = env();
+    const { EPC_OPENDATA_TOKEN, GOOGLE_MAPS_API_KEY } = env();
     const none = {
       clusterId,
       source: "none" as const,
@@ -376,9 +520,10 @@ export const enrichEpcTask = task({
     }
 
     // Decide the search postcode + the address to match certs against (a
-    // manual override wins for both).
-    const { searchPostcode, fullPostcode, matchAddress } =
-      await resolveEpcContext(cluster);
+    // manual override wins; otherwise we ask Google to reverse-geocode
+    // coords to an address with a real door number).
+    const { searchPostcode, fullPostcode, matchAddress, geocoded } =
+      await resolveEpcContext(cluster, GOOGLE_MAPS_API_KEY);
     if (!searchPostcode) {
       logger.warn("enrich-epc: no postcode or coords, skipping", { clusterId });
       return none;
@@ -393,17 +538,36 @@ export const enrichEpcTask = task({
       return none;
     }
 
-    // Exact match by address (only when the address carries a number —
-    // most likely once the user has supplied a manual override).
-    const exact = pickExactCert(certs, matchAddress);
+    // House vs flat split: the geocoded address pins the building, not
+    // the unit, so we only attempt an exact match when the listing's
+    // type implies one unit per door (terrace, semi, detached, …).
+    // Anything else — including a missing type, by design — falls
+    // through to the building-scoped estimate path below.
+    const propertyType = await readClusterPropertyType(db, clusterId);
+    const isHouse = isHouseType(propertyType);
+
+    const exact = isHouse ? pickExactCert(certs, matchAddress) : null;
     let blob = exact
       ? exactBlob(exact.cert, searchPostcode, exact.address)
       : null;
 
-    // 3. Estimate fallback — only with a FULL postcode, so the sample is a
-    //    single street/block, not a whole district.
+    // Estimate fallback. Only with a FULL postcode, so the sample is a
+    // single street/block, not a whole district. When the geocoded
+    // address carries a street number, narrow the sample further to
+    // certs whose address shares that number — a much tighter range
+    // than the full postcode for flats in a converted building.
     if (!blob && fullPostcode) {
-      blob = estimateBlob(certs, fullPostcode);
+      const usingBuilding =
+        geocoded?.locationType === "ROOFTOP" &&
+        Boolean(geocoded.streetNumber);
+      const sample = usingBuilding
+        ? certsForBuilding(certs, matchAddress)
+        : certs;
+      // If building-scoped filter degenerates to empty (the building has
+      // no certs of its own), fall back to the postcode-wide sample so
+      // the user still sees an estimate.
+      const finalSample = sample.length > 0 ? sample : certs;
+      blob = estimateBlob(finalSample, fullPostcode);
     }
     if (!blob) {
       logger.log("enrich-epc: no confident match and no full postcode", {
@@ -421,6 +585,9 @@ export const enrichEpcTask = task({
       postcode: searchPostcode,
       source: blob.source,
       currentRating: blob.currentRating,
+      propertyType,
+      isHouse,
+      geocodedLocationType: geocoded?.locationType ?? null,
       listingsTouched: touched,
     });
     return { clusterId, source: blob.source, listingsTouched: touched };
