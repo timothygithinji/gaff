@@ -34,3 +34,21 @@ jobs:
         uses: ./.github/actions/setup
       - name: Test
         run: bun run test
+
+  # Validate the Drizzle migration metadata (journal + snapshot prevId
+  # chain). DB-less — operates on the file tree only — so it catches:
+  # (a) schema.ts changed without a corresponding migration file,
+  # (b) a hand-edited journal, (c) a fork in the snapshot chain from
+  # two PRs branching off the same base. The Deploy workflow then runs
+  # `drizzle-kit migrate` with the same validation as its own pre-step,
+  # so this is the earlier gate that fails the PR before reviewers
+  # touch it.
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Validate migration metadata
+        run: bun scripts/validation/migrations.ts --check-only
