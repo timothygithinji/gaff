@@ -52,6 +52,10 @@ import {
   bandAmountPence,
   normaliseBand,
 } from "../../lib/council-tax";
+import {
+  type CrimeComparison,
+  compareCrimeToBaseline,
+} from "../../lib/crime-baseline";
 import { env as parsedEnv } from "../../lib/env";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { resolvePhotoUrl } from "./photo-url";
@@ -191,6 +195,12 @@ export type ListingDetailCrime = {
   month: string;
   total: number;
   topCategory: { category: string; count: number } | null;
+  /**
+   * Comparison to an area-appropriate baseline so the raw total reads
+   * as "X% above/below {London,England} average" instead of a bare
+   * number. `null` only when the baseline lookup degenerates (defensive).
+   */
+  comparison: CrimeComparison | null;
 };
 
 export type ListingDetailAmenities = {
@@ -379,6 +389,9 @@ function asCrime(value: unknown): ListingDetailCrime | undefined {
     month,
     total,
     topCategory: top ? { category: top[0], count: top[1] } : null,
+    // Filled in at the call site where the listing's postcode is in
+    // scope. Kept null here so `asCrime` stays a pure shape mapper.
+    comparison: null,
   };
 }
 
@@ -629,7 +642,19 @@ export const getListingDetail = createServerFn({ method: "GET" })
     const epc = asEpc(enrichment?.epc);
     const commuteMinutes = asCommuteMinutes(enrichment?.commuteMinutes);
     const broadband = asBroadband(enrichment?.broadband);
-    const crime = asCrime(enrichment?.crime);
+    // Crime + area-baseline comparison: lets "398 in 1mi" render as
+    // "12% below London avg" so the raw count actually informs a
+    // comparison instead of just looking scary.
+    const rawCrime = asCrime(enrichment?.crime);
+    const crime = rawCrime
+      ? {
+          ...rawCrime,
+          comparison: compareCrimeToBaseline(
+            rawCrime.total,
+            headlineListing.postcode ?? cluster.postcode
+          ),
+        }
+      : undefined;
     const amenities = asAmenities(enrichment?.amenities);
     const flood = asFlood(enrichment?.flood);
 
