@@ -27,6 +27,7 @@ const SHARE_RE = /house\s*share|room\s+in/i;
 const STUDENT_RE = /student/i;
 const AVAIL_IMMED_RE = /available\s+(immediately|now)/i;
 const AVAIL_FROM_RE = /available\s+from\s+(.+)/i;
+const WS_RE = /\s+/;
 
 const MONTH_SHORT: Record<string, string> = {
   january: "Jan",
@@ -47,7 +48,7 @@ function shortenAvailability(raw: string): string {
   // Portal tags are like "Available from 1 June 2026"; the regex hands us
   // "1 June 2026". Collapse to "Avail 1 Jun" — the year is almost always
   // current and steals space; the day+month is what matters.
-  const parts = raw.trim().split(/\s+/);
+  const parts = raw.trim().split(WS_RE);
   const day = parts[0];
   const monthRaw = parts[1]?.toLowerCase();
   const monthShort = monthRaw ? MONTH_SHORT[monthRaw] : undefined;
@@ -100,6 +101,7 @@ export function formatDaysListed(days: number | null): string | null {
   return "Listed 1+ year ago";
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequence of independent regex checks with first-match-wins dedupe — splitting into helpers would scatter the priority list without reducing branching.
 export function deriveListingMetaBadges(opts: {
   tags: string[] | null | undefined;
   daysListed: number | null;
