@@ -39,6 +39,7 @@ import { enrichCouncilTaxTask } from "./enrich-council-tax";
 import { enrichCrimeTask } from "./enrich-crime";
 import { enrichEpcTask } from "./enrich-epc";
 import { enrichFloodTask } from "./enrich-flood";
+import { enrichStationRoutesTask } from "./enrich-station-routes";
 import { scrapeQueue } from "./queues";
 import { scrapeDetailTask } from "./scrape-detail";
 
@@ -91,7 +92,7 @@ export const clusterTask = task({
     const payloads = output.newClusterIds.map((clusterId) => ({
       payload: { clusterId },
     }));
-    // Seven independent enrichment fan-outs. fire-and-forget; the cluster
+    // Eight independent enrichment fan-outs. fire-and-forget; the cluster
     // task has already done its job by the time onSuccess runs.
     await Promise.all([
       enrichEpcTask.batchTrigger(payloads),
@@ -101,6 +102,7 @@ export const clusterTask = task({
       enrichFloodTask.batchTrigger(payloads),
       enrichBroadbandTask.batchTrigger(payloads),
       enrichCouncilTaxTask.batchTrigger(payloads),
+      enrichStationRoutesTask.batchTrigger(payloads),
     ]);
   },
 
