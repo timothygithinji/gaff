@@ -579,18 +579,28 @@ function rightmoveInfoReelPublishedAt(
   return undefined;
 }
 
+const HTTP_URL_RE = /^https?:\/\//i;
+
+/**
+ * Pull the brochure URL off `brochures[0]` and gate it on `https?://` so
+ * a `javascript:` (or `data:`) scheme can't slip from a malicious agent
+ * upload through to a UI `<a href>`. The portal-side data is third-party
+ * and gets rendered as a clickable CTA — schemes other than HTTP(S) have
+ * no legitimate brochure use case here, so we drop them at ingestion
+ * rather than relying on each render site to validate.
+ */
 function rightmoveBrochure(brochures: unknown): string | undefined {
   if (!Array.isArray(brochures) || brochures.length === 0) {
     return undefined;
   }
   const first = brochures[0];
-  if (typeof first === "string") {
-    return first;
-  }
-  if (first && typeof first === "object") {
-    return toStringSafe((first as Record<string, unknown>).url);
-  }
-  return undefined;
+  const raw =
+    typeof first === "string"
+      ? first
+      : first && typeof first === "object"
+        ? toStringSafe((first as Record<string, unknown>).url)
+        : undefined;
+  return raw && HTTP_URL_RE.test(raw) ? raw : undefined;
 }
 
 function rightmoveAffiliations(arr: unknown): string[] | undefined {
