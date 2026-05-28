@@ -14,6 +14,12 @@
 type CommuteTargetLabel = string;
 type Minutes = number;
 
+export type WhereItSitsStationRoute = {
+  name: string;
+  walkMinutes: number | null;
+  transitMinutes: number | null;
+};
+
 type Props = {
   /** Lat/lng come from property_clusters as numeric strings ("51.123456"). */
   lat: string | null;
@@ -23,6 +29,12 @@ type Props = {
   /** Eyebrow — e.g. "Where it sits". */
   eyebrow?: string;
   commuteMinutes?: Record<CommuteTargetLabel, Minutes>;
+  /**
+   * Realistic walking + transit minutes to the cluster's nearest
+   * stations, computed via Google Routes at enrichment time. Renders
+   * below the commute card when present.
+   */
+  stationRoutes?: WhereItSitsStationRoute[];
   /** Google Maps Embed API key. */
   apiKey: string;
 };
@@ -41,6 +53,7 @@ export function WhereItSits({
   title,
   eyebrow = "Where it sits",
   commuteMinutes,
+  stationRoutes,
   apiKey,
 }: Props) {
   const latNum = parseCoord(lat);
@@ -136,6 +149,66 @@ export function WhereItSits({
           </div>
         ) : null}
       </div>
+
+      <StationRoutesPanel routes={stationRoutes} />
     </section>
+  );
+}
+
+/**
+ * Walking + transit minutes to each of the cluster's nearest stations.
+ * Renders nothing when the enrichment hasn't run (most non-Rightmove
+ * clusters never get this populated, since only Rightmove parses
+ * `nearestStations` from listing JSON).
+ */
+function StationRoutesPanel({
+  routes,
+}: {
+  routes: WhereItSitsStationRoute[] | undefined;
+}) {
+  if (!routes || routes.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3.5">
+      <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+        Directions to nearest station{routes.length === 1 ? "" : "s"}
+      </span>
+      <ul className="flex flex-col gap-2">
+        {routes.map((route) => (
+          <li
+            className="flex items-baseline justify-between gap-3"
+            key={route.name}
+          >
+            <span className="min-w-0 truncate font-medium text-[13px] text-foreground">
+              {route.name}
+            </span>
+            <span className="flex shrink-0 items-baseline gap-2 text-muted-foreground text-xs">
+              {route.walkMinutes != null ? (
+                <span>
+                  <span className="font-semibold text-foreground">
+                    {route.walkMinutes}
+                  </span>{" "}
+                  min walk
+                </span>
+              ) : null}
+              {route.walkMinutes != null && route.transitMinutes != null ? (
+                <span aria-hidden className="text-muted-foreground/50">
+                  ·
+                </span>
+              ) : null}
+              {route.transitMinutes != null ? (
+                <span>
+                  <span className="font-semibold text-foreground">
+                    {route.transitMinutes}
+                  </span>{" "}
+                  min bus
+                </span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

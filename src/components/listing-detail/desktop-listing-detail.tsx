@@ -45,6 +45,7 @@ import type {
   ListingDetailPayload,
   ListingDetailPortalRow,
   ListingDetailPublicRecords,
+  ListingDetailStationRoute,
   ListingDetailWatchout,
 } from "../../server/functions/listing-detail";
 import { AdminSidebar } from "../layout/admin-sidebar";
@@ -314,6 +315,7 @@ function MediaColumn({ data }: { data: ListingDetailPayload }) {
         lat={data.cluster.lat}
         lng={data.cluster.lng}
         postcode={headline.postcode ?? data.cluster.postcode}
+        stationRoutes={data.stationRoutes}
       />
     </section>
   );
@@ -625,12 +627,14 @@ function ZoomButton({
 function LocationCard({
   postcode,
   commuteMinutes,
+  stationRoutes,
   lat,
   lng,
   apiKey,
 }: {
   postcode: string | null;
   commuteMinutes?: Record<string, number>;
+  stationRoutes?: ListingDetailStationRoute[];
   lat: string | null;
   lng: string | null;
   apiKey: string;
@@ -668,7 +672,7 @@ function LocationCard({
           </span>
         ) : null}
       </header>
-      <div className="mx-6 mb-6 h-[220px] overflow-hidden rounded-xl border border-bone bg-[#F3EBDC]">
+      <div className="mx-6 h-[220px] overflow-hidden rounded-xl border border-bone bg-[#F3EBDC]">
         {mapSrc ? (
           <iframe
             allowFullScreen={false}
@@ -684,7 +688,62 @@ function LocationCard({
           </div>
         )}
       </div>
+      <DesktopStationRoutesPanel routes={stationRoutes} />
     </article>
+  );
+}
+
+function DesktopStationRoutesPanel({
+  routes,
+}: {
+  routes: ListingDetailStationRoute[] | undefined;
+}) {
+  if (!routes || routes.length === 0) {
+    // Keep the existing bottom margin when there's nothing to render
+    // so the card height matches its pre-stations footprint.
+    return <div className="h-6" />;
+  }
+  return (
+    <div className="mx-6 mt-3.5 mb-6 flex flex-col gap-2 border-bone border-t pt-3.5">
+      <Eyebrow>
+        Directions to nearest station{routes.length === 1 ? "" : "s"}
+      </Eyebrow>
+      <ul className="flex flex-col gap-1.5">
+        {routes.map((route) => (
+          <li
+            className="flex items-baseline justify-between gap-3"
+            key={route.name}
+          >
+            <span className="min-w-0 truncate font-medium text-[13px] text-foreground">
+              {route.name}
+            </span>
+            <span className="flex shrink-0 items-baseline gap-2 text-muted-foreground text-xs">
+              {route.walkMinutes != null ? (
+                <span>
+                  <span className="font-semibold text-foreground">
+                    {route.walkMinutes}
+                  </span>{" "}
+                  min walk
+                </span>
+              ) : null}
+              {route.walkMinutes != null && route.transitMinutes != null ? (
+                <span aria-hidden className="text-muted-foreground/50">
+                  ·
+                </span>
+              ) : null}
+              {route.transitMinutes != null ? (
+                <span>
+                  <span className="font-semibold text-foreground">
+                    {route.transitMinutes}
+                  </span>{" "}
+                  min bus
+                </span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
