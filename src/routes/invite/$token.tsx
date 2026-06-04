@@ -101,7 +101,7 @@ function InvitePage() {
           </p>
         </div>
 
-        <div className="flex w-full items-center justify-center rounded-full bg-navy px-4 py-4 font-medium text-[14px] text-white leading-[18px]">
+        <div className="flex w-full items-center justify-center rounded-full bg-primary px-4 py-4 font-medium text-[14px] text-white leading-[18px]">
           {isError ? "Couldn't join" : "Joining household…"}
         </div>
 

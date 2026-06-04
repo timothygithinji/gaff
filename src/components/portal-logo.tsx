@@ -21,7 +21,7 @@ const PORTAL_DOMAIN: Record<string, string> = {
 const PORTAL_FALLBACK_BG: Record<string, string> = {
   rightmove: "bg-slate",
   zoopla: "bg-slate-2",
-  openrent: "bg-navy",
+  openrent: "bg-primary",
 };
 
 export function PortalLogo({ portal }: { portal: string }) {
@@ -48,7 +48,7 @@ export function PortalLogo({ portal }: { portal: string }) {
     <span
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded-full font-semibold text-[#eef1f4] text-[11px]",
-        PORTAL_FALLBACK_BG[slug] ?? "bg-navy"
+        PORTAL_FALLBACK_BG[slug] ?? "bg-primary"
       )}
     >
       {portal.charAt(0).toUpperCase()}

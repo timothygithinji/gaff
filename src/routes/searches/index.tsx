@@ -106,7 +106,7 @@ function SearchesIndexPage() {
             </h1>
           </div>
           <Link
-            className='mt-1.5 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-navy px-4 py-2 font-medium text-[#eef1f4] text-[12px]'
+            className='mt-1.5 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-medium text-[#eef1f4] text-[12px]'
             to="/searches/new"
           >
             <HugeiconsIcon icon={Add01Icon} size={12} strokeWidth={2.2} />
@@ -140,7 +140,7 @@ function EmptyState() {
         budget — we'll tell you what's worth a viewing.
       </p>
       <Link
-        className='mt-6 inline-flex items-center gap-1.5 rounded-md bg-navy px-5 py-2.5 font-medium text-[#eef1f4] text-[13px]'
+        className='mt-6 inline-flex items-center gap-1.5 rounded-md bg-primary px-5 py-2.5 font-medium text-[#eef1f4] text-[13px]'
         to="/searches/new"
       >
         <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2} />
