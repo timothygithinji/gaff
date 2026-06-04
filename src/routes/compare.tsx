@@ -124,7 +124,7 @@ function MobileCompare({
 }) {
   const [active, setActive] = useState<"a" | "b">("a");
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-16 lg:hidden">
+    <div className="mx-auto min-h-screen max-w-md bg-background pb-16 sm:max-w-2xl lg:hidden">
       <header className="flex flex-col gap-3 px-6 pt-6 pb-3">
         <div className="flex items-center justify-between">
           <h1 className="font-serif text-[28px] text-foreground tracking-tight">

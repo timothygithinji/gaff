@@ -131,7 +131,7 @@ export function DetailCta({
       // older iPhones, desktop browsers) keep the original 28-px gap,
       // while notched iPhones receive `safe-area-inset-bottom + 8 px` so
       // the CTA never sits under the home indicator.
-      className="fixed right-0 bottom-0 left-0 z-30 mx-auto flex max-w-md items-center gap-2.5 border-line border-t bg-card/97 px-5 pt-3.5 pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+0.5rem))] backdrop-blur lg:hidden"
+      className="fixed right-0 bottom-0 left-0 z-30 mx-auto flex max-w-md items-center gap-2.5 border-line border-t bg-card/97 px-5 pt-3.5 pb-[max(1.75rem,calc(env(safe-area-inset-bottom)+0.5rem))] backdrop-blur sm:max-w-2xl lg:hidden"
     >
       <Button
         aria-busy={pendingAction === "skip" || undefined}

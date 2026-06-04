@@ -296,7 +296,7 @@ function ListingDetailPage() {
         pendingAction={pendingAction}
       />
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-32 lg:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-32 sm:max-w-2xl lg:hidden">
         {/* Top bar — Paper: 36px circular hairline buttons, px-5 */}
         <header className="flex items-center justify-between px-5 pt-2 pb-[18px]">
           <button
@@ -536,7 +536,7 @@ function ListingDetailSkeleton() {
           </section>
         </div>
       </AdminSidebar>
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-32 lg:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-32 sm:max-w-2xl lg:hidden">
         <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
           <Skeleton className="size-9 rounded-full" />
           <div className="flex gap-2.5">

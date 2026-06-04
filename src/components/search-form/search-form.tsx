@@ -472,7 +472,7 @@ export function SearchForm({
 
   return (
     <form
-      className="mx-auto flex min-h-screen max-w-md flex-col bg-background"
+      className="mx-auto flex min-h-screen max-w-md flex-col bg-background sm:max-w-2xl"
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
