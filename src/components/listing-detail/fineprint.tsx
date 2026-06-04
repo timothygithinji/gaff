@@ -17,11 +17,11 @@
 import {
   Calendar03Icon,
   ContactIcon,
-  FileEditIcon,
   PoundCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ListingDetailFineprint } from "../../server/functions/listing-detail";
+import { SectionLabel } from "./section-label";
 
 type Props = {
   fineprint: ListingDetailFineprint;
@@ -104,7 +104,7 @@ function CouncilTaxTable({
   councilTax: NonNullable<ListingDetailFineprint["councilTax"]>;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-muted/40 p-4">
+    <div className="flex flex-col gap-2 rounded-md border border-line bg-card p-4">
       <p className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.08em]">
         Council tax · {councilTax.authority} · {councilTax.year}
       </p>
@@ -159,26 +159,11 @@ export function Fineprint({ fineprint }: Props) {
     return null;
   }
   return (
-    <section className="flex flex-col gap-3.5 px-6 pt-7">
-      <header className="flex flex-col gap-1">
-        <div className="flex items-center gap-1.5">
-          <HugeiconsIcon
-            className="text-muted-foreground"
-            icon={FileEditIcon}
-            size={12}
-            strokeWidth={2}
-          />
-          <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-            Tenancy terms
-          </span>
-        </div>
-        <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
-          Fine print
-        </h2>
-      </header>
+    <section className="flex flex-col gap-3.5 px-5 pb-7">
+      <SectionLabel>Tenancy terms · fine print</SectionLabel>
 
       {rows.length > 0 ? (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-muted/40 p-4">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-md border border-line bg-card p-4">
           {rows.map((row) => (
             <div className="flex flex-col gap-0.5" key={row.label}>
               <dt className="text-[11px] text-muted-foreground uppercase tracking-[0.08em]">
@@ -197,7 +182,7 @@ export function Fineprint({ fineprint }: Props) {
       ) : null}
 
       {fineprint.agentName ? (
-        <div className="flex flex-col gap-1 rounded-2xl bg-muted/40 p-4">
+        <div className="flex flex-col gap-1 rounded-md border border-line bg-card p-4">
           <div className="flex items-center gap-2">
             <HugeiconsIcon
               className="text-muted-foreground"
@@ -235,7 +220,7 @@ export function Fineprint({ fineprint }: Props) {
       ) : null}
 
       {fineprint.nearestStations.length > 0 ? (
-        <div className="rounded-2xl bg-muted/40 p-4">
+        <div className="rounded-md border border-line bg-card p-4">
           <p className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.08em]">
             <HugeiconsIcon
               className="-mt-0.5 inline text-muted-foreground"

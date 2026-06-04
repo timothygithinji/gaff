@@ -1,16 +1,15 @@
 /**
- * "Same property · N portals" card — surfaces the per-portal price
- * spread for the cluster. The first row is the cheapest (no delta);
- * every subsequent row shows the +£N delta in copper/red to communicate
- * that paying more on a different portal is friction worth flagging.
+ * "Same property · N portals" card — surfaces the per-portal price spread
+ * for the cluster. The first row is the cheapest (no delta); subsequent
+ * rows show the +£N delta in copper to flag the friction of paying more.
  *
- * Rows are dimmed when the portal didn't capture an agent name/email
- * (i.e. the spec's "headline portal has agent info but others don't"
- * edge case).
+ * Paper (mobile 2T3-0 "Same property · 98% match"): slate eyebrow, white
+ * card (radius 6, hairline, 16px padding), each row a 28px navy circle
+ * portal badge + name + slate-2 sub + right-aligned price; the cheapest
+ * row carries a small-caps copper "CHEAPEST" tag.
  */
-import { SparklesIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { ListingDetailPortalRow } from "../../server/functions/listing-detail";
+import { SectionLabel } from "./section-label";
 
 type Props = {
   portals: ListingDetailPortalRow[];
@@ -42,6 +41,17 @@ function portalLabel(portal: string): string {
   return portal;
 }
 
+/** Per-portal badge tint, mirroring Paper (navy / slate / slate-2). */
+function badgeColour(portal: string): string {
+  if (portal === "rightmove") {
+    return "bg-slate";
+  }
+  if (portal === "zoopla") {
+    return "bg-slate-2";
+  }
+  return "bg-navy";
+}
+
 function formatPrice(monthly: number | null): string {
   if (monthly === null) {
     return "—";
@@ -59,7 +69,7 @@ function formatDelta(delta: number | null): string | null {
 
 function agentSubtitle(row: ListingDetailPortalRow): string {
   if (row.portal === "openrent") {
-    return row.agentName ?? "Direct from landlord · no fees";
+    return row.agentName ?? "Direct · no fees";
   }
   if (row.agentName) {
     return row.agentName;
@@ -67,48 +77,39 @@ function agentSubtitle(row: ListingDetailPortalRow): string {
   return "Listing agent details pending";
 }
 
-/**
- * Match percentage is currently hard-coded at 100% — clustering
- * either matched the property or it didn't, we don't surface a
- * confidence score. The label stays so the design stays intact;
- * v1.1 can wire a real similarity score.
- */
+/** Hard-coded at 100% — clustering matched the property or it didn't. */
 const MATCH_LABEL = "100% match";
 
 export function PortalCrossList({ portals }: Props) {
   if (portals.length < 2) {
-    // Only one portal — the cross-list card disappears. The header row
-    // on the page already tells the user "N portals tracking" so this
-    // doesn't leave a gap.
+    // Only one portal — the cross-list card disappears; the header row on
+    // the page already says "N portals tracking" so there's no gap.
     return null;
   }
 
-  return (
-    <section className="mx-4 mt-5 flex flex-col gap-3.5 rounded-[14px] border border-border bg-card px-4 py-4">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <HugeiconsIcon
-            className="text-primary"
-            icon={SparklesIcon}
-            size={12}
-            strokeWidth={2}
-          />
-          <span className="font-semibold text-[11px] text-foreground uppercase tracking-[0.08em]">
-            Same property · {portals.length} portals
-          </span>
-        </div>
-        <span className="font-medium text-[11px] text-muted-foreground">
-          {MATCH_LABEL}
-        </span>
-      </header>
+  // Only call out a "cheapest" when there's a real spread — i.e. some
+  // portal is strictly dearer than the headline. If every portal lists the
+  // same rent there's no cheapest to crown, so the tag is suppressed.
+  const headlinePrice = portals[0]?.priceMonthly ?? null;
+  const hasSpread =
+    headlinePrice !== null &&
+    portals.some(
+      (p) => p.priceMonthly !== null && p.priceMonthly > headlinePrice
+    );
 
-      <div className="flex flex-col gap-2.5">
+  return (
+    <section className="flex flex-col gap-3.5 px-5 pb-5">
+      <SectionLabel>
+        Same property · {MATCH_LABEL.replace(" match", "")} match
+      </SectionLabel>
+
+      <div className="flex flex-col gap-3.5 rounded-md border border-line bg-card p-4">
         {portals.map((row, idx) => (
           <PortalRow
             isHeadline={idx === 0}
             key={`${row.portal}:${row.url}`}
             row={row}
-            showDivider={idx < portals.length - 1}
+            showCheapest={hasSpread}
           />
         ))}
       </div>
@@ -116,63 +117,86 @@ export function PortalCrossList({ portals }: Props) {
   );
 }
 
+function DeltaTag({
+  isHeadline,
+  delta,
+  deltaPositive,
+  showCheapest,
+}: {
+  isHeadline: boolean;
+  delta: string | null;
+  deltaPositive: boolean;
+  showCheapest: boolean;
+}) {
+  if (isHeadline) {
+    if (!showCheapest) {
+      return null;
+    }
+    return (
+      <span className="font-semibold text-[9px] text-copper uppercase leading-3 tracking-[0.1em]">
+        Cheapest
+      </span>
+    );
+  }
+  if (!delta) {
+    return null;
+  }
+  return (
+    <span
+      className={`font-semibold text-[10px] leading-3 ${
+        deltaPositive ? "text-copper" : "text-success"
+      }`}
+    >
+      {delta}
+    </span>
+  );
+}
+
 function PortalRow({
   row,
   isHeadline,
-  showDivider,
+  showCheapest,
 }: {
   row: ListingDetailPortalRow;
   isHeadline: boolean;
-  showDivider: boolean;
+  showCheapest: boolean;
 }) {
   const delta = isHeadline ? null : formatDelta(row.deltaFromHeadline);
-  const dim = !row.agentName && !row.agentEmail;
+  const dim = !(row.agentName || row.agentEmail);
   const deltaPositive = (row.deltaFromHeadline ?? 0) > 0;
   return (
-    <div className="contents">
-      <a
-        className={`flex items-center gap-3 ${dim && !isHeadline ? "opacity-70" : ""}`}
-        href={row.url}
-        rel="noreferrer"
-        target="_blank"
+    <a
+      className={`flex items-center gap-3 ${dim && !isHeadline ? "opacity-70" : ""}`}
+      href={row.url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <span
+        className={`flex size-7 shrink-0 items-center justify-center rounded-full ${badgeColour(row.portal)}`}
       >
-        <div
-          className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${
-            isHeadline ? "bg-primary/20" : "bg-primary/10"
-          }`}
-        >
-          <span
-            className={`font-semibold font-serif text-[13px] ${
-              isHeadline ? "text-primary" : "text-muted-foreground"
-            }`}
-          >
-            {portalInitial(row.portal)}
-          </span>
-        </div>
-        <div className="grow basis-0">
-          <p className="font-semibold text-[14px] text-foreground leading-[120%]">
-            {portalLabel(row.portal)}
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground leading-[120%]">
-            {agentSubtitle(row)}
-          </p>
-        </div>
-        <div className="flex flex-col items-end">
-          <span className="font-medium font-serif text-[18px] text-foreground leading-[110%] tracking-[-0.02em]">
-            {formatPrice(row.priceMonthly)}
-          </span>
-          {delta ? (
-            <span
-              className={`mt-0.5 font-medium text-[10px] leading-[110%] ${
-                deltaPositive ? "text-destructive" : "text-emerald-700"
-              }`}
-            >
-              {delta}
-            </span>
-          ) : null}
-        </div>
-      </a>
-      {showDivider ? <div className="h-px bg-border" /> : null}
-    </div>
+        <span className='font-semibold text-[#eef1f4] text-[12px]'>
+          {portalInitial(row.portal)}
+        </span>
+      </span>
+      <div className="flex grow basis-0 flex-col gap-0.5">
+        <p className="font-medium text-[13px] text-foreground leading-4">
+          {portalLabel(row.portal)}
+        </p>
+        <p className="text-[11px] text-slate-2 leading-[14px]">
+          {agentSubtitle(row)}
+        </p>
+      </div>
+      <div className="flex flex-col items-end gap-0.5">
+        <span className="font-semibold text-[15px] text-foreground leading-5">
+          {formatPrice(row.priceMonthly)}
+        </span>
+        <DeltaTag
+          delta={delta}
+          deltaPositive={deltaPositive}
+          isHeadline={isHeadline}
+          showCheapest={showCheapest}
+        />
+      </div>
+    </a>
   );
 }

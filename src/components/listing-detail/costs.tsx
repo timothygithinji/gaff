@@ -41,6 +41,7 @@ import type {
   ListingDetailCouncilTax,
   ListingDetailFineprint,
 } from "../../server/functions/listing-detail";
+import { SectionLabel } from "./section-label";
 
 type Props = {
   /** Monthly rent, in pounds. */
@@ -192,7 +193,7 @@ function CostsBody({
       <ul className="flex flex-col">
         {rows.map((row, idx) => (
           <li
-            className={`flex items-center py-3 ${idx < rows.length - 1 ? "border-border border-b" : ""}`}
+            className={`flex items-center py-3 ${idx < rows.length - 1 ? "border-mist border-b" : ""}`}
             key={row.label}
           >
             <div className="flex grow basis-0 flex-col">
@@ -200,14 +201,16 @@ function CostsBody({
                 {row.label}
               </span>
               {row.sub ? (
-                <span className="mt-0.5 text-[11px] text-muted-foreground leading-[110%]">
+                <span className="mt-0.5 text-[11px] text-fog leading-[110%]">
                   {row.sub}
                 </span>
               ) : null}
             </div>
             <span
-              className={`font-medium font-serif text-[17px] tabular-nums leading-[110%] ${
-                row.informational ? "text-muted-foreground" : "text-foreground"
+              className={`text-[17px] tabular-nums leading-[110%] tracking-[-0.01em] ${
+                row.informational
+                  ? "font-medium text-fog"
+                  : "font-semibold text-foreground"
               }`}
             >
               {row.monthlyText}
@@ -217,18 +220,18 @@ function CostsBody({
       </ul>
 
       {monthlyTotal > 0 ? (
-        <div className="flex items-baseline justify-between rounded-xl bg-muted px-4 py-3.5">
+        <div className="mt-3.5 flex items-center justify-between rounded-xl bg-mist p-4">
           <div className="flex flex-col">
-            <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+            <span className="font-semibold text-[10px] text-steel uppercase tracking-[0.08em]">
               True monthly{totalHasUnknowns ? " (partial)" : ""}
             </span>
             {totalHasUnknowns ? (
-              <span className="mt-0.5 text-[11px] text-muted-foreground leading-[110%]">
+              <span className="mt-0.5 text-[11px] text-fog leading-[110%]">
                 excludes items marked above
               </span>
             ) : null}
           </div>
-          <span className='font-medium font-serif text-[26px] text-foreground tabular-nums leading-[110%]'>
+          <span className="font-semibold text-[26px] text-foreground tabular-nums leading-[110%] tracking-[-0.02em]">
             {formatMoney(monthlyTotal)}
           </span>
         </div>
@@ -253,19 +256,14 @@ export function Costs(props: Props) {
     return null;
   }
   return (
-    <section className="flex flex-col gap-3.5 px-6 pt-7">
-      <header className="flex flex-col gap-1">
-        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-          What you'll pay
-        </span>
-        <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
-          Costs
-        </h2>
-      </header>
-      <CostsBody
-        administrationFeesText={props.fineprint.administrationFeesText}
-        data={data}
-      />
+    <section className="flex flex-col gap-3.5 px-5 pb-5">
+      <SectionLabel>What you'll pay</SectionLabel>
+      <div className="flex flex-col rounded-md border border-line bg-card px-4 py-1">
+        <CostsBody
+          administrationFeesText={props.fineprint.administrationFeesText}
+          data={data}
+        />
+      </div>
     </section>
   );
 }
@@ -277,13 +275,10 @@ export function CostsCard(props: Props) {
     return null;
   }
   return (
-    <article className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-6 py-5">
-      <header className="flex flex-col gap-1">
-        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-          What you'll pay
-        </span>
-        <h2 className="font-serif text-[22px] text-foreground">Costs</h2>
-      </header>
+    <article className="flex flex-col gap-3.5 rounded-2xl border border-line bg-card p-6">
+      <span className="font-normal text-[11px] text-slate uppercase tracking-[0.14em]">
+        What you'll pay
+      </span>
       <CostsBody
         administrationFeesText={props.fineprint.administrationFeesText}
         data={data}

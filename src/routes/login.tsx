@@ -8,6 +8,11 @@ import {
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
+import {
+  AuthEyebrow,
+  AuthHeading,
+  AuthLayout,
+} from "../components/auth/auth-layout";
 import { TextField } from "../components/text-field";
 import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
@@ -74,17 +79,23 @@ function LoginPage() {
   });
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
-      <div className="w-full max-w-sm space-y-8">
-        <header className="space-y-2">
-          <p className="text-muted-foreground text-xs uppercase tracking-widest">
-            Welcome back
-          </p>
-          <h1 className="font-serif text-4xl">Sign in</h1>
+    <AuthLayout>
+      {/* Login has only two fields, so on mobile it would otherwise crowd up
+          under the wordmark. Paper 3U8-0 leaves a generous gap and drops the
+          heading/form block ~a third down; this top padding restores that
+          rhythm on mobile only (cleared from sm+, where the column centres). */}
+      <div className="flex flex-col gap-7 pt-16 sm:pt-0">
+        <header className="flex flex-col gap-1.5">
+          <AuthEyebrow>Welcome back</AuthEyebrow>
+          <AuthHeading>
+            Sign in to
+            <br />
+            your household
+          </AuthHeading>
         </header>
 
         <form
-          className="space-y-5"
+          className="flex flex-col gap-3.5"
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -125,19 +136,30 @@ function LoginPage() {
                 autoComplete="current-password"
                 field={field}
                 label="Password"
+                trailing={
+                  // No password-reset route exists yet; Paper shows a copper
+                  // "Forgot?" affordance on the password row, so render it as a
+                  // styled no-op link rather than building a reset flow.
+                  <a
+                    className="text-[#d77a4a] text-[11px] uppercase leading-[14px] tracking-[0.1em]"
+                    href="/login"
+                  >
+                    Forgot?
+                  </a>
+                }
                 type="password"
               />
             )}
           </form.Field>
 
           {serverError ? (
-            <p className="rounded-md bg-primary/10 px-3 py-2 text-primary text-sm">
+            <p className="rounded-md bg-warning/10 px-3 py-2 text-[13px] text-warning-text leading-4">
               {serverError}
             </p>
           ) : null}
 
           <Button
-            className="w-full rounded-full"
+            className="mt-1 h-auto w-full rounded-full py-4 font-medium text-[14px]"
             loading={signIn.isPending}
             loadingText="Signing in…"
             size="lg"
@@ -147,13 +169,13 @@ function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-center text-muted-foreground text-sm">
-          New here?{" "}
-          <Link className="font-medium text-primary underline" to="/signup">
-            Create an account
+        <p className="flex items-center justify-center gap-1.5 text-[13px] leading-4">
+          <span className="text-[#1f3a5f]">First time here?</span>
+          <Link className="font-medium text-[#d77a4a]" to="/signup">
+            Create a household
           </Link>
         </p>
       </div>
-    </main>
+    </AuthLayout>
   );
 }

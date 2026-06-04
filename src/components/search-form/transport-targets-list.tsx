@@ -69,7 +69,7 @@ export function TransportTargetsList({ value, onChange }: Props) {
   if (value.length === 0) {
     return (
       <button
-        className="inline-flex items-center gap-1 rounded-full border border-primary/60 border-dashed px-3 py-1.5 text-primary text-sm"
+        className="inline-flex items-center gap-1 rounded-full border border-copper/50 border-dashed px-3 py-1.5 text-[12px] text-copper"
         onClick={append}
         type="button"
       >
@@ -84,7 +84,7 @@ export function TransportTargetsList({ value, onChange }: Props) {
       {value.map((target, idx) => (
         // Index-keyed: the list is append-only (no reorder), so no
         // stable id is needed on each target.
-        <div className="space-y-3 rounded-2xl bg-muted p-4" key={idx}>
+        <div className="space-y-3 rounded-md border border-line bg-paper p-4" key={idx}>
           <div className="flex items-start justify-between gap-2">
             <p className="text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
               Transport · max {target.maxMinutes || "—"} min
@@ -170,7 +170,7 @@ export function TransportTargetsList({ value, onChange }: Props) {
         </div>
       ))}
       <button
-        className="inline-flex items-center gap-1 rounded-full border border-primary/60 border-dashed px-3 py-1.5 text-primary text-sm"
+        className="inline-flex items-center gap-1 rounded-full border border-copper/50 border-dashed px-3 py-1.5 text-[12px] text-copper"
         onClick={append}
         type="button"
       >

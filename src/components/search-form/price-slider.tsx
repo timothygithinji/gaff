@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
 /**
- * Two-thumb rent range slider with editable number inputs.
+ * Two-thumb rent range slider, styled to the Paper "Price & size" RENT
+ * row: a bordered white card with a small-caps "RENT · /MO" label, an
+ * inline editable "£lo to £hi" value, and a copper range/thumbs track.
  *
- * Each value renders as an inline `<input>` styled to look like the
- * serif display text — the user can either drag the slider or click
- * a number to type it directly. Both surfaces share the same form
- * state, so dragging updates the typed value and vice versa.
+ * Each value renders as an inline `<input>` so the user can drag the
+ * slider or type a number directly. Both share the same form state.
  *
- * Bounds enforcement is loose: each input clamps to `[0, max]`
- * absolute. We don't enforce `lo ≤ hi` in real-time because that
- * blocks the user from ever lowering `hi` below the current `lo`
- * (or vice versa) without doing it in the "right" order. The form's
- * server-side superRefine catches `min > max` on submit.
+ * Bounds enforcement is loose: each input clamps to `[0, max]`. We
+ * don't enforce `lo ≤ hi` in real-time (it would block lowering `hi`
+ * below `lo`). The server's superRefine catches `min > max` on submit.
  */
 import { Slider } from "../../components/ui/slider";
 
@@ -27,27 +25,19 @@ export function PriceSlider({ min, max, step = 50, value, onChange }: Props) {
   const [lo, hi] = value;
 
   return (
-    <div className="rounded-2xl bg-muted px-5 py-5">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
-          RENT · /MO
+    <div className="flex h-full flex-col gap-2.5 rounded-md border border-line bg-paper px-4.5 py-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
+          Rent · /mo
         </span>
-        <div className="flex items-baseline gap-2 font-serif">
-          <PriceInput
-            max={max}
-            onChange={(n) => onChange([n, hi])}
-            value={lo}
-          />
-          <span className="text-muted-foreground text-sm">to</span>
-          <PriceInput
-            max={max}
-            onChange={(n) => onChange([lo, n])}
-            value={hi}
-          />
+        <div className="flex items-baseline gap-1 text-[13px] text-navy">
+          <PriceInput max={max} onChange={(n) => onChange([n, hi])} value={lo} />
+          <span className="text-slate">to</span>
+          <PriceInput max={max} onChange={(n) => onChange([lo, n])} value={hi} />
         </div>
       </div>
       <Slider
-        className="mt-5"
+        className="mt-1 [&_[data-slot=slider-range]]:bg-copper [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-thumb]]:border-2 [&_[data-slot=slider-thumb]]:border-copper [&_[data-slot=slider-track]]:h-1"
         max={max}
         min={min}
         minStepsBetweenValues={1}
@@ -72,25 +62,22 @@ type PriceInputProps = {
 function PriceInput({ value, max, onChange }: PriceInputProps) {
   // Local string state so the field can briefly hold partial input
   // (empty, "5", "50") without the parent's numeric value snapping the
-  // text back. We re-sync whenever the parent value changes (e.g. the
-  // user dragged the slider).
-  const [text, setText] = useState(String(value));
+  // text back. Re-sync whenever the parent value changes (e.g. drag).
+  const [text, setText] = useState(formatGbp(value));
   useEffect(() => {
-    setText(String(value));
+    setText(formatGbp(value));
   }, [value]);
 
   return (
-    <label className="inline-flex items-baseline text-foreground text-xl">
+    <label className="inline-flex items-baseline text-[13px] text-navy">
       <span aria-hidden>£</span>
       {/* biome-ignore lint/nursery/noStaticElementInteractions: <input> is intrinsically interactive */}
       <input
         aria-label="Rent value"
-        className="-mx-1 w-20 rounded bg-transparent px-1 text-right text-xl outline-none focus:bg-card/60"
+        className="-mx-1 w-[58px] rounded-sm bg-transparent px-1 text-right outline-none focus:bg-mist"
         inputMode="numeric"
+        onBlur={() => setText(formatGbp(value))}
         onChange={(e) => {
-          // Strip everything that isn't a digit. Empty string is fine
-          // mid-edit — we commit 0 to the parent so the slider stays
-          // in sync but the input stays blank-looking.
           const stripped = e.target.value.replace(/[^0-9]/g, "");
           setText(stripped);
           const n = stripped === "" ? 0 : Number(stripped);
@@ -101,4 +88,8 @@ function PriceInput({ value, max, onChange }: PriceInputProps) {
       />
     </label>
   );
+}
+
+function formatGbp(n: number): string {
+  return n.toLocaleString("en-GB");
 }

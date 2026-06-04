@@ -38,6 +38,10 @@ import { ReviewHeader } from "../components/review/review-header";
 import { Skeleton } from "../components/ui/skeleton";
 import { useIsMobile } from "../hooks/use-mobile";
 import { requireSession } from "../lib/auth-guard";
+import {
+  type HouseholdValue,
+  useHouseholdOptional,
+} from "../lib/household-context";
 import { queryKeys } from "../lib/query-keys";
 import {
   type ReviewCard,
@@ -164,6 +168,7 @@ function ReviewPage() {
   const queueQuery = useQuery(queueOpts);
   const todayStatsQuery = useQuery(todayOpts);
   const searchesQuery = useQuery(reviewSearchesQueryOptions);
+  const household = useHouseholdOptional();
   const card = cardQuery.data;
   const queue = queueQuery.data;
   const todayStats = todayStatsQuery.data;
@@ -443,6 +448,7 @@ function ReviewPage() {
         queue,
         todayStats,
         searchesList,
+        household,
         searchId,
         pending,
         pendingAction,
@@ -576,6 +582,7 @@ function renderDesktopHero(args: {
   queue: ReviewQueue | null | undefined;
   todayStats: TodayReviewStats | null | undefined;
   searchesList: Array<{ id: string; name: string }>;
+  household: HouseholdValue | null;
   searchId: string | null;
   pending: boolean;
   pendingAction: PendingAction;
@@ -591,8 +598,7 @@ function renderDesktopHero(args: {
     return (
       <DesktopReview
         data={desktopData(args.card, args.queue, args.todayStats, {
-          searchesList: args.searchesList,
-          selectedSearchId: args.searchId,
+          household: args.household,
         })}
         disabled={args.pending}
         onLightboxOpenChange={args.setLightboxOpen}
@@ -606,15 +612,8 @@ function renderDesktopHero(args: {
             }),
           });
         }}
-        onSelectSearch={(nextSearchId) => {
-          args.navigate({
-            to: "/",
-            search: { searchId: nextSearchId ?? null, clusterId: null },
-          });
-        }}
         onShortlist={args.doShortlist}
         onSkip={args.doSkip}
-        onUndo={args.doUndo}
         pendingAction={args.pendingAction}
       />
     );
@@ -674,24 +673,303 @@ function desktopData(
   card: ReviewCard,
   queue: ReviewQueue | null | undefined,
   todayStats: TodayReviewStats | null | undefined,
-  opts: {
-    searchesList: Array<{ id: string; name: string }>;
-    selectedSearchId: string | null;
-  }
+  opts: { household: HouseholdValue | null }
 ): DesktopReviewData {
-  const reviewedToday = todayStats?.reviewed ?? 0;
-  const keptToday = todayStats?.kept ?? 0;
-  const skippedToday = todayStats?.skipped ?? 0;
+  const items = buildQueueItems(card, queue);
+  const total = queue?.remaining ?? Math.max(card.leftToday, items.length, 1);
+  // 1-based position of the current card within the queue (the queue may not
+  // include it yet right after a swipe — clamp to 1 so the eyebrow reads sane).
+  const position = Math.max(
+    items.findIndex((i) => i.id === card.cluster.id) + 1,
+    1
+  );
   return {
-    searchOptions: opts.searchesList.map((s) => ({ id: s.id, name: s.name })),
-    selectedSearchId: opts.selectedSearchId,
-    leftToday: card.leftToday,
-    reviewedToday,
-    keptToday,
-    skippedToday,
-    queue: buildQueueData(card, queue),
-    hero: buildHeroData(card),
+    queue: {
+      items,
+      remaining: total,
+      position,
+      selectedClusterId: card.cluster.id,
+    },
+    hero: buildHero(card),
+    // No cluster-match score is computed yet — the "N% match" chip stays
+    // hidden until one exists.
+    matchPct: null,
+    portals: buildPortals(card),
+    today: buildToday(todayStats, opts.household),
   };
+}
+
+function buildQueueItems(
+  card: ReviewCard,
+  queue: ReviewQueue | null | undefined
+): DesktopReviewData["queue"]["items"] {
+  if (!queue) {
+    return [queueItemFromCard(card)];
+  }
+  return queue.items.map((item) => ({
+    id: item.clusterId,
+    title: streetName(item.addressRaw) || item.title,
+    price: formatPrice(item.priceMonthly),
+    outcode: item.outcode || "—",
+    beds: item.bedrooms,
+    baths: item.bathrooms,
+    availability: formatAvailability(item.availableFrom, item.availableNow),
+    furnished: formatFurnished(item.furnished),
+    photo: item.photo ?? FALLBACK_PHOTO,
+  }));
+}
+
+function queueItemFromCard(
+  card: ReviewCard
+): DesktopReviewData["queue"]["items"][number] {
+  const hl = card.headlineListing;
+  return {
+    id: card.cluster.id,
+    title: streetName(hl.addressRaw) || hl.title,
+    price: formatPrice(hl.priceMonthly),
+    outcode: hl.outcode || "—",
+    beds: hl.bedrooms,
+    baths: hl.bathrooms,
+    availability: formatAvailability(hl.availableFrom, hl.availableNow),
+    furnished: formatFurnished(hl.furnished),
+    photo: hl.photos[0] ?? FALLBACK_PHOTO,
+  };
+}
+
+function buildHero(card: ReviewCard): DesktopReviewData["hero"] {
+  const hl = card.headlineListing;
+  const photos = hl.photos.length > 0 ? hl.photos : [FALLBACK_PHOTO];
+  return {
+    photos,
+    title: streetName(hl.addressRaw) || hl.title,
+    subtitle: composeSubtitle(card),
+    price: formatPrice(hl.priceMonthly),
+    priceUnit: "/mo",
+    signals: buildSignals(card.features),
+    stats: buildStats(card),
+  };
+}
+
+/**
+ * True when some portal lists this property dearer than the headline — i.e.
+ * there's a real spread worth crowning a "cheapest". When every portal
+ * shows the same rent (or there's only one), there's no cheapest to mark.
+ */
+function clusterHasPriceSpread(card: ReviewCard): boolean {
+  const headlinePrice = card.headlineListing.priceMonthly;
+  if (headlinePrice == null) {
+    return false;
+  }
+  return card.portalsAlsoOn.some(
+    (p) => p.priceMonthly != null && p.priceMonthly > headlinePrice
+  );
+}
+
+const FLAT_PREFIX_RE = /^(?:flat|unit|apartment|apt)\s+\w+\s+/i;
+const HOUSE_NUMBER_RE = /^\d+[a-z]?\s+/i;
+
+/**
+ * Street name from a raw address — the first address line with any leading
+ * flat/house number stripped ("22 Belsize Park Mews" → "Belsize Park Mews",
+ * "Flat 2 Camden Lock" → "Camden Lock"). Mirrors the listing-detail title so
+ * the review and detail screens read the same. Empty string if nothing's
+ * left, so callers can fall back to the portal title.
+ */
+function streetName(addressRaw: string): string {
+  const firstLine = addressRaw.split(",")[0]?.trim() ?? addressRaw;
+  const stripped = firstLine
+    .replace(FLAT_PREFIX_RE, "")
+    .replace(HOUSE_NUMBER_RE, "");
+  return stripped.length > 0 ? stripped : firstLine;
+}
+
+/** "2 bed · 1 bath · 712 sqft · Listed 2 days ago" — skips unknown fields. */
+function composeSubtitle(card: ReviewCard): string {
+  const hl = card.headlineListing;
+  const parts: string[] = [];
+  if (hl.bedrooms != null) {
+    parts.push(`${hl.bedrooms} bed`);
+  }
+  if (hl.bathrooms != null) {
+    parts.push(`${hl.bathrooms} bath`);
+  }
+  if (hl.sizeSqFt != null) {
+    parts.push(`${hl.sizeSqFt.toLocaleString("en-GB")} sqft`);
+  }
+  parts.push(`Listed ${card.firstSeenLabel}`);
+  return parts.join(" · ");
+}
+
+/**
+ * "What stands out" signals — highlights render as navy ticks, watch-outs as
+ * the copper "!" marker. Both come from the v2 features schema; pre-v2 rows
+ * lacking these arrays render an empty card (repopulates once re-enriched).
+ */
+function buildSignals(
+  features: ReviewCard["features"]
+): DesktopReviewData["hero"]["signals"] {
+  if (!features) {
+    return [];
+  }
+  const out: DesktopReviewData["hero"]["signals"] = [];
+  for (const h of features.highlights ?? []) {
+    out.push({ label: h.label, warn: false });
+  }
+  for (const w of features.watchouts ?? []) {
+    out.push({ label: w.label, warn: true });
+  }
+  // The desktop card lays these out in a fixed 2×3 grid (six slots).
+  return out.slice(0, 6);
+}
+
+/**
+ * "The numbers" grid: transport · EPC · council tax · size.
+ * Transport is the walk time to the nearest station; EPC is tinted by band;
+ * size prefers the listing's floor area and falls back to the EPC's.
+ * Cells that aren't enriched yet read "—" so the grid keeps its rhythm.
+ */
+function buildStats(card: ReviewCard): DesktopReviewData["hero"]["stats"] {
+  const station = card.nearestStation;
+  const transport =
+    station?.walkMinutes != null
+      ? {
+          label: "Transport",
+          value: `${station.walkMinutes}`,
+          unit: "min",
+          sub: station.name ?? undefined,
+        }
+      : { label: "Transport", value: "—", sub: station?.name ?? undefined };
+  return [
+    transport,
+    buildEpcStat(card.epcRating),
+    {
+      label: "Council tax",
+      value: card.councilTaxBand ?? "—",
+      sub: card.councilTaxBand ? "band" : undefined,
+    },
+    buildSizeStat(card),
+  ];
+}
+
+/**
+ * EPC stat cell, tinted by band: A–C reads as good (green), D neutral,
+ * E–G bad (red). "—" when the building's band isn't known.
+ */
+function buildEpcStat(
+  rating: string | undefined
+): DesktopReviewData["hero"]["stats"][number] {
+  if (!rating) {
+    return { label: "EPC", value: "—", tone: "neutral" };
+  }
+  const band = rating.trim().toUpperCase().charAt(0);
+  let tone: "good" | "bad" | "neutral" = "neutral";
+  if ("ABC".includes(band)) {
+    tone = "good";
+  } else if ("EFG".includes(band)) {
+    tone = "bad";
+  }
+  return { label: "EPC", value: rating, tone };
+}
+
+/**
+ * Size stat cell — the listing's floor area in sq ft, falling back to the
+ * EPC certificate's total floor area when the portal didn't publish one.
+ */
+function buildSizeStat(
+  card: ReviewCard
+): DesktopReviewData["hero"]["stats"][number] {
+  const sqft = card.headlineListing.sizeSqFt ?? card.epcFloorAreaSqFt ?? null;
+  if (sqft == null) {
+    return { label: "Size", value: "—" };
+  }
+  return { label: "Size", value: sqft.toLocaleString("en-GB"), unit: "sq ft" };
+}
+
+/**
+ * "Today" tally. Partner-resolved counts ("by <name>", "both kept") need a
+ * cross-member feed we don't surface yet, so the three cells read the
+ * current user's own stats: kept · vetoed · reviewed (the last accented).
+ */
+function buildToday(
+  todayStats: TodayReviewStats | null | undefined,
+  household: HouseholdValue | null
+): DesktopReviewData["today"] {
+  const me = household?.members.find(
+    (m) => m.userId === household.currentUserId
+  );
+  const youInitial = avatarInitial(me?.name || me?.email || null);
+  const partner = household?.otherMembers[0];
+  const partnerInitial = partner
+    ? avatarInitial(partner.name || partner.email || null)
+    : null;
+  const kept = (todayStats?.shortlisted ?? 0) + (todayStats?.kept ?? 0);
+  return {
+    youInitial,
+    partnerInitial,
+    cells: [
+      { value: `${kept}`, label: "kept by you" },
+      { value: `${todayStats?.skipped ?? 0}`, label: "vetoed" },
+      { value: `${todayStats?.reviewed ?? 0}`, label: "reviewed", accent: true },
+    ],
+  };
+}
+
+function avatarInitial(nameOrEmail: string | null): string {
+  return (nameOrEmail || "?").charAt(0).toUpperCase();
+}
+
+/**
+ * Builds the "Same property" rows from the cluster's listings: the
+ * headline (cheapest by the cluster's ranking) as row 0, then every other
+ * portal the cluster appears on. Deltas are computed against the headline
+ * price; the headline carries the `cheapest` flag (bold price, no delta).
+ */
+function buildPortals(card: ReviewCard): DesktopReviewData["portals"] {
+  const headlinePrice = card.headlineListing.priceMonthly;
+  const headlineName = prettyPortal(card.headlineListing.portal);
+  const rows: DesktopReviewData["portals"] = [
+    {
+      portal: headlineName,
+      initial: headlineName.charAt(0),
+      url: card.headlineListing.url,
+      price: formatPrice(headlinePrice),
+      delta: null,
+      // Only crown a cheapest when a portal is actually dearer.
+      cheapest: clusterHasPriceSpread(card),
+    },
+  ];
+  const seen = new Set([headlineName]);
+  for (const p of card.portalsAlsoOn) {
+    const name = prettyPortal(p.portal);
+    if (seen.has(name)) {
+      continue;
+    }
+    seen.add(name);
+    rows.push({
+      portal: name,
+      initial: name.charAt(0),
+      url: p.url,
+      price: formatPrice(p.priceMonthly),
+      delta: portalDelta(headlinePrice, p.priceMonthly),
+      cheapest: false,
+    });
+  }
+  return rows;
+}
+
+/** "+£50" style delta vs the cheapest, or null when unknown / equal. */
+function portalDelta(
+  cheapest: number | null,
+  other: number | null
+): string | null {
+  if (cheapest == null || other == null) {
+    return null;
+  }
+  const diff = other - cheapest;
+  if (diff <= 0) {
+    return null;
+  }
+  return `+£${diff.toLocaleString("en-GB")}`;
 }
 
 /**
@@ -753,73 +1031,75 @@ function DesktopReviewEmpty({
 // Stable id arrays for the skeletons — keep them outside the
 // component so React keys don't churn between re-renders.
 const SKELETON_QUEUE_ROWS = ["q0", "q1", "q2", "q3", "q4", "q5"];
-const SKELETON_SPEC_CELLS = ["s0", "s1", "s2", "s3", "s4"];
-const SKELETON_VERDICT_CHIPS = ["v0", "v1", "v2", "v3"];
+const SKELETON_STAT_CELLS = ["s0", "s1", "s2"];
+const SKELETON_FLOORPLAN_ROWS = ["f0", "f1", "f2", "f3"];
 const SKELETON_MOBILE_STATS = ["m0", "m1", "m2"];
 
 /**
  * Skeleton shell painted while the first card + queue load (initial
  * cold render, or a filter switch where the new search has no cached
- * card yet). Shape mirrors {@link DesktopReview} — queue rail on the
- * left, hero card on the right — so the layout doesn't reflow when the
- * real content lands.
+ * card yet). Shape mirrors {@link DesktopReview} — queue rail · main
+ * column · right rail — so the layout doesn't reflow when content lands.
  */
 function DesktopReviewSkeleton() {
   return (
     <AdminSidebar mode="desktop-only">
-      <header className="flex items-end justify-between px-10 pt-9 pb-6">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-10 w-36" />
-          <Skeleton className="h-6 w-44 rounded-full" />
-        </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <Skeleton className="h-7 w-24" />
-          <Skeleton className="h-3 w-40" />
-        </div>
-      </header>
-      <div className="flex min-h-0 flex-1 gap-5 px-10 pb-8">
-        <aside className="flex min-h-0 w-[260px] shrink-0 flex-col gap-2 rounded-2xl border border-border bg-card p-3">
+      <div className="flex w-full items-start gap-6 px-8 py-6">
+        <aside className="flex w-60 shrink-0 flex-col gap-3">
+          <Skeleton className="h-3 w-28" />
           {SKELETON_QUEUE_ROWS.map((id) => (
-            <div className="flex items-center gap-3" key={id}>
-              <Skeleton className="size-11 rounded-lg" />
-              <div className="flex flex-1 flex-col gap-1.5">
+            <div
+              className="flex items-stretch gap-3 rounded-[6px] border border-line bg-paper p-2.5"
+              key={id}
+            >
+              <Skeleton className="size-[60px] shrink-0 rounded-[4px]" />
+              <div className="flex flex-1 flex-col gap-1.5 pt-1">
                 <Skeleton className="h-3 w-3/4" />
                 <Skeleton className="h-3 w-1/2" />
               </div>
             </div>
           ))}
         </aside>
-        <section className="flex min-h-0 w-[540px] flex-1 shrink-0 flex-col gap-3.5">
-          <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-            <Skeleton className="min-h-[280px] flex-1 rounded-none" />
-            <div className="flex shrink-0 flex-col gap-4 px-7 pt-6 pb-6">
-              <div className="flex items-end justify-between">
-                <div className="flex flex-col gap-2">
-                  <Skeleton className="h-10 w-40" />
-                  <Skeleton className="h-5 w-56" />
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="h-5 w-20" />
-                </div>
-              </div>
-              <div className="flex items-stretch gap-4 border-bone border-y py-3.5">
-                {SKELETON_SPEC_CELLS.map((id) => (
+        <section className="flex min-w-0 flex-1 flex-col gap-[18px]">
+          <div className="flex items-baseline justify-between gap-6">
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-8 w-56" />
+              <Skeleton className="h-4 w-72" />
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Skeleton className="h-9 w-28" />
+              <Skeleton className="h-3 w-40" />
+            </div>
+          </div>
+          <Skeleton className="aspect-[57/40] w-full rounded-[6px]" />
+          <div className="flex items-stretch gap-[18px]">
+            <div className="flex flex-[1.3] flex-col gap-3 rounded-[6px] border border-line bg-paper p-[18px]">
+              <Skeleton className="h-3 w-40" />
+              {SKELETON_FLOORPLAN_ROWS.map((id) => (
+                <Skeleton className="h-4 w-full" key={id} />
+              ))}
+            </div>
+            <div className="flex flex-1 flex-col gap-3 rounded-[6px] border border-line bg-paper p-[18px]">
+              <Skeleton className="h-3 w-24" />
+              <div className="flex gap-3">
+                {SKELETON_STAT_CELLS.map((id) => (
                   <div className="flex flex-1 flex-col gap-1.5" key={id}>
-                    <Skeleton className="h-3 w-12" />
+                    <Skeleton className="h-2.5 w-12" />
                     <Skeleton className="h-6 w-10" />
+                    <Skeleton className="h-2.5 w-10" />
                   </div>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {SKELETON_VERDICT_CHIPS.map((id) => (
-                  <Skeleton className="h-7 w-32 rounded-full" key={id} />
-                ))}
-              </div>
             </div>
-          </article>
+          </div>
         </section>
+        <aside className="flex w-[280px] shrink-0 flex-col gap-4">
+          <Skeleton className="h-[140px] w-full rounded-[6px]" />
+          <Skeleton className="h-[200px] w-full rounded-[6px]" />
+          <Skeleton className="h-12 w-full rounded-[6px]" />
+          <Skeleton className="h-[86px] w-full rounded-[6px]" />
+        </aside>
       </div>
     </AdminSidebar>
   );
@@ -854,96 +1134,6 @@ function MobileReviewSkeleton() {
   );
 }
 
-function buildHeroData(card: ReviewCard): DesktopReviewData["hero"] {
-  const {
-    headlineListing,
-    portalsAlsoOn,
-    features,
-    epcRating,
-    epcIsEstimate,
-    commuteMinutes,
-  } = card;
-  const photos =
-    headlineListing.photos.length > 0
-      ? headlineListing.photos
-      : [FALLBACK_PHOTO];
-
-  return {
-    photos,
-    alsoOn: formatAlsoOn(portalsAlsoOn),
-    price: formatPrice(headlineListing.priceMonthly),
-    priceUnit: "/mo",
-    title: headlineListing.title,
-    subtitle: formatSubtitle(
-      headlineListing.outcode,
-      headlineListing.firstSeenAt
-    ),
-    cheapestPortal: prettyPortal(headlineListing.portal),
-    spec: buildSpec({
-      bedrooms: headlineListing.bedrooms,
-      bathrooms: headlineListing.bathrooms,
-      sizeSqFt: headlineListing.sizeSqFt,
-      epc: epcRating ? (epcIsEstimate ? `~${epcRating}` : epcRating) : null,
-      commuteMinutes,
-    }),
-    verdicts: buildVerdicts(features),
-  };
-}
-
-function formatAlsoOn(portalsAlsoOn: ReviewCard["portalsAlsoOn"]): string {
-  if (portalsAlsoOn.length === 0) {
-    return "";
-  }
-  // De-dupe — a cluster can have multiple listings on the same portal
-  // if a search overlaps with another. Preserve first-seen order.
-  const seen = new Set<string>();
-  const labels: string[] = [];
-  for (const p of portalsAlsoOn) {
-    const pretty = prettyPortal(p.portal);
-    if (seen.has(pretty)) {
-      continue;
-    }
-    seen.add(pretty);
-    labels.push(pretty);
-  }
-  return `Also on ${labels.join(" · ")}`;
-}
-
-function formatSubtitle(outcode: string, firstSeenAt: Date): string {
-  const outcodePart = outcode || "—";
-  // `firstSeenAt` is when our scraper first saw the listing, NOT when
-  // the portal listed it. The portals don't expose a reliable
-  // listed-on date in their public payload, so the copy is honest
-  // about what we actually know.
-  const seenPart = `First seen ${relativeFirstSeen(firstSeenAt)}`;
-  return `${outcodePart} · ${seenPart}`;
-}
-
-function relativeFirstSeen(firstSeenAt: Date): string {
-  const date =
-    firstSeenAt instanceof Date
-      ? firstSeenAt
-      : new Date(firstSeenAt as unknown as string);
-  const diffMs = Date.now() - date.getTime();
-  const day = 24 * 60 * 60 * 1000;
-  const days = Math.floor(diffMs / day);
-  if (days <= 0) {
-    return "today";
-  }
-  if (days === 1) {
-    return "yesterday";
-  }
-  if (days < 7) {
-    return `${days} days ago`;
-  }
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) {
-    return `${weeks}w ago`;
-  }
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
-
 function prettyPortal(portal: string): string {
   switch (portal.toLowerCase()) {
     case "rightmove":
@@ -957,107 +1147,56 @@ function prettyPortal(portal: string): string {
   }
 }
 
-function buildSpec(args: {
-  bedrooms: number | null;
-  bathrooms: number | null;
-  sizeSqFt: number | null;
-  epc: string | null;
-  commuteMinutes: number | null;
-}): DesktopReviewData["hero"]["spec"] {
-  return [
-    { label: "Beds", value: specValue(args.bedrooms) },
-    { label: "Baths", value: specValue(args.bathrooms) },
-    { label: "Sq ft", value: specValue(args.sizeSqFt) },
-    { label: "EPC", value: args.epc ?? "—" },
-    {
-      label: "Commute",
-      value: args.commuteMinutes != null ? `${args.commuteMinutes}` : "—",
-      suffix: args.commuteMinutes != null ? "min" : undefined,
-    },
-  ];
-}
-
-function specValue(value: number | null): string {
-  return value == null ? "—" : value.toLocaleString("en-GB");
-}
-
-/**
- * Mirrors `FeaturePills` (the mobile equivalent) but flattens watchout
- * severities onto the single `caution` tone the desktop hero supports.
- * Highlights stay as `positive`. Both lists come from the v2 features
- * schema (`highlights[]` + `watchouts[]`) — earlier v1 enrichment rows
- * lacking these arrays render no verdicts (will repopulate once their
- * v2 enrichment runs).
- */
-function buildVerdicts(
-  features: ReviewCard["features"]
-): DesktopReviewData["hero"]["verdicts"] {
-  if (!features) {
-    return [];
-  }
-  const out: DesktopReviewData["hero"]["verdicts"] = [];
-
-  for (const h of features.highlights ?? []) {
-    out.push({ label: h.label, tone: "positive" });
-  }
-  for (const w of features.watchouts ?? []) {
-    out.push({ label: w.label, tone: "caution" });
-  }
-  return out.slice(0, 6);
-}
-
-function buildQueueData(
-  card: ReviewCard,
-  queue: ReviewQueue | null | undefined
-): DesktopReviewData["queue"] {
-  if (!queue) {
-    // Fallback when the queue query is still loading — at least render
-    // the currently-shown card so the rail isn't empty.
-    return {
-      items: [queueItemFromCard(card)],
-      remaining: Math.max(card.leftToday, 1),
-      selectedClusterId: card.cluster.id,
-    };
-  }
-  return {
-    items: queue.items.map(queueItemFromReviewQueueItem),
-    remaining: queue.remaining,
-    selectedClusterId: card.cluster.id,
-  };
-}
-
-function queueItemFromCard(card: ReviewCard) {
-  const photo = card.headlineListing.photos[0] ?? FALLBACK_PHOTO;
-  return {
-    id: card.cluster.id,
-    title: card.headlineListing.title,
-    outcode: card.headlineListing.outcode || "—",
-    beds: card.headlineListing.bedrooms ?? 0,
-    price: formatPrice(card.headlineListing.priceMonthly),
-    photo,
-  };
-}
-
-function queueItemFromReviewQueueItem(item: ReviewQueueItem) {
-  return {
-    id: item.clusterId,
-    title: item.title,
-    outcode: item.outcode || "—",
-    beds: item.bedrooms ?? 0,
-    price: formatPrice(item.priceMonthly),
-    photo: item.photo ?? FALLBACK_PHOTO,
-    // `suffix` shows "·N" when the cluster appears on more than one
-    // portal. Blind-review rule means we don't surface peer outcomes
-    // until there's a mutual match, so no `peareaceFlag`.
-    suffix: item.portalCount > 1 ? `·${item.portalCount}` : undefined,
-  };
-}
-
 function formatPrice(priceMonthly: number | null): string {
   if (priceMonthly == null) {
     return "—";
   }
   return `£${priceMonthly.toLocaleString("en-GB")}`;
+}
+
+/**
+ * "Avail now" when the listing is flagged available-immediately or the
+ * move-in date is today/past, else "Avail 12 Jun" (year added only when
+ * it's not this year). Null when we know neither — the card omits the chip.
+ */
+function formatAvailability(
+  value: string | Date | null,
+  availableNow = false
+): string | null {
+  if (!value) {
+    return availableNow ? "Avail now" : null;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return availableNow ? "Avail now" : null;
+  }
+  const today = new Date();
+  // Compare on calendar day, not the timestamp, so "available today" reads
+  // as "now" rather than a future date later the same day.
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  if (date.getTime() <= startOfToday.getTime()) {
+    return "Avail now";
+  }
+  const sameYear = date.getFullYear() === today.getFullYear();
+  const label = date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+  return `Avail ${label}`;
+}
+
+const FURNISHED_LABELS: Record<string, string> = {
+  furnished: "Furnished",
+  unfurnished: "Unfurnished",
+  part_furnished: "Part furnished",
+};
+function formatFurnished(value: string | null): string | null {
+  return value ? (FURNISHED_LABELS[value] ?? null) : null;
 }
 
 /**

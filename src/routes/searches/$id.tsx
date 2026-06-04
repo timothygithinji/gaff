@@ -6,12 +6,13 @@
  * first-class columns on `searches`) and the schedule's cron (looked
  * up by externalId, falling back to "off" if no schedule exists).
  *
- * Two mutations live here — `updateSearch` and `archiveSearch`. Both
- * are optimistic against the `["searches"]` list cache and patch the
- * single-search cache. Pattern matches `src/routes/index.tsx` (the
- * gold-standard swipe mutation): cancel → snapshot → patch → onError
- * restore → onSettled invalidate. Hard deletes are intentionally not
- * exposed — archiving (pausing) is the only destructive option.
+ * Three mutations live here — `updateSearch`, `archiveSearch` (pause),
+ * and `deleteSearch` (soft delete). All are optimistic against the
+ * `["searches"]` list cache and patch the single-search cache. Pattern
+ * matches `src/routes/index.tsx` (the gold-standard swipe mutation):
+ * cancel → snapshot → patch → onError restore → onSettled invalidate.
+ * Delete is a soft delete (stamps `deleted_at`): the row drops out of
+ * the list optimistically, but its history survives and it's recoverable.
  */
 import {
   useMutation,
@@ -36,6 +37,7 @@ import { listSchedules } from "../../server/functions/schedules";
 import {
   type SearchRow,
   archiveSearch,
+  deleteSearch,
   getSearch,
   updateSearch,
 } from "../../server/functions/searches";
@@ -206,7 +208,39 @@ function EditSearchPage() {
     },
   });
 
-  const pending = update.isPending || archive.isPending;
+  // Soft delete — drop the row from the list cache optimistically (it's
+  // filtered out server-side by `deleted_at`), then navigate away. Unlike
+  // archive, there's no single-search patch worth keeping: we're leaving
+  // the page. onError restores the list and surfaces the message.
+  const remove = useMutation({
+    mutationFn: () => deleteSearch({ data: { id: params.id } }),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.searches() });
+      const prevList = qc.getQueryData<SearchRow[]>(queryKeys.searches());
+      if (prevList) {
+        qc.setQueryData<SearchRow[]>(queryKeys.searches(), (old) =>
+          (old ?? []).filter((row) => row.id !== params.id)
+        );
+      }
+      return { prevList };
+    },
+    onSuccess: () => {
+      navigate({ to: "/searches" });
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prevList !== undefined) {
+        qc.setQueryData(queryKeys.searches(), ctx.prevList);
+      }
+      setError(e.message ?? "Couldn't delete");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.searches() });
+      qc.invalidateQueries({ queryKey: queryKeys.search(params.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.schedules() });
+    },
+  });
+
+  const pending = update.isPending || archive.isPending || remove.isPending;
 
   const pauseAction = {
     label: search.active ? "Pause search" : "Paused",
@@ -214,6 +248,21 @@ function EditSearchPage() {
     onClick: () => archive.mutate(),
     pending: archive.isPending,
     pendingLabel: "Pausing…",
+  };
+
+  const deleteAction = {
+    label: "Delete",
+    disabled: pending,
+    onClick: () => {
+      const ok = window.confirm(
+        `Delete "${search.name}"? It'll be removed from your searches. Your match history is kept and the delete can be reversed.`
+      );
+      if (ok) {
+        remove.mutate();
+      }
+    },
+    pending: remove.isPending,
+    pendingLabel: "Deleting…",
   };
 
   return (
@@ -227,6 +276,7 @@ function EditSearchPage() {
         </div>
       )}
       <DesktopSearchCreate
+        deleteAction={deleteAction}
         initial={initial}
         mode="edit"
         onCancel={() => navigate({ to: "/searches" })}
@@ -242,7 +292,18 @@ function EditSearchPage() {
           onSubmit={(v) => update.mutate(v)}
           pending={pending}
         />
-        <div className="mx-auto flex max-w-md justify-end border-border border-t bg-card px-5 py-3">
+        <div className="mx-auto flex max-w-md justify-end gap-2 border-border border-t bg-card px-5 py-3">
+          <Button
+            disabled={deleteAction.disabled}
+            loading={remove.isPending}
+            loadingText="Deleting…"
+            onClick={deleteAction.onClick}
+            size="sm"
+            type="button"
+            variant="destructive"
+          >
+            {deleteAction.label}
+          </Button>
           <Button
             disabled={pauseAction.disabled}
             loading={archive.isPending}
@@ -353,10 +414,9 @@ function pickBathsId(min: number | null, max: number | null): string {
   if (min === 2 && max === 2) {
     return "2";
   }
-  if (min >= 4) {
-    return "4+";
-  }
-  if (min === 3) {
+  // The form's bath segments are 1+, 2, 3+ (no 4+). Rows written under
+  // the old explicit 4+ bucket snap up to the "3+" segment on read.
+  if (min >= 3) {
     return "3+";
   }
   return "1+";

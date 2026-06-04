@@ -5,8 +5,8 @@
  * properties — strips the listing-detail page down to the facts that
  * actually change a decision: hero photo, headline price + address,
  * the consolidated cost breakdown, highlights / watchouts at a
- * glance, the key public records (EPC, broadband, crime relative to
- * the area baseline), and the nearest-station travel times.
+ * glance, the key public records (EPC, broadband), and the
+ * nearest-station travel times.
  *
  * Reuses the persisted `ListingDetailPayload` from `getListingDetail`
  * — no new server function needed; the `/compare` route just runs
@@ -99,7 +99,6 @@ export function CompareColumn({ side, data }: Props) {
       />
 
       <KeyStats
-        crime={publicRecords?.crime}
         broadband={publicRecords?.broadband}
         epcRating={epc?.rating ?? null}
       />
@@ -164,11 +163,9 @@ function VerdictsBlock({
 }
 
 function KeyStats({
-  crime,
   broadband,
   epcRating,
 }: {
-  crime: NonNullable<ListingDetailPayload["publicRecords"]>["crime"];
   broadband: NonNullable<ListingDetailPayload["publicRecords"]>["broadband"];
   epcRating: string | null;
 }) {
@@ -186,11 +183,6 @@ function KeyStats({
               ? `${broadband.technology ?? "—"} · ${broadband.downloadMbps ?? "?"} Mbps`
               : "Pending"
           }
-        />
-        <Stat
-          label="Crime"
-          value={crime ? `${crime.total} in 1mi` : "Pending"}
-          sub={crime?.comparison?.label}
         />
       </dl>
     </section>

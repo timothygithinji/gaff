@@ -26,6 +26,7 @@ import type {
   ListingDetailAgentExtras,
   ListingDetailPropertyFacts,
 } from "../../server/functions/listing-detail";
+import { SectionLabel } from "./section-label";
 
 type Props = {
   facts?: ListingDetailPropertyFacts;
@@ -34,22 +35,7 @@ type Props = {
 
 type Row = { label: string; value: string };
 
-const HTTP_URL_RE = /^https?:\/\//i;
 const HTML_TAG_RE = /<[^>]+>/g;
-
-/**
- * Belt-and-braces scheme check before rendering a third-party URL as a
- * clickable `href`. The Rightmove parser also drops non-HTTP schemes
- * at ingestion, so this is defense-in-depth — should a future code path
- * skip the parser (e.g. a manually-pasted brochure URL), the render
- * still refuses to surface `javascript:` / `data:` etc.
- */
-function safeHttpUrl(url: string | null | undefined): string | null {
-  if (!url) {
-    return null;
-  }
-  return HTTP_URL_RE.test(url) ? url : null;
-}
 const HTML_ENTITY_NBSP_RE = /&nbsp;/g;
 const HTML_ENTITY_AMP_RE = /&amp;/g;
 const HTML_ENTITY_LT_RE = /&lt;/g;
@@ -141,7 +127,6 @@ function PropertyFactsBody({ facts, agent }: Props) {
   const miRows = facts ? materialInfoRows(facts.materialInfo) : [];
   const flood = facts ? floodSummary(facts.floodDisclosure) : null;
   const listed = facts?.listedBuilding === true;
-  const brochureHref = safeHttpUrl(agent?.brochureUrl);
 
   return (
     <div className="flex flex-col gap-4">
@@ -163,28 +148,17 @@ function PropertyFactsBody({ facts, agent }: Props) {
 
       {flood ? (
         <p
-          className={`text-[12px] leading-[140%] ${flood.tone === "warn" ? "text-amber-700" : "text-muted-foreground"}`}
+          className={`text-[12px] leading-[140%] ${flood.tone === "warn" ? "text-warning-text" : "text-slate"}`}
         >
           {flood.text}
         </p>
       ) : null}
 
       {listed ? (
-        <p className="text-[12px] text-amber-700 leading-[140%]">
+        <p className="text-[12px] text-warning-text leading-[140%]">
           Listed building — statutory restrictions on external alterations,
           satellite dishes, and aerials apply.
         </p>
-      ) : null}
-
-      {brochureHref ? (
-        <a
-          className="self-start rounded-md bg-muted px-3 py-1.5 text-[12px] text-foreground hover:bg-bone"
-          href={brochureHref}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          View agent brochure (PDF) ↗
-        </a>
       ) : null}
 
       {agent?.affiliations && agent.affiliations.length > 0 ? (
@@ -227,7 +201,7 @@ function hasAnything({ facts, agent }: Props): boolean {
     }
   }
   if (agent) {
-    if (agent.brochureUrl || agent.descriptionHtml) {
+    if (agent.descriptionHtml) {
       return true;
     }
     if (agent.affiliations.length > 0) {
@@ -243,16 +217,11 @@ export function PropertyFacts(props: Props) {
     return null;
   }
   return (
-    <section className="flex flex-col gap-3.5 px-6 pt-7">
-      <header className="flex flex-col gap-1">
-        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-          What the agent disclosed
-        </span>
-        <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
-          Property facts
-        </h2>
-      </header>
-      <PropertyFactsBody {...props} />
+    <section className="flex flex-col gap-3.5 px-5 pb-5">
+      <SectionLabel>What the agent disclosed</SectionLabel>
+      <div className="rounded-md border border-line bg-card p-4">
+        <PropertyFactsBody {...props} />
+      </div>
     </section>
   );
 }
@@ -263,15 +232,8 @@ export function PropertyFactsCard(props: Props) {
     return null;
   }
   return (
-    <article className="flex flex-col gap-3.5 rounded-2xl border border-border bg-card px-6 py-5">
-      <header className="flex flex-col gap-1">
-        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
-          What the agent disclosed
-        </span>
-        <h2 className="font-serif text-[22px] text-foreground">
-          Property facts
-        </h2>
-      </header>
+    <article className="flex flex-col gap-3.5 rounded-md border border-line bg-card p-6">
+      <SectionLabel>What the agent disclosed</SectionLabel>
       <PropertyFactsBody {...props} />
     </article>
   );

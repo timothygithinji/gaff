@@ -47,7 +47,7 @@ export function CommuteTargetsList({ value, onChange }: Props) {
   if (value.length === 0) {
     return (
       <button
-        className="inline-flex items-center gap-1 rounded-full border border-primary/60 border-dashed px-3 py-1.5 text-primary text-sm"
+        className="inline-flex items-center gap-1 rounded-full border border-copper/50 border-dashed px-3 py-1.5 text-[12px] text-copper"
         onClick={append}
         type="button"
       >
@@ -82,7 +82,7 @@ export function CommuteTargetsList({ value, onChange }: Props) {
         </div>
       ))}
       <button
-        className="inline-flex items-center gap-1 rounded-full border border-primary/60 border-dashed px-3 py-1.5 text-primary text-sm"
+        className="inline-flex items-center gap-1 rounded-full border border-copper/50 border-dashed px-3 py-1.5 text-[12px] text-copper"
         onClick={append}
         type="button"
       >

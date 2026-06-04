@@ -1,46 +1,36 @@
 /**
- * Desktop Shortlist — full-width workspace shown above the `md`
- * breakpoint:
+ * Desktop Shortlist workspace (Paper "Shortlist · Desktop" 37K-0, laptop
+ * 4H0-0, tablet 4GZ-0), shown at `lg`+ inside the shared top-nav shell.
  *
- *   - HEADER : "You & <Other>" eyebrow + page title + Sort, plus a tab
- *              strip (Mutual · Yours · other members' lists).
- *   - BODY   : cinematic featured banner (photo with gradient overlay +
- *              big address/price + Plan a viewing CTA) followed by a
- *              three-column card grid of mutual picks.
+ *   - HEADER : eyebrow "You & <Other> · N shortlisted" + page title +
+ *              a square-chip tab strip (Pipeline · Mutual · Yours ·
+ *              <members>).
+ *   - BODY   : the Pipeline tab feeds the kanban through `bodySlot`. The
+ *              non-pipeline tabs (Mutual / Yours / per-member) list
+ *              not-yet-mutual picks as a card grid with a featured lead.
  *
- * The viewing-planner + shared-notes right rail used to live here as
- * static fixtures; both features need a real domain model + product
- * decisions (notes must respect the blind-review timing rule) before
- * they can be re-introduced.
+ * Page sits on the mist ground; the kanban + cards carry the surface.
  */
 import type { ReactNode } from "react";
-import {
-  SortDropdown,
-  type SortKey,
-} from "../../components/shortlist/sort-dropdown";
-import {
-  type ShortlistTab,
-  ShortlistTabs,
-} from "../../components/shortlist/tabs";
 import { cn } from "../../lib/utils";
 import type { MutualMatch } from "../../server/functions/shortlist";
 import { AdminSidebar } from "../layout/admin-sidebar";
-
-/* ---------------- Types ---------------- */
+import {
+  SortDropdown,
+  type SortKey,
+} from "./sort-dropdown";
+import { type ShortlistTab, ShortlistTabs } from "./tabs";
 
 type Props = {
-  // Header
   partnerLabel: string | null;
-  /** Section label rendered above the card grid (e.g. "Other mutual picks"). */
+  /** Total clusters in the pipeline — drives the header eyebrow count. */
+  shortlistedCount: number;
   sectionLabel: string;
-  // Tabs (omit on solo households)
   tabs: ShortlistTab[];
   activeTab: string;
   onTabChange: (id: string) => void;
-  // Sort
   sortKey: SortKey;
   onSortChange: (key: SortKey) => void;
-  // Featured (only when memberCount > 1 and active tab is Mutual)
   featured?: MutualMatch | null;
   featuredAgeLabel?: string;
   rows: MutualMatch[];
@@ -48,18 +38,13 @@ type Props = {
   memberCount: number;
   onOpen: (clusterId: string) => void;
   onPlanViewing: (match: MutualMatch) => void;
-  /**
-   * Optional body override — when provided, replaces the featured banner
-   * + section head + card grid. The pipeline tab feeds the kanban
-   * through here so the page chrome stays consistent across tabs.
-   */
+  /** Pipeline kanban — replaces the featured + grid body when present. */
   bodySlot?: ReactNode;
 };
 
-/* ---------------- Component ---------------- */
-
 export function DesktopShortlist({
   partnerLabel,
+  shortlistedCount,
   sectionLabel,
   tabs,
   activeTab,
@@ -75,165 +60,60 @@ export function DesktopShortlist({
   onPlanViewing,
   bodySlot,
 }: Props) {
+  const eyebrow = partnerLabel
+    ? `You & ${partnerLabel} · ${shortlistedCount} shortlisted`
+    : `${shortlistedCount} shortlisted`;
   return (
     <AdminSidebar mode="desktop-only">
-      <Header
-        onSortChange={onSortChange}
-        partnerLabel={partnerLabel}
-        showSort={!bodySlot}
-        sortKey={sortKey}
-      />
-      {tabs.length > 0 ? (
-        <div className="border-bone border-b px-6 pb-4 lg:px-10">
+      <header className="flex items-end justify-between gap-4 px-10 pt-7 pb-4.5">
+        <div className="flex flex-col gap-1">
+          <span className="font-medium text-[11px] text-slate uppercase leading-[14px] tracking-[0.14em]">
+            {eyebrow}
+          </span>
+          <h1 className="font-semibold text-[36px] text-navy leading-[44px] tracking-[-0.025em]">
+            Shortlist
+          </h1>
+        </div>
+        {tabs.length > 0 ? (
           <ShortlistTabs
             activeId={activeTab}
+            hideCountFor={["pipeline"]}
             onChange={onTabChange}
             tabs={tabs}
+            variant="square"
           />
-        </div>
-      ) : null}
-      <div className="flex min-w-0 flex-1 flex-col gap-5 px-6 py-7 lg:px-10">
+        ) : null}
+      </header>
+      <div className="flex min-w-0 flex-1 flex-col px-10 pt-2 pb-10">
         {bodySlot ? (
           bodySlot
         ) : (
-          <>
+          <div className="flex flex-col gap-5">
+            <div className="flex items-baseline justify-between">
+              <SectionHead label={sectionLabel} rowCount={rows.length} />
+              <SortDropdown onChange={onSortChange} value={sortKey} />
+            </div>
             {featured ? (
               <FeaturedBanner
                 ageLabel={featuredAgeLabel ?? ""}
                 match={featured}
+                memberCount={memberCount}
                 onOpen={() => onOpen(featured.clusterId)}
                 onPlanViewing={() => onPlanViewing(featured)}
               />
             ) : null}
-            <SectionHead label={sectionLabel} rowCount={rows.length} />
             <CardGrid
               memberCount={memberCount}
               onOpen={onOpen}
               rowAgeLabel={rowAgeLabel}
               rows={rows}
             />
-          </>
+          </div>
         )}
       </div>
     </AdminSidebar>
   );
 }
-
-/* ---------------- Header ---------------- */
-
-function Header({
-  partnerLabel,
-  sortKey,
-  onSortChange,
-  showSort = true,
-}: {
-  partnerLabel: string | null;
-  sortKey: SortKey;
-  onSortChange: (k: SortKey) => void;
-  showSort?: boolean;
-}) {
-  return (
-    <header className="flex items-end justify-between gap-4 px-6 pt-9 pb-4 lg:px-10">
-      <div className="flex flex-col gap-1">
-        {partnerLabel ? (
-          <Eyebrow>You & {partnerLabel}</Eyebrow>
-        ) : (
-          <Eyebrow>Your picks</Eyebrow>
-        )}
-        <h1 className="font-serif text-[40px] text-foreground leading-[44px] tracking-tight">
-          Shortlist
-        </h1>
-      </div>
-      {showSort ? (
-        <SortDropdown onChange={onSortChange} value={sortKey} />
-      ) : null}
-    </header>
-  );
-}
-
-/* ---------------- Featured banner ---------------- */
-
-function FeaturedBanner({
-  match,
-  ageLabel,
-  onOpen,
-  onPlanViewing,
-}: {
-  match: MutualMatch;
-  ageLabel: string;
-  onOpen: () => void;
-  onPlanViewing: () => void;
-}) {
-  const { headline } = match;
-  const title = shortAddressTitle(headline.addressRaw);
-  const initials = match.members.map((m) => m.emailInitial.toUpperCase());
-  const photo = headline.photoUrl;
-  return (
-    <article className="relative flex h-[280px] overflow-hidden rounded-2xl bg-foreground">
-      <button
-        aria-label={`Open ${title}`}
-        className="relative h-full w-[56%] overflow-hidden bg-muted text-left"
-        onClick={onOpen}
-        type="button"
-      >
-        {photo ? (
-          // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available.
-          <img
-            alt={title}
-            className="absolute inset-0 h-full w-full object-cover"
-            src={photo}
-          />
-        ) : null}
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/0 to-foreground" />
-        <div className="absolute top-5 left-5 inline-flex items-center gap-2 rounded-full bg-foreground/75 px-3 py-1.5">
-          <AvatarStack initials={initials} />
-          <span className="font-semibold text-[11px] text-white uppercase tracking-wider">
-            Both kept · {ageLabel}
-          </span>
-        </div>
-        <div className="absolute top-5 right-5 rounded-full bg-[#2E8B57] px-2.5 py-1 font-bold text-[10px] text-white uppercase tracking-wider">
-          New mutual
-        </div>
-      </button>
-      <div className="flex flex-1 flex-col justify-between p-7">
-        <div className="flex flex-col gap-1.5">
-          <h2 className="font-serif text-[30px] text-bone leading-[34px] tracking-tight">
-            {title}
-          </h2>
-          <p className="text-[13px] text-white/65">
-            {locationLine(
-              headline.postcode,
-              headline.bedrooms,
-              headline.bathrooms
-            )}
-          </p>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-serif text-[34px] text-bone leading-none">
-              {formatPrice(headline.priceMonthly)}
-            </span>
-            <span className="text-[12px] text-white/55">
-              /mo · {portalLabel(headline.portal)}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2.5">
-          <button
-            className="flex items-center justify-center gap-1.5 rounded-full bg-primary px-5 py-3 font-semibold text-[13px] text-white"
-            onClick={onPlanViewing}
-            type="button"
-          >
-            Plan a viewing
-          </button>
-          <p className="text-[11px] text-white/55">
-            Listed via {portalLabel(headline.portal)}
-          </p>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/* ---------------- Section head + grid ---------------- */
 
 function SectionHead({
   label,
@@ -243,14 +123,97 @@ function SectionHead({
   rowCount: number;
 }) {
   return (
-    <div className="flex items-baseline justify-between px-1">
-      <div className="flex items-baseline gap-2.5">
-        <h2 className="font-serif text-[22px] text-foreground">{label}</h2>
-        <span className="text-muted-foreground text-xs">
-          {rowCount} {rowCount === 1 ? "match" : "matches"}
-        </span>
-      </div>
+    <div className="flex items-baseline gap-2.5">
+      <h2 className="font-semibold text-[18px] text-navy tracking-[-0.01em]">
+        {label}
+      </h2>
+      <span className="text-[12px] text-slate">
+        {rowCount} {rowCount === 1 ? "match" : "matches"}
+      </span>
     </div>
+  );
+}
+
+function FeaturedBanner({
+  match,
+  ageLabel,
+  memberCount,
+  onOpen,
+  onPlanViewing,
+}: {
+  match: MutualMatch;
+  ageLabel: string;
+  memberCount: number;
+  onOpen: () => void;
+  onPlanViewing: () => void;
+}) {
+  const { headline } = match;
+  const title = shortAddressTitle(headline.addressRaw);
+  return (
+    <article className="relative flex h-[260px] overflow-hidden rounded-2xl bg-[#0e2235]">
+      <button
+        aria-label={`Open ${title}`}
+        className="relative h-full w-[56%] overflow-hidden bg-mist text-left"
+        onClick={onOpen}
+        type="button"
+      >
+        {headline.photoUrl ? (
+          // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js.
+          <img
+            alt={title}
+            className="absolute inset-0 h-full w-full object-cover"
+            src={headline.photoUrl}
+          />
+        ) : null}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-[#0e2235]" />
+        {memberCount > 1 ? (
+          <span className="absolute top-5 left-5 inline-flex items-center gap-2 rounded-full bg-[#0e2235]/75 px-3 py-1.5">
+            <span className="flex">
+              {match.members.slice(0, 4).map((m, idx) => (
+                <span
+                  className={cn(
+                    "-ml-1.5 flex size-[18px] items-center justify-center rounded-full border-2 border-[#0e2235] font-semibold text-[9px] text-white first:ml-0",
+                    idx % 2 === 0 ? "bg-[#1f3a5f]" : "bg-[#d77a4a]"
+                  )}
+                  key={m.userId}
+                >
+                  {m.emailInitial}
+                </span>
+              ))}
+            </span>
+            <span className='font-semibold text-[#eef1f4] text-[11px] uppercase tracking-wider'>
+              {memberCount === 2 ? "Both kept" : `All ${memberCount} kept`} ·{" "}
+              {ageLabel}
+            </span>
+          </span>
+        ) : null}
+      </button>
+      <div className="flex flex-1 flex-col justify-between p-7">
+        <div className="flex flex-col gap-1.5">
+          <h2 className='font-semibold text-[#eef1f4] text-[28px] leading-[32px] tracking-[-0.02em]'>
+            {title}
+          </h2>
+          <p className="text-[13px] text-white/65">
+            {locationLine(headline.postcode, headline.bedrooms, headline.bathrooms)}
+          </p>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className='font-semibold text-[#eef1f4] text-[30px] leading-none tracking-[-0.02em]'>
+              {formatPrice(headline.priceMonthly)}
+            </span>
+            <span className="text-[12px] text-white/55">
+              /mo · {portalLabel(headline.portal)}
+            </span>
+          </div>
+        </div>
+        <button
+          className="flex w-fit items-center justify-center rounded-full bg-[#d77a4a] px-5 py-3 font-semibold text-[13px] text-white"
+          onClick={onPlanViewing}
+          type="button"
+        >
+          Plan a viewing
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -267,20 +230,21 @@ function CardGrid({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="rounded-2xl border border-border bg-card p-10 text-center text-muted-foreground text-sm">
+      <p className="rounded-2xl border border-line bg-card p-10 text-center text-slate text-sm">
         Nothing here yet. Keep swiping on the Review screen — picks land here as
         you (and your household) hit Keep.
       </p>
     );
   }
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
       {rows.map((m) => (
         <PickCard
           ageLabel={rowAgeLabel(m)}
           isMutual={memberCount > 1 && m.members.length === memberCount}
           key={`${m.clusterId}:${m.searchId}`}
           match={m}
+          memberCount={memberCount}
           onOpen={() => onOpen(m.clusterId)}
         />
       ))}
@@ -292,25 +256,27 @@ function PickCard({
   match,
   isMutual,
   ageLabel,
+  memberCount,
   onOpen,
 }: {
   match: MutualMatch;
   isMutual: boolean;
   ageLabel: string;
+  memberCount: number;
   onOpen: () => void;
 }) {
   const { headline } = match;
   const title = shortAddressTitle(headline.addressRaw);
-  const initials = match.members.map((m) => m.emailInitial.toUpperCase());
+  const keptLabel = memberCount === 2 ? "Both kept" : `All ${memberCount} kept`;
   return (
     <button
-      className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-left"
+      className="flex flex-col overflow-hidden rounded-2xl border border-line bg-card text-left"
       onClick={onOpen}
       type="button"
     >
-      <div className="relative h-[160px] w-full overflow-hidden bg-muted">
+      <div className="relative h-[160px] w-full overflow-hidden bg-mist">
         {headline.photoUrl ? (
-          // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available.
+          // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js.
           <img
             alt={title}
             className="absolute inset-0 h-full w-full object-cover"
@@ -318,101 +284,46 @@ function PickCard({
           />
         ) : null}
         {isMutual ? (
-          <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-foreground/70 px-2 py-1">
-            <AvatarStack initials={initials} small />
-            <span className="font-semibold text-[10px] text-white">
-              Both kept
+          <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-[#0e2235]/75 px-2 py-1">
+            <span className="flex">
+              {match.members.slice(0, 4).map((m, idx) => (
+                <span
+                  className={cn(
+                    '-ml-1.5 flex size-3.5 items-center justify-center rounded-full border-[#0e2235] border-[1.5px] font-semibold text-[7px] text-white first:ml-0',
+                    idx % 2 === 0 ? "bg-[#1f3a5f]" : "bg-[#d77a4a]"
+                  )}
+                  key={m.userId}
+                >
+                  {m.emailInitial}
+                </span>
+              ))}
             </span>
-          </div>
+            <span className="font-semibold text-[10px] text-white">
+              {keptLabel}
+            </span>
+          </span>
         ) : null}
       </div>
-      <div className="flex flex-col gap-2 px-4 pt-3.5 pb-4">
+      <div className="flex flex-col gap-1.5 px-4 pt-3.5 pb-4">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate font-serif text-[17px] text-foreground">
+          <span className="truncate font-semibold text-[15px] text-navy">
             {title}
           </span>
-          <span className="font-serif text-[17px] text-foreground">
+          <span className="shrink-0 font-semibold text-[15px] text-navy">
             {formatPrice(headline.priceMonthly)}
           </span>
         </div>
-        <span className="text-[11px] text-muted-foreground">
-          {locationLine(
-            headline.postcode,
-            headline.bedrooms,
-            headline.bathrooms
-          )}
+        <span className="text-[11px] text-slate">
+          {locationLine(headline.postcode, headline.bedrooms, headline.bathrooms)}
         </span>
         {isMutual ? (
-          <div className="flex items-center gap-1.5 border-[#F2EBDE] border-t pt-2">
-            <span className="text-[#5D7A4A] text-[11px]">
-              ✓ Both kept · {ageLabel}
-            </span>
-          </div>
+          <span className="text-[11px] text-success">
+            ✓ {keptLabel} · {ageLabel}
+          </span>
         ) : null}
       </div>
     </button>
   );
-}
-
-/* ---------------- Atoms + helpers ---------------- */
-
-function Eyebrow({
-  children,
-  tone = "muted",
-}: {
-  children: ReactNode;
-  tone?: "muted" | "primary" | "onDark";
-}) {
-  const palette = eyebrowPalette(tone);
-  return (
-    <span
-      className={cn(
-        "font-semibold text-[11px] uppercase tracking-[0.12em]",
-        palette
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-function AvatarStack({
-  initials,
-  small = false,
-}: {
-  initials: string[];
-  small?: boolean;
-}) {
-  const size = small
-    ? "h-[14px] w-[14px] text-[7px]"
-    : "h-[18px] w-[18px] text-[9px]";
-  return (
-    <div className="flex">
-      {initials.slice(0, 2).map((c, i) => (
-        <span
-          className={cn(
-            "flex items-center justify-center rounded-full border-2 border-foreground font-bold text-foreground",
-            size,
-            i > 0 && "-ml-1.5",
-            i === 0 ? "bg-[#D8B98B]" : "bg-[#C7A87C]"
-          )}
-          key={`${c}-${i}`}
-        >
-          {c}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function eyebrowPalette(tone: "muted" | "primary" | "onDark"): string {
-  if (tone === "onDark") {
-    return "text-bone/65";
-  }
-  if (tone === "primary") {
-    return "text-primary";
-  }
-  return "text-muted-foreground";
 }
 
 function formatPrice(value: number | null): string {
@@ -424,10 +335,18 @@ function formatPrice(value: number | null): string {
 
 function shortAddressTitle(addressRaw: string): string {
   const idx = addressRaw.indexOf(",");
-  if (idx === -1) {
-    return addressRaw;
-  }
-  return addressRaw.slice(0, idx).trim();
+  const firstLine = idx === -1 ? addressRaw : addressRaw.slice(0, idx);
+  return stripLeadingHouseNumber(firstLine.trim());
+}
+
+/**
+ * Street name only ("22 Belsize Park Mews" → "Belsize Park Mews"), matching
+ * Paper. Leaves named buildings intact.
+ */
+function stripLeadingHouseNumber(line: string): string {
+  const stripped = line.replace(/^(flat|unit|apartment|apt)\s+\w+\s+/i, "");
+  const withoutNumber = stripped.replace(/^\d+[a-z]?\s+/i, "");
+  return withoutNumber.length > 0 ? withoutNumber : line;
 }
 
 function portalLabel(portal: string): string {
