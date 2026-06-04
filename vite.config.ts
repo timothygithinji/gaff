@@ -39,6 +39,14 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // better-auth's `get-migration` statically imports the Kysely adapter,
+      // which drags in Kysely sqlite dialects that break the Worker build (we
+      // use the Drizzle adapter + drizzle-kit, never better-auth migrations).
+      // Stub it out — see the stub file's header for the full rationale.
+      "@better-auth/kysely-adapter": path.resolve(
+        __dirname,
+        "./src/lib/stubs/better-auth-kysely-adapter.ts"
+      ),
     },
   },
 });
