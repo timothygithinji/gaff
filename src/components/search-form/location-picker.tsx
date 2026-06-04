@@ -81,57 +81,49 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
   const resolving = isArea && resolveOutcodes.isPending;
   const allRemoved = isArea && chips !== null && chips.length === 0;
 
+  let chipCount = 0;
+  if (isArea && chips) {
+    chipCount = chips.length;
+  } else if (value) {
+    chipCount = 1;
+  }
+
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
-          INCLUDE
-        </span>
-      </div>
+      <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
+        Include{chipCount > 0 ? ` · ${chipCount} area${chipCount === 1 ? "" : "s"}` : ""}
+      </span>
       {value ? (
-        <div className="flex flex-col gap-3 rounded-2xl bg-muted px-4 py-4">
-          {/* Card row mirroring CadencePicker's visual language so the
-            * form's "single chosen value, click to change" controls stay
-            * consistent. */}
-          <button
-            className="flex w-full items-center justify-between text-left"
-            onClick={() => onChange(null)}
-            type="button"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                <HugeiconsIcon
-                  icon={Location01Icon}
-                  size={18}
-                  strokeWidth={1.8}
-                />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-foreground text-sm">
-                  {value.name}
-                </span>
-                {value.formattedAddress &&
-                value.formattedAddress !== value.name ? (
-                  <span className="block truncate text-muted-foreground text-xs">
-                    {value.formattedAddress}
-                  </span>
-                ) : null}
-              </span>
-            </span>
-            <HugeiconsIcon
-              aria-hidden
-              className="shrink-0 text-muted-foreground"
-              icon={Cancel01Icon}
-              size={16}
-              strokeWidth={2}
-            />
-            <span className="sr-only">Clear {value.name}</span>
-          </button>
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-left"
+              onClick={() => onChange(null)}
+              type="button"
+            >
+              <HugeiconsIcon
+                aria-hidden
+                className="shrink-0 text-slate"
+                icon={Location01Icon}
+                size={12}
+                strokeWidth={1.8}
+              />
+              <span className="text-[12px] text-navy">{value.name}</span>
+              <HugeiconsIcon
+                aria-hidden
+                className="text-slate-2"
+                icon={Cancel01Icon}
+                size={12}
+                strokeWidth={2}
+              />
+              <span className="sr-only">Clear {value.name}</span>
+            </button>
+          </div>
           {isArea ? (
             <AreaOutcodes
+              allRemoved={allRemoved}
               chips={chips}
               loading={resolving}
-              allRemoved={allRemoved}
               onRemove={removeOutcode}
             />
           ) : null}
@@ -139,7 +131,10 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
       ) : (
         <PlaceAutocomplete
           onSelect={(loc) => {
-            void handlePick(loc);
+            handlePick(loc).catch(() => {
+              // handlePick already swallows resolver errors internally;
+              // this guards the floating-promise lint rule.
+            });
           }}
           placeholder="Postcode, area, or town…"
         />
@@ -169,14 +164,12 @@ function AreaOutcodes({
 }) {
   if (loading) {
     return (
-      <p className="text-[11px] text-muted-foreground">
-        Resolving covering postcodes…
-      </p>
+      <p className="text-[11px] text-slate">Resolving covering postcodes…</p>
     );
   }
   if (allRemoved) {
     return (
-      <p className="text-[11px] text-primary">
+      <p className="text-[11px] text-copper">
         No postcodes selected — add some back or pick a different area to
         scrape anything.
       </p>
@@ -187,13 +180,13 @@ function AreaOutcodes({
   }
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[10px] text-muted-foreground uppercase tracking-[0.12em]">
+      <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
         Covers {chips.length} postcode{chips.length === 1 ? "" : "s"}
       </span>
       <div className="flex flex-wrap gap-1.5">
         {chips.map((oc) => (
           <button
-            className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-card px-2.5 py-1 font-medium text-[11px] text-foreground hover:bg-card/70"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-[12px] text-navy"
             key={oc}
             onClick={() => onRemove(oc)}
             type="button"
@@ -201,9 +194,9 @@ function AreaOutcodes({
             <span>{oc}</span>
             <HugeiconsIcon
               aria-hidden
-              className="text-muted-foreground"
+              className="text-slate-2"
               icon={Cancel01Icon}
-              size={10}
+              size={11}
               strokeWidth={2}
             />
             <span className="sr-only">Remove {oc}</span>
@@ -241,25 +234,25 @@ export function LocationsList({ values, onChange }: ListProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
-          EXCLUDE{values.length > 0 ? ` · ${values.length}` : ""}
-        </span>
-      </div>
+      <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
+        Exclude{values.length > 0 ? ` · ${values.length} area${values.length === 1 ? "" : "s"}` : ""}
+      </span>
       {values.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {values.map((v) => (
             <button
-              className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-muted px-3 py-1.5 text-foreground text-sm line-through decoration-primary/60"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5"
               key={v.placeId || v.name}
               onClick={() => remove(v.placeId || v.name)}
               type="button"
             >
-              <span>{v.name}</span>
+              <span className="text-[12px] text-slate line-through decoration-slate/70">
+                {v.name}
+              </span>
               <HugeiconsIcon
-                className="text-muted-foreground"
+                className="text-slate-2"
                 icon={Cancel01Icon}
-                size={12}
+                size={11}
                 strokeWidth={2}
               />
               <span className="sr-only">Remove {v.name}</span>

@@ -1,63 +1,50 @@
+import { cn } from "../../lib/utils";
 /**
- * Mutual-badge — small pill that headlines a mutual match card with an
- * avatar stack + "BOTH KEPT" / "ALL N KEPT" copy + an age string.
+ * Mutual-badge — pill that headlines a mutual-match card with an avatar
+ * stack + "BOTH KEPT" / "ALL N KEPT" copy + an age string.
  *
- * Copy varies by household size:
- *   - 1 member  → don't render (callers should branch). Returns null
- *     defensively if invoked.
+ *   - 1 member  → renders null (callers branch on memberCount).
  *   - 2 members → "BOTH KEPT · <age>"
- *   - N members → "ALL N KEPT · <age>" with stacked avatars.
+ *   - N members → "ALL N KEPT · <age>".
  *
- * Avatars are rendered from each member's initial, coloured copper /
- * brass / sand in alternation. The stack offsets by -6px to mimic the
- * Paper artboard's overlap.
+ * Avatars use the maritime alternation (navy / copper) on a navy badge,
+ * mirroring Paper's overlapping stack. Fixed-navy fills are pinned to
+ * literal hex so they don't flip in the dark scene.
  */
 import type { ShortlistMember } from "../../server/functions/shortlist";
 
 type Props = {
   members: ShortlistMember[];
   memberCount: number;
-  /** Pre-formatted "2h ago" / "yesterday" / "3 days ago" string. */
   ageLabel: string;
 };
-
-const AVATAR_BG = [
-  "bg-primary",
-  "bg-[#C8A878]",
-  "bg-muted-foreground",
-  "bg-foreground",
-];
 
 export function MutualBadge({ members, memberCount, ageLabel }: Props) {
   if (memberCount <= 1) {
     return null;
   }
   const label = memberCount === 2 ? "Both kept" : `All ${memberCount} kept`;
-
   return (
-    <span className="inline-flex items-center gap-2 rounded-full bg-muted-foreground py-1.5 pr-3 pl-2">
+    <span className="inline-flex items-center gap-1.5 bg-[#0e2235d9] px-2.5 py-[5px] backdrop-blur-sm">
       <span className="flex items-center">
         {members.slice(0, 4).map((m, idx) => (
-          <span
-            className={`-ml-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-muted-foreground font-bold text-[9px] text-primary-foreground first:ml-0 ${AVATAR_BG[idx % AVATAR_BG.length]}`}
+          <Avatar
+            border="navy"
+            idx={idx}
+            initial={m.emailInitial}
             key={m.userId}
-          >
-            {m.emailInitial}
-          </span>
+          />
         ))}
       </span>
-      <span className="font-bold text-[10px] text-primary-foreground uppercase tracking-widest">
+      <span className='font-semibold text-[#eef1f4] text-[10px] uppercase leading-3 tracking-widest'>
         {label} · {ageLabel}
       </span>
     </span>
   );
 }
 
-/**
- * Tiny avatar stack used inside compact list rows. Same colours; smaller
- * footprint; rendered against a `bg-card` row so the avatar borders are
- * paper-coloured rather than brass.
- */
+/** Tiny avatar stack for compact list rows — same alternation, white
+ * borders so the chips read against a paper-coloured card. */
 export function CompactAvatarStack({
   members,
 }: {
@@ -66,13 +53,30 @@ export function CompactAvatarStack({
   return (
     <span className="flex items-center">
       {members.slice(0, 4).map((m, idx) => (
-        <span
-          className={`-ml-1.25 flex h-3.5 w-3.5 items-center justify-center rounded-full border-[1.5px] border-card font-bold text-[7px] text-primary-foreground first:ml-0 ${AVATAR_BG[idx % AVATAR_BG.length]}`}
-          key={m.userId}
-        >
-          {m.emailInitial}
-        </span>
+        <Avatar border="card" idx={idx} initial={m.emailInitial} key={m.userId} />
       ))}
+    </span>
+  );
+}
+
+function Avatar({
+  initial,
+  idx,
+  border,
+}: {
+  initial: string;
+  idx: number;
+  border: "navy" | "card";
+}) {
+  return (
+    <span
+      className={cn(
+        "-ml-1.5 flex size-3.5 items-center justify-center rounded-full border-[1.5px] font-semibold text-[8px] text-white leading-[10px] first:ml-0",
+        border === "navy" ? "border-[#0e2235]" : "border-white",
+        idx % 2 === 0 ? "bg-[#1f3a5f]" : "bg-[#d77a4a]"
+      )}
+    >
+      {initial}
     </span>
   );
 }

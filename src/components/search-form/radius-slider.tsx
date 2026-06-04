@@ -52,17 +52,15 @@ export function RadiusSlider({ value, onChange }: Props) {
   const maxIdx = RADIUS_STEPS_MILES.length - 1;
 
   return (
-    <div className="rounded-2xl bg-muted px-5 py-5">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
-          RADIUS
+    <div className="flex flex-col gap-2.5 rounded-md border border-line bg-paper px-4.5 py-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
+          Radius
         </span>
-        <span className="font-serif text-foreground text-xl">
-          {formatMiles(value)}
-        </span>
+        <span className="text-[13px] text-navy">{formatMiles(value)}</span>
       </div>
       <Slider
-        className="mt-5"
+        className="mt-1 [&_[data-slot=slider-range]]:bg-copper [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-thumb]]:border-2 [&_[data-slot=slider-thumb]]:border-copper [&_[data-slot=slider-track]]:h-1"
         max={maxIdx}
         min={0}
         onValueChange={(next) => {

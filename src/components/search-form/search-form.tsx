@@ -2,30 +2,30 @@
  * The shared Search create / edit form.
  *
  * `/searches/new` and `/searches/$id` both mount this with different
- * `mode` + `initial` props. State now lives in TanStack Form — the cost
- * estimate, CTA disabled-ness, etc. stay reactive via `form.useStore`
- * (no `form.watch()` indirection); per-field Zod validators provide the
- * client-side guard rails (the server function will re-validate
- * authoritatively).
+ * `mode` + `initial` props. State lives in TanStack Form; derived values
+ * (listings/week estimate, CTA disabled-ness) stay reactive via
+ * `form.useStore`.
  *
- * The layout mirrors the "Search create" Paper artboard:
- * eyebrow + tap-to-edit headline → Where (single place + exclude
- * list, both via Google Places autocomplete) → Price slider + Bed/Bath
- * pills → Commute targets → Transport targets → Portals → Re-scrape
- * cadence → sticky CTA footer.
+ * Layout mirrors the Paper "Search new" artboards:
+ *   - MOBILE (3G1-0): a Cancel / title / Reset nav, a headline block,
+ *     then stacked sections — Postcodes, Price & size, AI floor-plan
+ *     rules (preview), Property type, Furnishing, Must-haves, Hide,
+ *     Commute, Transport, Portals, Re-scrape — over a sticky estimate
+ *     footer with the primary CTA.
+ *   - DESKTOP (3KU-0): a two-column body. The left column holds the
+ *     content-heavy cards (Postcodes, Price & size, AI rules, and the
+ *     property/furnishing/must-have/hide criteria); the 360px right rail
+ *     holds Commute, Transport, Portals, Re-scrape, and the navy Estimate
+ *     card (which owns the desktop CTA).
  *
- * Sub-components remain plain controlled inputs that take `value` +
- * `onChange` — `form.Field` adapts cleanly to that shape so we don't
- * need a `Controller` indirection on the way down.
+ * Sub-components remain plain controlled inputs (`value` + `onChange`).
  */
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm, useStore } from "@tanstack/react-form";
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { z } from "zod";
-import { type Portal, estimateCost } from "../../lib/cost-estimate";
-import { findCadenceById } from "../../lib/cron-presets";
+import type { Portal } from "../../lib/cost-estimate";
 import type { SearchLocation } from "../../lib/search-location";
+import { cn } from "../../lib/utils";
 import {
   BATH_OPTIONS,
   BED_OPTIONS,
@@ -36,7 +36,7 @@ import {
 import { CadencePicker } from "./cadence-picker";
 import type { CommuteTarget } from "./commute-target-row";
 import { CommuteTargetsList } from "./commute-targets-list";
-import { CostEstimate } from "./cost-estimate";
+import { CostEstimateBar } from "./cost-estimate";
 import { type ExclusionValue, ExclusionsToggles } from "./exclusions-toggles";
 import { FurnishedPicker, type FurnishedValue } from "./furnished-picker";
 import { LocationsList, SingleLocationPicker } from "./location-picker";
@@ -70,14 +70,11 @@ export type SearchFormValues = {
 };
 
 export const DEFAULT_FORM_VALUES: SearchFormValues = {
-  // Name is left blank by default so the form auto-fills it from the
-  // picked location on create. The placeholder ("A flat in North
-  // London") shows until either auto-fill or user typing populates it.
+  // Blank so the form auto-fills from the picked location on create.
   name: "",
   location: null,
   excludeLocations: [],
-  // `0` = "this area only". Rightmove + Zoopla honour `radius=0`
-  // strictly; OpenRent's URL builder will floor to its 2km UI minimum.
+  // `0` = "this area only".
   radiusMiles: 0,
   minPrice: 0,
   maxPrice: 2800,
@@ -86,9 +83,6 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   propertyTypes: [],
   furnished: null,
   mustHaves: [],
-  // Student lets, retirement homes, and house shares are hidden by
-  // default — most renters don't want them in results. Users can
-  // re-enable any category via the Hide toggles.
   exclusions: ["student", "retirement", "house_share"],
   commuteTargets: [],
   transportTargets: [],
@@ -96,7 +90,7 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   cadenceId: "daily",
 };
 
-const DEFAULT_BED: BedOption = { id: "2+", label: "2+", min: 2, max: null };
+const DEFAULT_BED: BedOption = { id: "2+", label: "2", min: 2, max: null };
 const DEFAULT_BATH: BathOption = { id: "1+", label: "1+", min: 1, max: null };
 
 export function bedOptionFor(id: string): BedOption {
@@ -107,19 +101,28 @@ export function bathOptionFor(id: string): BathOption {
   return BATH_OPTIONS.find((b) => b.id === id) ?? DEFAULT_BATH;
 }
 
-// -----------------------------------------------------------------------------
-// Per-field Zod validators
-// -----------------------------------------------------------------------------
-//
-// The server function re-validates with its own schema (see
-// `src/server/functions/searches.ts`) so these are client-side guard
-// rails only. They surface inline errors / disable the CTA while the
-// user is still inside the form.
-
+// Per-field client-side guard rails (the server re-validates).
 const nameSchema = z.string().trim().min(1, "Give the search a name");
 const portalsSchema = z
   .array(z.enum(["rightmove", "zoopla", "openrent"]))
   .min(1, "Pick at least one portal");
+
+/** Rough listings/week heuristic — outcodes × portals. Directional only. */
+function listingsPerWeekEstimate(values: SearchFormValues): number {
+  const areas = Math.max(
+    1,
+    values.location?.coveringOutcodes?.length ?? (values.location ? 1 : 0)
+  );
+  const perPortalWeekly = 20;
+  return Math.round(areas * values.portals.length * perPortalWeekly);
+}
+
+/**
+ * id of the desktop `<form>`. The desktop primary CTA lives outside the
+ * form — up in the breadcrumb header (see `DesktopSearchCreate`) — so its
+ * button uses `type="submit" form={DESKTOP_FORM_ID}` to submit natively.
+ */
+export const DESKTOP_FORM_ID = "search-form-desktop";
 
 type Props = {
   mode: "create" | "edit";
@@ -128,19 +131,10 @@ type Props = {
   onCancel?: () => void;
   onReset?: () => void;
   onSubmit: (values: SearchFormValues) => void;
-  /**
-   * Fires whenever a tracked field changes (outcodes / portals /
-   * cadence / price / name / commute / transport / etc.). Used by the
-   * desktop wrapper to power a live estimate panel that lives outside
-   * the form's render tree.
-   */
   onValuesChange?: (values: SearchFormValues) => void;
-  /**
-   * `"mobile"` (default) renders the single-column, sticky-header
-   * variant. `"desktop"` drops the mobile chrome (close-X / title /
-   * Reset header are owned by the desktop breadcrumb) and lays the
-   * field sections out in a two-column grid.
-   */
+  /** Fires whenever the form's dirtiness (vs `initial`) changes. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** `"mobile"` single-column with sticky footer; `"desktop"` two-column. */
   layout?: "mobile" | "desktop";
 };
 
@@ -152,6 +146,7 @@ export function SearchForm({
   onReset,
   onSubmit,
   onValuesChange,
+  onDirtyChange,
   layout = "mobile",
 }: Props) {
   const defaults: SearchFormValues = { ...DEFAULT_FORM_VALUES, ...initial };
@@ -162,28 +157,29 @@ export function SearchForm({
     },
   });
 
-  // Live-derived values via TanStack Form's `useStore`. Each selector
-  // returns a primitive (or stable reference) so React's bailouts kick
-  // in when unrelated parts of the form change.
   const location = useStore(form.store, (s) => s.values.location);
   const portals = useStore(form.store, (s) => s.values.portals);
-  const cadenceId = useStore(form.store, (s) => s.values.cadenceId);
   const minPrice = useStore(form.store, (s) => s.values.minPrice);
   const maxPrice = useStore(form.store, (s) => s.values.maxPrice);
   const name = useStore(form.store, (s) => s.values.name);
-
-  // Mirror the full form values out to interested parents on every
-  // change. We read straight from the store so the broadcast picks up
-  // fields the cost panel doesn't render directly (e.g. transport).
   const allValues = useStore(form.store, (s) => s.values);
+
   useEffect(() => {
     onValuesChange?.(allValues);
   }, [allValues, onValuesChange]);
 
-  // Auto-mirror the picked location into the search name until the user
-  // takes ownership by typing. Initialised true on edit mode (where the
-  // saved name is already meaningful) and on any create with a
-  // pre-populated name, so we never clobber human input.
+  // Dirty = current values differ from the baseline we hydrated with.
+  // Computed by value (not TanStack's `isDirty`, which doesn't reliably
+  // reset when a field is edited back to its original) so the desktop
+  // Save button can disable when there's nothing to save. JSON compare is
+  // safe here: `allValues` keeps the key order of `defaults`, the object
+  // it was initialised from.
+  const isDirty = JSON.stringify(allValues) !== JSON.stringify(defaults);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Auto-mirror the picked location into the name until the user types.
   const userTouchedName = useRef<boolean>(defaults.name.trim().length > 0);
   useEffect(() => {
     if (location && !userTouchedName.current) {
@@ -191,12 +187,7 @@ export function SearchForm({
     }
   }, [location, form]);
 
-  const cadence = findCadenceById(cadenceId);
-  const _cost = estimateCost({
-    outcodeCount: location ? 1 : 0,
-    portals,
-    scrapesPerDay: cadence.scrapesPerDay,
-  });
+  const listings = listingsPerWeekEstimate(allValues);
 
   const canSubmit =
     location !== null &&
@@ -206,28 +197,20 @@ export function SearchForm({
 
   const isDesktop = layout === "desktop";
 
-  const headlineSection = (
-    <section>
-      <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
-        WHAT WE'RE LOOKING FOR
+  const headline = (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-[11px] text-slate uppercase tracking-[0.14em]">
+        What we're looking for
       </p>
       <form.Field name="name" validators={{ onChange: nameSchema }}>
         {(field) => (
           <input
-            // `text-3xl sm:text-4xl` on mobile keeps the default
-            // "A flat in North London" placeholder from clipping at
-            // 390 px — text-4xl (36 px serif) overflows the input's
-            // available width inside the px-6 gutters at that size.
-            // Longer custom names rely on native input horizontal
-            // scrolling.
-            className={`-mx-1 mt-2 w-full bg-transparent px-1 font-serif text-foreground leading-[1.05] outline-none placeholder:text-muted-foreground/50 focus:bg-muted/60 ${
-              isDesktop ? "text-5xl" : "text-3xl sm:text-4xl"
-            }`}
+            className={cn(
+              "-mx-1 w-full bg-transparent px-1 font-semibold text-navy leading-[1.05] tracking-[-0.025em] outline-none placeholder:text-slate-2/60 focus:bg-mist/60",
+              isDesktop ? "text-[40px]" : "text-[28px] sm:text-[34px]"
+            )}
             onBlur={field.handleBlur}
             onChange={(e) => {
-              // Mark the name as user-owned so the location → name
-              // auto-mirror stops. Stays true for the rest of this
-              // form instance even if the user clears the field.
               userTouchedName.current = true;
               field.handleChange(e.target.value);
             }}
@@ -237,18 +220,16 @@ export function SearchForm({
           />
         )}
       </form.Field>
-      <p className="mt-2 text-muted-foreground text-xs italic">
-        {isDesktop ? "click to rename" : "tap to rename"}
+      <p className="text-[13px] text-slate-2">
+        {isDesktop ? "Click to rename" : "Tap to rename"}
       </p>
-    </section>
+    </div>
   );
 
-  const postcodesSection = (
-    <section className="space-y-4">
-      <h2 className="font-serif text-2xl text-foreground">Where</h2>
-      <p className="-mt-3 text-muted-foreground text-sm">
-        Pick the postcode, area, or town you want — and any places to skip
-        inside it.
+  const postcodes = (
+    <SectionCard bare={!isDesktop} title="Postcodes">
+      <p className="-mt-1 text-[12px] text-slate">
+        Include what you want, kill what you don't.
       </p>
       <form.Field name="location">
         {(field) => (
@@ -274,60 +255,66 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </SectionCard>
   );
 
-  const priceSizeSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Price & size</h2>
-      <form.Field name="minPrice">
-        {(minField) => (
-          <form.Field name="maxPrice">
-            {(maxField) => (
-              <PriceSlider
-                max={5000}
-                min={0}
-                onChange={([lo, hi]) => {
-                  minField.handleChange(lo);
-                  maxField.handleChange(hi);
-                }}
-                value={[minField.state.value, maxField.state.value]}
+  const priceSize = (
+    <SectionCard bare={!isDesktop} title="Price & size">
+      {/* On desktop the beds/baths wrapper collapses to `contents`, so
+          rent, beds, and baths sit as three equal columns in one row;
+          on mobile rent stacks above the beds/baths row. */}
+      <div className={cn("flex", isDesktop ? "items-stretch gap-2.5" : "flex-col gap-3.5")}>
+        <div className={cn(isDesktop && "min-w-0 flex-1")}>
+          <form.Field name="minPrice">
+            {(minField) => (
+              <form.Field name="maxPrice">
+                {(maxField) => (
+                  <PriceSlider
+                    max={5000}
+                    min={0}
+                    onChange={([lo, hi]) => {
+                      minField.handleChange(lo);
+                      maxField.handleChange(hi);
+                    }}
+                    value={[minField.state.value, maxField.state.value]}
+                  />
+                )}
+              </form.Field>
+            )}
+          </form.Field>
+        </div>
+        <div className={cn("flex gap-2.5", isDesktop && "contents")}>
+          <form.Field name="bedsId">
+            {(field) => (
+              <PillGroup
+                onChange={(id) => field.handleChange(id)}
+                options={BED_OPTIONS}
+                selectedId={field.state.value}
+                title="Beds"
               />
             )}
           </form.Field>
-        )}
-      </form.Field>
-      <div className="flex gap-3">
-        <form.Field name="bedsId">
-          {(field) => (
-            <PillGroup
-              onChange={(id) => field.handleChange(id)}
-              options={BED_OPTIONS}
-              selectedId={field.state.value}
-              title="BEDS"
-            />
-          )}
-        </form.Field>
-        <form.Field name="bathsId">
-          {(field) => (
-            <PillGroup
-              onChange={(id) => field.handleChange(id)}
-              options={BATH_OPTIONS}
-              selectedId={field.state.value}
-              title="BATHS"
-            />
-          )}
-        </form.Field>
+          <form.Field name="bathsId">
+            {(field) => (
+              <PillGroup
+                onChange={(id) => field.handleChange(id)}
+                options={BATH_OPTIONS}
+                selectedId={field.state.value}
+                title="Baths"
+              />
+            )}
+          </form.Field>
+        </div>
       </div>
-    </section>
+    </SectionCard>
   );
 
-  const propertyTypeSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Property type</h2>
-      <p className="-mt-1 text-muted-foreground text-sm">
-        Tap to add — leave empty for any.
-      </p>
+  const propertyType = (
+    <Section
+      bare={!isDesktop}
+      subtitle="Tap to add — leave empty for any."
+      title="Property type"
+    >
       <form.Field name="propertyTypes">
         {(field) => (
           <PropertyTypePills
@@ -336,12 +323,11 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </Section>
   );
 
-  const furnishedSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Furnishing</h2>
+  const furnishing = (
+    <Section bare={!isDesktop} title="Furnishing">
       <form.Field name="furnished">
         {(field) => (
           <FurnishedPicker
@@ -350,15 +336,15 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </Section>
   );
 
-  const mustHavesSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Must-haves</h2>
-      <p className="-mt-1 text-muted-foreground text-sm">
-        Hard filters at scrape time — anything without these is hidden.
-      </p>
+  const mustHaves = (
+    <Section
+      bare={!isDesktop}
+      subtitle="Hard filters at scrape time — anything without these is hidden."
+      title="Must-haves"
+    >
       <form.Field name="mustHaves">
         {(field) => (
           <MustHavesToggles
@@ -367,15 +353,15 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </Section>
   );
 
-  const exclusionsSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Hide</h2>
-      <p className="-mt-1 text-muted-foreground text-sm">
-        Listing types to skip entirely.
-      </p>
+  const hide = (
+    <Section
+      bare={!isDesktop}
+      subtitle="Listing types to skip entirely."
+      title="Hide"
+    >
       <form.Field name="exclusions">
         {(field) => (
           <ExclusionsToggles
@@ -384,13 +370,12 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </Section>
   );
 
-  const commuteSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Commute to</h2>
-      <p className="-mt-1 text-muted-foreground text-sm">
+  const commute = (
+    <SectionCard bare={!isDesktop} title="Commute to">
+      <p className="-mt-1 text-[12px] text-slate">
         Specific places you need to reach — office, family, anywhere.
       </p>
       <form.Field name="commuteTargets">
@@ -401,13 +386,12 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </SectionCard>
   );
 
-  const transportSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Transport nearby</h2>
-      <p className="-mt-1 text-muted-foreground text-sm">
+  const transport = (
+    <SectionCard bare={!isDesktop} title="Transport nearby">
+      <p className="-mt-1 text-[12px] text-slate">
         How close to the nearest tube, train, bus, or tram you need to be.
       </p>
       <form.Field name="transportTargets">
@@ -418,12 +402,11 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </SectionCard>
   );
 
-  const portalsSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Portals to watch</h2>
+  const portalsBlock = (
+    <SectionCard bare={!isDesktop} title="Portals to watch">
       <form.Field name="portals" validators={{ onChange: portalsSchema }}>
         {(field) => (
           <PortalToggles
@@ -432,12 +415,11 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
+    </SectionCard>
   );
 
-  const cadenceSection = (
-    <section className="space-y-3">
-      <h2 className="font-serif text-2xl text-foreground">Scrape schedule</h2>
+  const rescrape = (
+    <SectionCard bare={!isDesktop} title="Re-scrape">
       <form.Field name="cadenceId">
         {(field) => (
           <CadencePicker
@@ -446,78 +428,44 @@ export function SearchForm({
           />
         )}
       </form.Field>
-    </section>
-  );
-
-  const costEstimate = (
-    <CostEstimate
-      ctaLabel={mode === "create" ? "Start watching" : "Save changes"}
-      disabled={!canSubmit || Boolean(pending)}
-      onSubmit={() => form.handleSubmit()}
-      pending={pending}
-    />
+    </SectionCard>
   );
 
   if (isDesktop) {
     return (
       <form
         className="flex w-full min-w-0 flex-1 flex-col bg-background"
+        id={DESKTOP_FORM_ID}
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
           form.handleSubmit();
         }}
       >
-        <div className="flex-1 space-y-10 px-6 pt-7 pb-8 lg:px-10">
-          {/* Headline + Reset, full width */}
-          <div className="flex items-start justify-between gap-6">
-            <div className="flex-1">{headlineSection}</div>
-            <button
-              className="mt-7 shrink-0 text-primary text-sm hover:underline"
-              onClick={() => {
-                form.reset(DEFAULT_FORM_VALUES);
-                onReset?.();
-              }}
-              type="button"
-            >
-              Reset
-            </button>
-          </div>
+        {/* Paper's desktop form (3KU-0) has no Reset affordance in the header —
+            it's a mobile-only control. Desktop just shows the rename headline. */}
+        <div className="px-10 pt-5 pb-7">{headline}</div>
 
-          {/* Operational row sits ABOVE the criteria grid so the
-              cadence picker (most-tweaked setting) is visible without
-              a scroll. Portals + cadence are set-once-then-forget for
-              most users — surfacing them upfront also frames the cost
-              estimate before the user dives into criteria. */}
-          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
-            {portalsSection}
-            {cadenceSection}
+        <div className="flex gap-7 px-10 pb-8">
+          <div className="flex min-w-0 flex-1 flex-col gap-6">
+            {postcodes}
+            {priceSize}
+            <SectionCard title="Property & filters">
+              <div className="grid grid-cols-1 gap-7 sm:grid-cols-2">
+                {propertyType}
+                {furnishing}
+                {mustHaves}
+                {hide}
+              </div>
+            </SectionCard>
           </div>
-
-          {/* Criteria grid — two columns, kept roughly height-balanced
-              so the left doesn't stall out halfway down. Left reads as
-              "where you'll live and what it'll cost" (location + price
-              + how you get places); right is "what the place itself
-              is" (shape + furnishings + dealbreakers). Price sits on
-              the left because it's adjacent to "Where" in users' minds
-              — and putting it there evens the visual weight (4 vs 4). */}
-          <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-2">
-            <div className="space-y-10">
-              {postcodesSection}
-              {priceSizeSection}
-              {commuteSection}
-              {transportSection}
-            </div>
-            <div className="space-y-10">
-              {propertyTypeSection}
-              {furnishedSection}
-              {mustHavesSection}
-              {exclusionsSection}
-            </div>
+          <div className="flex w-[360px] shrink-0 flex-col gap-4">
+            {commute}
+            {transport}
+            {portalsBlock}
+            {rescrape}
           </div>
         </div>
-
-        {costEstimate}
       </form>
     );
   }
@@ -531,21 +479,19 @@ export function SearchForm({
         form.handleSubmit();
       }}
     >
-      {/* Header — close + title + reset */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-border border-b bg-card px-4 py-3">
+      <header className="flex items-center justify-between px-5 pt-2 pb-4.5">
         <button
-          aria-label="Close"
-          className="flex size-8 items-center justify-center rounded-full text-foreground hover:bg-muted"
+          className="text-[14px] text-slate"
           onClick={onCancel}
           type="button"
         >
-          <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={2} />
+          Cancel
         </button>
-        <h1 className="font-medium text-foreground text-sm">
+        <span className="font-semibold text-[14px] text-navy">
           {mode === "create" ? "New search" : "Edit search"}
-        </h1>
+        </span>
         <button
-          className="text-primary text-sm"
+          className="text-[14px] text-slate"
           onClick={() => {
             form.reset(DEFAULT_FORM_VALUES);
             onReset?.();
@@ -556,21 +502,89 @@ export function SearchForm({
         </button>
       </header>
 
-      <div className="flex-1 space-y-8 px-5 pt-6 pb-8">
-        {headlineSection}
-        {postcodesSection}
-        {priceSizeSection}
-        {propertyTypeSection}
-        {furnishedSection}
-        {mustHavesSection}
-        {exclusionsSection}
-        {commuteSection}
-        {transportSection}
-        {portalsSection}
-        {cadenceSection}
+      <div className="flex-1 space-y-6 pb-8">
+        <div className="px-5">{headline}</div>
+        {postcodes}
+        {priceSize}
+        {propertyType}
+        {furnishing}
+        {mustHaves}
+        {hide}
+        {commute}
+        {transport}
+        {portalsBlock}
+        {rescrape}
       </div>
 
-      {costEstimate}
+      <CostEstimateBar
+        ctaLabel={mode === "create" ? "Start watching" : "Save changes"}
+        disabled={!canSubmit}
+        listingsPerWeek={listings}
+        onSubmit={() => form.handleSubmit()}
+        pending={pending}
+      />
     </form>
+  );
+}
+
+/* ---------------- Section layout helpers ---------------- */
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="font-semibold text-[17px] text-navy leading-[22px]">
+      {children}
+    </h2>
+  );
+}
+
+/**
+ * A grouped form section. On desktop it's a bordered white card; on
+ * mobile (`bare`) it's a padded column with no card chrome (matching
+ * Paper's edge-to-edge mobile sections).
+ */
+function SectionCard({
+  title,
+  titleRight,
+  bare,
+  children,
+}: {
+  title: string;
+  titleRight?: ReactNode;
+  bare?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "flex flex-col gap-3.5",
+        bare ? "px-5" : "rounded-lg border border-line bg-paper p-6"
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <SectionTitle>{title}</SectionTitle>
+        {titleRight}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Section({
+  title,
+  subtitle,
+  bare,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  bare?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className={cn("flex flex-col gap-2.5", bare && "px-5")}>
+      <SectionTitle>{title}</SectionTitle>
+      {subtitle ? <p className="-mt-1.5 text-[12px] text-slate">{subtitle}</p> : null}
+      {children}
+    </section>
   );
 }

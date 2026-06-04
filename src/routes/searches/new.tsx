@@ -170,6 +170,7 @@ function synthesizeSearchRow(values: SearchFormValues): SearchRow {
     commuteTargets: values.commuteTargets,
     transportTargets: values.transportTargets,
     active: cadence.cron !== null,
+    deletedAt: null,
     createdAt: now,
     updatedAt: now,
   };

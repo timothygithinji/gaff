@@ -1,12 +1,13 @@
 /**
- * Bed + Bath pill groups.
+ * Bed + Bath segmented pickers.
  *
- * Each group is a row of pill-shaped buttons; the selected pill flips
- * to foreground-on-background to match the artboard. Beds and baths
- * are intentionally one-of-many in v1 — the design uses single-select
- * pills, and the DB columns are `(min, max)` ints, so we encode each
- * choice as a `(min, max)` pair.
+ * Each renders as a bordered white card with a small-caps label and a
+ * row of equal-width segments — selected segment fills navy with white
+ * text, the rest are mist on navy ink. Matches the Paper "Price & size"
+ * BEDS / BATHS controls. Beds and baths are single-select; the DB
+ * columns are `(min, max)` ints so each choice encodes a `(min, max)`.
  */
+import { cn } from "../../lib/utils";
 
 export type BedOption = {
   id: string;
@@ -22,9 +23,9 @@ export type BathOption = {
 };
 
 export const BED_OPTIONS: BedOption[] = [
-  { id: "1+", label: "1+", min: 1, max: null },
-  { id: "2+", label: "2+", min: 2, max: null },
-  { id: "3+", label: "3+", min: 3, max: null },
+  { id: "1+", label: "1", min: 1, max: null },
+  { id: "2+", label: "2", min: 2, max: null },
+  { id: "3+", label: "3", min: 3, max: null },
   { id: "4+", label: "4+", min: 4, max: null },
 ];
 
@@ -32,7 +33,6 @@ export const BATH_OPTIONS: BathOption[] = [
   { id: "1+", label: "1+", min: 1, max: null },
   { id: "2", label: "2", min: 2, max: 2 },
   { id: "3+", label: "3+", min: 3, max: null },
-  { id: "4+", label: "4+", min: 4, max: null },
 ];
 
 type Props<T extends { id: string; label: string }> = {
@@ -49,20 +49,21 @@ export function PillGroup<T extends { id: string; label: string }>({
   onChange,
 }: Props<T>) {
   return (
-    <div className="flex-1 rounded-2xl bg-muted px-5 py-4">
-      <p className="mb-3 text-[11px] text-muted-foreground uppercase tracking-[0.14em]">
+    <div className="flex flex-1 flex-col gap-2 rounded-md border border-line bg-paper p-3.5">
+      <p className="text-[10px] text-slate uppercase tracking-[0.14em]">
         {title}
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex gap-1">
         {options.map((opt) => {
           const active = opt.id === selectedId;
           return (
             <button
-              className={
+              className={cn(
+                "flex-1 rounded-sm py-1.5 text-center text-[12px] leading-4",
                 active
-                  ? "flex h-9 min-w-9 items-center justify-center rounded-full bg-foreground px-3 font-medium text-background text-sm"
-                  : "flex h-9 min-w-9 items-center justify-center rounded-full bg-card px-3 text-muted-foreground text-sm"
-              }
+                  ? "bg-navy font-semibold text-[#eef1f4]"
+                  : "bg-mist text-slate"
+              )}
               key={opt.id}
               onClick={() => onChange(opt.id)}
               type="button"

@@ -58,11 +58,11 @@ export function MatchRow({ match, ageLabel, memberCount, onOpen }: Props) {
 
   return (
     <button
-      className="flex w-full gap-3.5 rounded-[14px] border border-border bg-card p-3 text-left"
+      className="flex w-full gap-3.5 rounded-md border border-line bg-card p-3 text-left"
       onClick={onOpen}
       type="button"
     >
-      <div className="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-[10px] bg-muted">
+      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-sm bg-mist">
         {headline.photoUrl ? (
           // biome-ignore lint/nursery/noImgElement: TanStack Start, not Next.js — R2 URLs are cache-tagged.
           <img
@@ -74,10 +74,10 @@ export function MatchRow({ match, ageLabel, memberCount, onOpen }: Props) {
       </div>
       <div className="flex min-w-0 grow basis-0 flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="line-clamp-1 font-medium font-serif text-[17px] text-foreground leading-[110%] tracking-[-0.02em]">
+          <span className="line-clamp-1 font-semibold text-[15px] text-navy leading-[18px]">
             {headline.addressRaw}
           </span>
-          <span className="shrink-0 font-medium font-serif text-[17px] text-foreground tracking-[-0.02em]">
+          <span className="shrink-0 font-semibold text-[15px] text-navy">
             {formatPrice(headline.priceMonthly)}
           </span>
         </div>

@@ -8,6 +8,11 @@ import {
 } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
+import {
+  AuthEyebrow,
+  AuthHeading,
+  AuthLayout,
+} from "../components/auth/auth-layout";
 import { TextField } from "../components/text-field";
 import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
@@ -75,17 +80,29 @@ function SignupPage() {
   });
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
-      <div className="w-full max-w-sm space-y-8">
-        <header className="space-y-2">
-          <p className="text-muted-foreground text-xs uppercase tracking-widest">
-            New household
+    <AuthLayout>
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col gap-1.5">
+          <AuthEyebrow>Start a household</AuthEyebrow>
+          {/* Mobile/tablet lead with the marketing headline (no side panel
+              there); lg+ shows the short heading since the navy panel already
+              carries the pitch. */}
+          <AuthHeading className="lg:hidden">
+            Find a flat together,
+            <br />
+            without the wars
+          </AuthHeading>
+          <h1 className="hidden font-semibold text-[30px] text-foreground leading-[34px] tracking-[-0.025em] lg:block">
+            Create your account
+          </h1>
+          <p className='pt-1.5 text-[#1f3a5f] text-[13px] leading-4'>
+            Invite one person after this. The blind veto loop starts as soon as
+            you both swipe.
           </p>
-          <h1 className="font-serif text-4xl">Create account</h1>
         </header>
 
         <form
-          className="space-y-5"
+          className="flex flex-col gap-3.5"
           onSubmit={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -150,30 +167,34 @@ function SignupPage() {
             )}
           </form.Field>
 
+          <p className='text-[#5a7596] text-[11px] leading-[15px]'>
+            At least 8 characters.
+          </p>
+
           {serverError ? (
-            <p className="rounded-md bg-primary/10 px-3 py-2 text-primary text-sm">
+            <p className="rounded-md bg-warning/10 px-3 py-2 text-[13px] text-warning-text leading-4">
               {serverError}
             </p>
           ) : null}
 
           <Button
-            className="w-full rounded-full"
+            className="mt-1 h-auto w-full rounded-full py-4 font-medium text-[14px]"
             loading={signUp.isPending}
             loadingText="Creating…"
             size="lg"
             type="submit"
           >
-            Create account
+            Create household
           </Button>
         </form>
 
-        <p className="text-center text-muted-foreground text-sm">
-          Already have an account?{" "}
-          <Link className="font-medium text-primary underline" to="/login">
+        <p className="flex items-center justify-center gap-1.5 text-[13px] leading-4">
+          <span className="text-[#1f3a5f]">Already set up?</span>
+          <Link className="font-medium text-[#d77a4a]" to="/login">
             Sign in
           </Link>
         </p>
       </div>
-    </main>
+    </AuthLayout>
   );
 }

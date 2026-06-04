@@ -1,19 +1,28 @@
 /**
- * Mobile pipeline view — stage tabs across the top, list of cards
- * beneath. The kanban-as-five-columns layout is unusable on a narrow
- * viewport, so mobile gets a one-column-at-a-time tab strip with the
- * same move/archive actions on each card.
+ * Mobile pipeline view (Paper "Shortlist · Mobile" 34C-0).
+ *
+ * Not a single-column switcher — Paper stacks every non-empty stage in
+ * one scroll, each under a small-caps stage label + count pill. The
+ * FIRST card in a stage renders large (140px photo, mutual badge, status
+ * pill); the rest render as 64px-thumbnail rows. Move / archive run from
+ * each card's ⋯ menu (plus quick back/forward arrows), so the kanban's
+ * actions stay reachable on a narrow viewport.
+ *
+ * Empty stages are omitted (no point showing four "nothing here" blocks
+ * on a phone); a single empty-state shows when the whole pipeline is
+ * empty.
  */
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   Cancel01Icon,
+  Clock01Icon,
   Loading03Icon,
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { ReactNode } from "react";
 import {
+  PIPELINE_ARCHIVED_REASONS,
   PIPELINE_STATUSES,
   type PipelineArchivedReason,
   type PipelineStatus,
@@ -31,22 +40,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  ARCHIVED_REASON_LABELS,
+  AvatarStack,
+  STAGE_LABEL,
+  StageCountPill,
+  formatPrice,
+  metaLine,
+  useAuditLine,
+} from "./pipeline-shared";
 
-const STATUS_LABEL: Record<PipelineStatus, string> = {
-  shortlisted: "Shortlisted",
-  contacted: "Contacted",
-  viewing_booked: "Viewing",
-  offer_made: "Offer",
-  archived: "Archived",
-};
-
-const ARCHIVED_REASON_LABELS: Record<PipelineArchivedReason, string> = {
-  accepted: "We took it",
-  passed: "We passed",
-  let_to_someone_else: "Let to someone else",
-  withdrawn: "Listing withdrawn",
-  other: "Other",
-};
+/** Active stages in board order; Archived shown last when populated. */
+const STAGE_ORDER: PipelineStatus[] = [
+  "viewing_booked",
+  "offer_made",
+  "contacted",
+  "shortlisted",
+  "archived",
+];
 
 type PendingMove = {
   clusterId: string;
@@ -55,8 +66,7 @@ type PendingMove = {
 
 type Props = {
   columns: PipelineColumns;
-  active: PipelineStatus;
-  onActiveChange: (s: PipelineStatus) => void;
+  memberCount: number;
   onOpenCluster: (clusterId: string) => void;
   onMove: (clusterId: string, to: PipelineStatus) => void;
   onArchive: (clusterId: string, reason: PipelineArchivedReason) => void;
@@ -66,75 +76,99 @@ type Props = {
 
 export function PipelineMobile({
   columns,
-  active,
-  onActiveChange,
+  memberCount,
   onOpenCluster,
   onMove,
   onArchive,
   pendingMove,
   disabled,
 }: Props) {
-  const cards = columns[active];
+  const populated = STAGE_ORDER.filter((s) => columns[s].length > 0);
+
+  if (populated.length === 0) {
+    return (
+      <p className="mx-5 rounded-lg bg-mist p-8 text-center text-slate text-sm">
+        Nothing in your pipeline yet. Keep swiping on Review — picks you both
+        keep land here, ready to move toward a viewing.
+      </p>
+    );
+  }
+
   return (
-    <div className="flex flex-col">
-      {/* Wrap to multiple rows on narrow phones — `overflow-x-auto` is
-       * fine functionally but renders without a scroll indicator on
-       * mobile Safari, so the last tabs look truncated. `flex-wrap` makes
-       * every pipeline stage visible at a glance. */}
-      <div className="flex flex-wrap gap-x-1.5 gap-y-2 border-border border-b px-6 pb-3">
-        {PIPELINE_STATUSES.map((status) => {
-          const isActive = status === active;
-          const count = columns[status].length;
-          return (
-            <button
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 font-medium text-[12px] transition-colors ${
-                isActive
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border bg-card text-foreground"
-              }`}
-              key={status}
-              onClick={() => onActiveChange(status)}
-              type="button"
-            >
-              <span>{STATUS_LABEL[status]}</span>
-              <span
-                className={`rounded-full px-1.5 text-[10px] ${
-                  isActive
-                    ? "bg-background/15"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex flex-col gap-2.5 px-4 py-4">
-        {cards.length === 0 ? (
-          <p className="rounded-2xl bg-muted p-8 text-center text-muted-foreground text-sm">
-            Nothing in {STATUS_LABEL[active]} yet.
-          </p>
-        ) : (
-          cards.map((card) => (
-            <Row
-              card={card}
-              disabled={disabled}
-              key={card.clusterId}
-              onArchive={onArchive}
-              onMove={onMove}
-              onOpenCluster={onOpenCluster}
-              pendingMove={pendingMove}
-            />
-          ))
-        )}
-      </div>
+    <div className="flex flex-col pb-2">
+      {populated.map((status) => (
+        <Stage
+          cards={columns[status]}
+          disabled={disabled}
+          key={status}
+          memberCount={memberCount}
+          onArchive={onArchive}
+          onMove={onMove}
+          onOpenCluster={onOpenCluster}
+          pendingMove={pendingMove}
+          status={status}
+        />
+      ))}
     </div>
   );
 }
 
-function Row({
+function Stage({
+  status,
+  cards,
+  memberCount,
+  onOpenCluster,
+  onMove,
+  onArchive,
+  pendingMove,
+  disabled,
+}: {
+  status: PipelineStatus;
+  cards: PipelineCard[];
+  memberCount: number;
+} & Pick<
+  Props,
+  "onOpenCluster" | "onMove" | "onArchive" | "pendingMove" | "disabled"
+>) {
+  const [lead, ...rest] = cards;
+  return (
+    <section className="flex flex-col">
+      <header className="flex items-center gap-2 px-5 pt-3.5 pb-2.5">
+        <h2 className="font-semibold text-[11px] text-navy uppercase leading-[14px] tracking-[0.14em]">
+          {STAGE_LABEL[status]}
+        </h2>
+        <StageCountPill count={cards.length} status={status} />
+      </header>
+      {lead ? (
+        <LeadCard
+          card={lead}
+          disabled={disabled}
+          memberCount={memberCount}
+          onArchive={onArchive}
+          onMove={onMove}
+          onOpenCluster={onOpenCluster}
+          pendingMove={pendingMove}
+        />
+      ) : null}
+      {rest.map((card) => (
+        <RowCard
+          card={card}
+          disabled={disabled}
+          key={card.clusterId}
+          memberCount={memberCount}
+          onArchive={onArchive}
+          onMove={onMove}
+          onOpenCluster={onOpenCluster}
+          pendingMove={pendingMove}
+        />
+      ))}
+    </section>
+  );
+}
+
+function LeadCard({
   card,
+  memberCount,
   onOpenCluster,
   onMove,
   onArchive,
@@ -142,23 +176,90 @@ function Row({
   disabled,
 }: {
   card: PipelineCard;
+  memberCount: number;
 } & Pick<
   Props,
   "onOpenCluster" | "onMove" | "onArchive" | "pendingMove" | "disabled"
 >) {
-  const isPending =
-    pendingMove?.clusterId === card.clusterId &&
-    pendingMove?.to !== card.status;
-  const prev = previousStatus(card.status);
-  const next = nextStatus(card.status);
+  const meta = metaLine(card);
+  const audit = useAuditLine(card);
   return (
-    <article className="overflow-hidden rounded-2xl border border-border bg-card">
+    <article className="mx-5 mb-3 overflow-hidden rounded-lg border border-line bg-card">
       <button
-        className="flex w-full items-stretch gap-3 text-left"
+        className="relative block h-[140px] w-full text-left"
         onClick={() => onOpenCluster(card.clusterId)}
         type="button"
       >
-        <div className="aspect-square w-24 shrink-0 overflow-hidden bg-muted">
+        {card.headline.photoUrl ? (
+          // biome-ignore lint/nursery/noImgElement: TanStack Start; no Image component.
+          <img
+            alt={card.headline.addressRaw}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            src={card.headline.photoUrl}
+          />
+        ) : (
+          <div className="h-full w-full bg-mist" />
+        )}
+        {memberCount > 1 ? (
+          <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 bg-[#0e2235d9] px-2.5 py-[5px] backdrop-blur-sm">
+            <AvatarStack border="navy" members={card.members} />
+            <span className='font-semibold text-[#eef1f4] text-[10px] uppercase leading-3 tracking-widest'>
+              {memberCount === 2 ? "Both kept" : `All ${memberCount} kept`}
+            </span>
+          </span>
+        ) : null}
+      </button>
+      <div className="flex flex-col gap-2 px-4 py-3.5">
+        <div className="flex items-baseline justify-between gap-2.5">
+          <span className="min-w-0 grow truncate font-semibold text-[15px] text-navy leading-[18px]">
+            {card.headline.addressRaw}
+          </span>
+          <span className="shrink-0 font-semibold text-[15px] text-navy leading-[18px]">
+            {formatPrice(card.headline.priceMonthly)}
+          </span>
+        </div>
+        {meta ? (
+          <span className="text-[12px] text-slate leading-4">{meta}</span>
+        ) : null}
+        <StatusFootnote audit={audit} card={card} />
+      </div>
+      <Footer
+        card={card}
+        disabled={disabled}
+        onArchive={onArchive}
+        onMove={onMove}
+        pendingMove={pendingMove}
+      />
+    </article>
+  );
+}
+
+function RowCard({
+  card,
+  memberCount,
+  onOpenCluster,
+  onMove,
+  onArchive,
+  pendingMove,
+  disabled,
+}: {
+  card: PipelineCard;
+  memberCount: number;
+} & Pick<
+  Props,
+  "onOpenCluster" | "onMove" | "onArchive" | "pendingMove" | "disabled"
+>) {
+  const meta = metaLine(card);
+  const audit = useAuditLine(card);
+  return (
+    <article className="mx-5 mb-2 overflow-hidden rounded-md border border-line bg-card">
+      <button
+        className="flex w-full gap-3 p-3 text-left"
+        onClick={() => onOpenCluster(card.clusterId)}
+        type="button"
+      >
+        <div className="size-16 shrink-0 overflow-hidden rounded-sm bg-mist">
           {card.headline.photoUrl ? (
             // biome-ignore lint/nursery/noImgElement: TanStack Start; no Image component.
             <img
@@ -169,139 +270,172 @@ function Row({
             />
           ) : null}
         </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-1 py-3 pr-3">
+        <div className="flex min-w-0 grow flex-col gap-[3px]">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="font-serif text-[16px] text-foreground leading-tight">
-              {formatPrice(card.headline.priceMonthly)}
-              <span className="ml-0.5 text-[11px] text-muted-foreground">
-                /mo
-              </span>
+            <span className="min-w-0 grow truncate font-semibold text-[14px] text-navy leading-[18px]">
+              {card.headline.addressRaw}
             </span>
-            <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.08em]">
-              {card.headline.bedrooms ?? "?"}b
+            <span className="shrink-0 font-semibold text-[14px] text-navy leading-[18px]">
+              {formatPrice(card.headline.priceMonthly)}
             </span>
           </div>
-          <p className="line-clamp-2 text-[13px] text-foreground leading-tight">
-            {card.headline.addressRaw}
-          </p>
-          <p className="text-[10px] text-muted-foreground">{auditLine(card)}</p>
-          {card.archivedReason ? (
-            <p className="mt-0.5 inline-flex w-fit rounded-full bg-bone px-2 py-0.5 font-semibold text-[10px] text-primary">
-              {ARCHIVED_REASON_LABELS[card.archivedReason]}
-            </p>
+          {meta ? (
+            <span className="text-[11px] text-slate leading-[14px]">
+              {meta}
+            </span>
           ) : null}
+          <div className="flex items-center gap-1.5 pt-1">
+            {memberCount > 1 ? <AvatarStack members={card.members} /> : null}
+            <span className="text-[10px] text-slate leading-3">{audit}</span>
+          </div>
         </div>
       </button>
-      <footer className="flex items-center justify-between gap-1 border-border border-t bg-muted/30 px-3 py-2">
-        <div className="flex items-center gap-1">
-          <ActionBtn
-            disabled={disabled || !prev || isPending}
-            label="Move back"
-            onClick={() => prev && onMove(card.clusterId, prev)}
-          >
-            {isPending && pendingMove?.to === prev ? (
-              <HugeiconsIcon
-                className="animate-spin"
-                icon={Loading03Icon}
-                size={14}
-                strokeWidth={2}
-              />
-            ) : (
-              <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={2} />
-            )}
-          </ActionBtn>
-          <ActionBtn
-            disabled={disabled || !next || isPending}
-            label="Move forward"
-            onClick={() => next && onMove(card.clusterId, next)}
-          >
-            {isPending && pendingMove?.to === next ? (
-              <HugeiconsIcon
-                className="animate-spin"
-                icon={Loading03Icon}
-                size={14}
-                strokeWidth={2}
-              />
-            ) : (
-              <HugeiconsIcon
-                icon={ArrowRight01Icon}
-                size={14}
-                strokeWidth={2}
-              />
-            )}
-          </ActionBtn>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-bone disabled:opacity-50"
-            disabled={disabled}
-          >
-            <HugeiconsIcon
-              icon={MoreHorizontalIcon}
-              size={16}
-              strokeWidth={2}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Move to</DropdownMenuLabel>
-              {PIPELINE_STATUSES.filter(
-                (s) => s !== card.status && s !== "archived"
-              ).map((s) => (
-                <DropdownMenuItem
-                  key={s}
-                  onClick={() => onMove(card.clusterId, s)}
-                >
-                  {STATUS_LABEL[s]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Archive · reason</DropdownMenuLabel>
-              {(
-                Object.keys(ARCHIVED_REASON_LABELS) as PipelineArchivedReason[]
-              ).map((reason) => (
-                <DropdownMenuItem
-                  key={reason}
-                  onClick={() => onArchive(card.clusterId, reason)}
-                >
-                  <HugeiconsIcon
-                    icon={Cancel01Icon}
-                    size={12}
-                    strokeWidth={2}
-                  />
-                  {ARCHIVED_REASON_LABELS[reason]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </footer>
+      <Footer
+        card={card}
+        disabled={disabled}
+        onArchive={onArchive}
+        onMove={onMove}
+        pendingMove={pendingMove}
+      />
     </article>
   );
 }
 
-function ActionBtn({
-  children,
+function StatusFootnote({
+  card,
+  audit,
+}: {
+  card: PipelineCard;
+  audit: string;
+}) {
+  if (card.archivedReason) {
+    return (
+      <span className="inline-flex w-fit rounded-full border border-line bg-card px-2 py-0.5 font-semibold text-[10px] text-slate">
+        {ARCHIVED_REASON_LABELS[card.archivedReason]}
+      </span>
+    );
+  }
+  if (card.status === "viewing_booked" || card.status === "offer_made") {
+    return (
+      <span className="flex items-center gap-2 rounded-sm border border-[#d77a4a4d] bg-[#d77a4a1a] px-3 py-2.5">
+        <HugeiconsIcon
+          className="shrink-0 text-[#d77a4a]"
+          icon={Clock01Icon}
+          size={14}
+          strokeWidth={1.5}
+        />
+        <span className="text-[12px] text-navy leading-4">{audit}</span>
+      </span>
+    );
+  }
+  return null;
+}
+
+/** Per-card action footer — quick back / forward + the full ⋯ menu. */
+function Footer({
+  card,
+  onMove,
+  onArchive,
+  pendingMove,
+  disabled,
+}: {
+  card: PipelineCard;
+} & Pick<Props, "onMove" | "onArchive" | "pendingMove" | "disabled">) {
+  const prev = previousStatus(card.status);
+  const next = nextStatus(card.status);
+  const isPending =
+    pendingMove?.clusterId === card.clusterId &&
+    pendingMove?.to !== card.status;
+  return (
+    <footer className="flex items-center justify-between gap-1 border-line border-t bg-mist/50 px-3 py-2">
+      <div className="flex items-center gap-1">
+        <ArrowBtn
+          busy={isPending && pendingMove?.to === prev}
+          dir="back"
+          disabled={disabled || !prev || isPending}
+          onClick={() => prev && onMove(card.clusterId, prev)}
+        />
+        <ArrowBtn
+          busy={isPending && pendingMove?.to === next}
+          dir="forward"
+          disabled={disabled || !next || isPending}
+          onClick={() => next && onMove(card.clusterId, next)}
+        />
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Card actions"
+          className="flex size-8 items-center justify-center rounded-md text-slate hover:bg-mist disabled:opacity-50"
+          disabled={disabled}
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={2} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Move to</DropdownMenuLabel>
+            {PIPELINE_STATUSES.filter(
+              (s) => s !== card.status && s !== "archived"
+            ).map((s) => (
+              <DropdownMenuItem
+                key={s}
+                onClick={() => onMove(card.clusterId, s)}
+              >
+                {STAGE_LABEL[s]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Archive · reason</DropdownMenuLabel>
+            {PIPELINE_ARCHIVED_REASONS.map((reason) => (
+              <DropdownMenuItem
+                key={reason}
+                onClick={() => onArchive(card.clusterId, reason)}
+              >
+                <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
+                {ARCHIVED_REASON_LABELS[reason]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </footer>
+  );
+}
+
+function ArrowBtn({
+  dir,
   onClick,
   disabled,
-  label,
+  busy,
 }: {
-  children: ReactNode;
+  dir: "back" | "forward";
   onClick: () => void;
   disabled?: boolean;
-  label: string;
+  busy?: boolean;
 }) {
   return (
     <button
-      aria-label={label}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-bone disabled:opacity-30"
+      aria-label={dir === "back" ? "Move back a stage" : "Move forward a stage"}
+      className="flex size-8 items-center justify-center rounded-md text-slate hover:bg-mist disabled:opacity-30"
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      {children}
+      {busy ? (
+        <HugeiconsIcon
+          className="animate-spin"
+          icon={Loading03Icon}
+          size={14}
+          strokeWidth={2}
+        />
+      ) : (
+        <HugeiconsIcon
+          icon={dir === "back" ? ArrowLeft01Icon : ArrowRight01Icon}
+          size={14}
+          strokeWidth={2}
+        />
+      )}
     </button>
   );
 }
@@ -324,53 +458,4 @@ function nextStatus(s: PipelineStatus): PipelineStatus | null {
     return null;
   }
   return candidate ?? null;
-}
-
-function formatPrice(monthly: number | null): string {
-  if (monthly === null) {
-    return "—";
-  }
-  return `£${monthly.toLocaleString("en-GB")}`;
-}
-
-function auditLine(card: PipelineCard): string {
-  const ago = timeAgo(card.lastMovedAt);
-  if (card.lastMovedBy) {
-    const first = firstNameOf(card.lastMovedBy.name);
-    return `${ago} · by ${first}`;
-  }
-  return ago;
-}
-
-const WHITESPACE_RE = /\s+/;
-
-function firstNameOf(name: string): string {
-  return (name || "").trim().split(WHITESPACE_RE)[0] || "them";
-}
-
-function timeAgo(date: Date): string {
-  const ms = Date.now() - new Date(date).getTime();
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 1) {
-    return "just now";
-  }
-  if (mins < 60) {
-    return `${mins}m ago`;
-  }
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  if (days === 1) {
-    return "yesterday";
-  }
-  if (days < 7) {
-    return `${days} days ago`;
-  }
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) {
-    return `${weeks}w ago`;
-  }
-  return new Date(date).toLocaleDateString("en-GB");
 }

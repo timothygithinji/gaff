@@ -1,43 +1,44 @@
 /**
- * Desktop Review — three-column workspace shown above the `md` breakpoint.
- * Mirrors the `Desktop · Review` artboard exactly:
+ * Desktop Review — three-column workspace shown above the `lg` breakpoint.
+ * Pixel-matched to the Paper "Review · Laptop" artboard (2HG-0):
  *
- *   - LEFT  : "Up next" queue with mini thumbnails (NOW + 5 upcoming).
- *   - CENTER: Hero card — photo with overlays, big price, address, spec
- *             strip, AI floor-plan verdict chips, action row with
- *             keyboard hints (Z · S · I · L · K).
- *   - RIGHT : Partner activity feed, today's decision progress, tip.
+ *   - LEFT  : "Queue · N left" header + a stack of bordered queue cards
+ *             (60px thumbnail · title · price·outcode · spec · furnished/avail).
+ *             The current card carries a navy border.
+ *   - CENTER: Lead-listing header (eyebrow · big title · spec line) with the
+ *             price + cheapest-portal line floated right, the hero photo
+ *             (carousel + lightbox), then two cards side by side —
+ *             "Floor plan" (AI checklist) and "The numbers"
+ *             (commute · EPC).
+ *   - RIGHT : "Across portals" portal price comparison, the Keep / Veto
+ *             action stack, and a "Today" tally.
  *
- * This file is intentionally presentational — it accepts mock fixtures via
- * the optional `data` prop and falls back to a built-in sample so the
- * artboard renders out-of-the-box. Wire real data by passing a shaped
- * `DesktopReviewData` payload (queue + hero + activity + decisions).
+ * Presentation only — accepts a shaped `DesktopReviewData` payload and falls
+ * back to a built-in sample so the artboard renders out-of-the-box.
  *
- * Visual contract (locked to artboard):
- *   - Background : `bg-ground` (mineral ground tint).
- *   - Card faces : `bg-card`, `border-border`.
- *   - Accent     : `text-primary` / `bg-primary` (copper).
- *   - Tints      : `bg-bone`, plus a small set of arbitrary `#hex` values
- *                  for the warm/cool scene colors that don't live in the
- *                  semantic token set (peareace tan, soft forest green,
- *                  caution amber).
+ * Visual contract (locked to the artboard):
+ *   - Page ground   : `bg-ground` (supplied by AdminSidebar).
+ *   - Card faces     : `bg-paper`, `border-line`, 6px radius.
+ *   - Eyebrows/labels: `text-slate`, uppercase, 0.12–0.14em tracking.
+ *   - Accent         : `text-copper` ("Cheapest" tag, "!" watch-outs, the
+ *                      filled Keep heart, the "both kept" tally).
+ *   - Fixed-navy faces (blind-veto card, Keep button, the current-card
+ *     border, avatar fills) pin literal `#0e2235` / `#eef1f4` so they don't
+ *     invert in the dark scene — same rule the app shell follows.
  */
 import {
-  AiMagicIcon,
-  Alert01Icon,
-  ArrowDown01Icon,
   ArrowLeft01Icon,
-  ArrowReloadHorizontalIcon,
   ArrowRight01Icon,
+  ArrowUpRight01Icon,
+  BathtubIcon,
+  BedIcon,
   Cancel01Icon,
-  FavouriteIcon,
   InformationCircleIcon,
   Loading03Icon,
-  Tick01Icon,
+  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { Link } from "@tanstack/react-router";
 import useEmblaCarousel from "embla-carousel-react";
 import {
   type ReactNode,
@@ -48,80 +49,107 @@ import {
 } from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
 import { useIsMobile } from "../../hooks/use-mobile";
+import { sizedPhoto } from "../../lib/photo-size";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
+import { PortalLogo } from "../portal-logo";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
-import { Kbd } from "../ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 /* ---------------- Types ---------------- */
 
-type QueueItem = {
+export type DesktopReviewQueueItem = {
   id: string;
+  /** Street name, e.g. "Belsize Park Mews". */
   title: string;
-  outcode: string;
-  beds: number;
+  /** Formatted price, e.g. "£2,450". */
   price: string;
+  outcode: string;
+  beds: number | null;
+  baths: number | null;
+  /** Pre-formatted move-in chip, e.g. "Avail now" / "Avail 12 Jun"; null = unknown. */
+  availability: string | null;
+  /** Pre-formatted furnishing chip, e.g. "Furnished"; null = unknown. */
+  furnished: string | null;
   photo: string;
-  /** Indicates Partner has interacted (kept / noted) the listing. */
-  peareaceFlag?: boolean;
-  /** Compact suffix like "·3" shown to the right of the row. */
-  suffix?: string;
 };
 
-type VerdictChip = {
+export type DesktopReviewSignal = {
   label: string;
-  tone: "positive" | "caution";
+  /** `true` renders the copper "!" watch-out marker instead of a check. */
+  warn: boolean;
+};
+
+export type DesktopReviewStatCell = {
+  label: string;
+  value: string;
+  /** Small unit suffix beside the value, e.g. "min" / "·72". */
+  unit?: string;
+  /** Sub-line under the value, e.g. "vs LDN". */
+  sub?: string;
+  /**
+   * Colour the value: "good" (green) / "bad" (red/copper) / "neutral"
+   * (default navy). Drives the EPC-band highlighting.
+   */
+  tone?: "good" | "bad" | "neutral";
+};
+
+export type DesktopReviewPortalPrice = {
+  portal: string;
+  /** Single-letter avatar mark. */
+  initial: string;
+  /** Deep link to this listing on the portal; opens in a new tab. */
+  url: string;
+  /** Formatted price, e.g. "£2,450". */
+  price: string;
+  /** "+£50" delta vs cheapest, shown after the price on non-cheapest rows. */
+  delta?: string | null;
+  /** The cheapest row renders its price bold. */
+  cheapest: boolean;
+};
+
+export type DesktopReviewTodayCell = {
+  value: string;
+  label: string;
+  /** Copper-accented value (the "both kept" tally). */
+  accent?: boolean;
 };
 
 export type DesktopReviewData = {
-  /**
-   * Every active search the household has — feeds the search-pill
-   * dropdown. The "All searches" option is synthesised at render time;
-   * `selectedSearchId === null` represents it.
-   */
-  searchOptions: Array<{ id: string; name: string }>;
-  selectedSearchId: string | null;
-  reviewedToday: number;
-  keptToday: number;
-  skippedToday: number;
-  leftToday: number;
   queue: {
-    /**
-     * Every cluster still in the ranked queue, in order. The hero is
-     * pinned to whichever item's id matches `selectedClusterId`; the
-     * matching row gets the bigger thumbnail and the copper "NOW" mark.
-     */
-    items: QueueItem[];
+    items: DesktopReviewQueueItem[];
+    /** Total clusters still awaiting a swipe (drives "Queue · N left"). */
     remaining: number;
+    /** 1-based position of the current card in the queue. */
+    position: number;
     selectedClusterId: string | null;
   };
   hero: {
     photos: string[];
-    alsoOn: string;
+    /** Street name, e.g. "Belsize Park Mews". */
+    title: string;
+    /** "2 bed · 1 bath · 712 sqft · Listed 2 days ago". */
+    subtitle: string;
     price: string;
     priceUnit: string;
-    title: string;
-    subtitle: string;
-    cheapestPortal: string;
-    spec: Array<{ label: string; value: string; suffix?: string }>;
-    verdicts: VerdictChip[];
+    /** AI "what stands out" signals — highlights (✓) + watch-outs (!). */
+    signals: DesktopReviewSignal[];
+    /** The numbers cells: commute · EPC · council tax · size. */
+    stats: DesktopReviewStatCell[];
+  };
+  /** "98% match" or null when we can't score the cluster. */
+  matchPct: string | null;
+  portals: DesktopReviewPortalPrice[];
+  today: {
+    cells: DesktopReviewTodayCell[];
+    youInitial: string;
+    partnerInitial: string | null;
   };
 };
 
-/* ---------------- Component ---------------- */
-
 /**
- * Which action is currently mid-flight. Drives the per-button spinner
- * in {@link HeroActions} so the user sees feedback the moment they
- * trigger shortlist/skip/undo. `null` means nothing is pending.
+ * Which action is mid-flight. Drives the Keep / Veto spinners so the user
+ * gets feedback the moment they trigger shortlist/skip/undo.
  */
 export type DesktopReviewPendingAction = "skip" | "shortlist" | "undo" | null;
 
@@ -129,25 +157,10 @@ type Props = {
   data?: DesktopReviewData;
   onSkip?: () => void;
   onShortlist?: () => void;
-  onUndo?: () => void;
   onOpenDetail?: () => void;
-  /**
-   * Fired when the user picks a search from the header dropdown.
-   * `null` means "All searches" — wire it into the route's `searchId`
-   * URL param so the selection survives refresh.
-   */
-  onSelectSearch?: (searchId: string | null) => void;
-  /**
-   * Fired when a row in the queue rail is clicked. Wire to the route's
-   * `clusterId` URL param so the hero re-points without leaving the
-   * review screen. `null` means "back to top of queue".
-   */
+  /** Repoint the hero to a queued cluster. `null` = back to top of queue. */
   onSelectCluster?: (clusterId: string | null) => void;
-  /**
-   * Fired whenever the photo lightbox opens or closes. The page (route)
-   * uses this to disable its keep/skip/shortlist/undo hotkeys while the
-   * lightbox owns the keyboard.
-   */
+  /** Mirror lightbox open state up so the page can gate its hotkeys. */
   onLightboxOpenChange?: (open: boolean) => void;
   disabled?: boolean;
   pendingAction?: DesktopReviewPendingAction;
@@ -157,9 +170,7 @@ export function DesktopReview({
   data = DESKTOP_REVIEW_PLACEHOLDER,
   onSkip,
   onShortlist,
-  onUndo,
   onOpenDetail,
-  onSelectSearch,
   onSelectCluster,
   onLightboxOpenChange,
   disabled,
@@ -167,126 +178,30 @@ export function DesktopReview({
 }: Props) {
   return (
     <AdminSidebar mode="desktop-only">
-      <DesktopReviewHeader data={data} onSelectSearch={onSelectSearch} />
-      <div className="flex min-h-0 flex-1 gap-5 px-6 pb-8 lg:px-10">
+      <div className="flex min-h-0 w-full flex-1 gap-6 px-8 py-6">
         <QueueRail
           items={data.queue.items}
           onSelectCluster={onSelectCluster}
+          remaining={data.queue.remaining}
           selectedClusterId={data.queue.selectedClusterId}
         />
-        <HeroColumn
-          disabled={disabled}
+        <MainColumn
           hero={data.hero}
           onLightboxOpenChange={onLightboxOpenChange}
           onOpenDetail={onOpenDetail}
+        />
+        <RightRail
+          disabled={disabled}
+          matchPct={data.matchPct}
+          onOpenDetail={onOpenDetail}
           onShortlist={onShortlist}
           onSkip={onSkip}
-          onUndo={onUndo}
           pendingAction={pendingAction}
+          portals={data.portals}
+          today={data.today}
         />
       </div>
     </AdminSidebar>
-  );
-}
-
-/* ---------------- Header ---------------- */
-
-function DesktopReviewHeader({
-  data,
-  onSelectSearch,
-}: {
-  data: DesktopReviewData;
-  onSelectSearch?: (searchId: string | null) => void;
-}) {
-  const selectedSearch = data.selectedSearchId
-    ? data.searchOptions.find((s) => s.id === data.selectedSearchId)
-    : null;
-  const pillLabel = selectedSearch ? selectedSearch.name : "All searches";
-  return (
-    <header className="flex items-end justify-between gap-4 px-6 pt-9 pb-6 lg:px-10">
-      <div className="flex flex-col gap-2.5">
-        <div className="flex flex-col gap-1">
-          <Eyebrow>Your queue</Eyebrow>
-          <h1 className="font-serif text-[40px] text-foreground leading-[44px] tracking-tight">
-            Review
-          </h1>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-foreground text-xs transition-colors hover:bg-ground active:scale-[0.98]"
-                type="button"
-              />
-            }
-          >
-            <span className="font-medium">{pillLabel}</span>
-            <HugeiconsIcon
-              className="text-muted-foreground"
-              icon={ArrowDown01Icon}
-              size={10}
-              strokeWidth={2}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" sideOffset={6}>
-            <DropdownMenuItem
-              onClick={() => onSelectSearch?.(null)}
-              render={
-                <button
-                  className={cn(
-                    "w-full",
-                    data.selectedSearchId === null && "font-semibold"
-                  )}
-                  type="button"
-                />
-              }
-            >
-              All searches
-            </DropdownMenuItem>
-            {data.searchOptions.length > 0 ? <DropdownMenuSeparator /> : null}
-            {data.searchOptions.map((s) => (
-              <DropdownMenuItem
-                key={s.id}
-                onClick={() => onSelectSearch?.(s.id)}
-                render={
-                  <button
-                    className={cn(
-                      "w-full",
-                      data.selectedSearchId === s.id && "font-semibold"
-                    )}
-                    type="button"
-                  />
-                }
-              >
-                {s.name}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              render={
-                <Link className="block text-muted-foreground" to="/searches" />
-              }
-            >
-              Manage searches…
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="flex items-center gap-3.5">
-        <div className="flex flex-col items-end gap-0.5">
-          <div className="flex items-baseline gap-1.5">
-            <span className="font-serif text-[28px] text-foreground leading-none">
-              {data.leftToday}
-            </span>
-            <Eyebrow>Left today</Eyebrow>
-          </div>
-          <p className="text-muted-foreground text-xs">
-            {data.reviewedToday} reviewed · {data.keptToday} kept ·{" "}
-            {data.skippedToday} skipped
-          </p>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -294,190 +209,202 @@ function DesktopReviewHeader({
 
 function QueueRail({
   items,
+  remaining,
   selectedClusterId,
   onSelectCluster,
 }: {
-  items: QueueItem[];
+  items: DesktopReviewQueueItem[];
+  remaining: number;
   selectedClusterId: string | null;
   onSelectCluster?: (clusterId: string | null) => void;
 }) {
-  // Keep the selected row visible as ↑/↓ walk the queue: scroll it into the
-  // rail when the selection changes (and on mount). `block: "nearest"` only
-  // moves when the row is actually off-screen, so visible selections don't
-  // jump around.
+  // Keep the selected row visible as ↑/↓ walk the queue.
   const currentRowRef = useRef<HTMLLIElement>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedClusterId is the intentional re-scroll trigger — when it changes, the ref already points at the newly-selected row.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedClusterId is the intentional re-scroll trigger — when it changes the ref already points at the newly-selected row.
   useEffect(() => {
     currentRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [selectedClusterId]);
 
   return (
-    <aside className="flex min-h-0 w-56 shrink-0 flex-col xl:w-[260px]">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="flex shrink-0 items-baseline justify-between border-bone border-b px-4 py-3">
-          <Eyebrow>Up next</Eyebrow>
-        </div>
-        <ul className="flex flex-1 flex-col overflow-y-auto">
-          {items.map((item, i) => {
-            const isCurrent = item.id === selectedClusterId;
-            return (
-              <li
-                className={cn(i < items.length - 1 && "border-bone border-b")}
-                key={item.id}
-                ref={isCurrent ? currentRowRef : undefined}
-              >
-                <QueueRow
-                  isCurrent={isCurrent}
-                  item={item}
-                  onSelect={
-                    onSelectCluster ? () => onSelectCluster(item.id) : undefined
-                  }
-                />
-              </li>
-            );
-          })}
-        </ul>
+    <aside className="flex min-h-0 w-60 shrink-0 flex-col gap-3">
+      <div className="flex shrink-0 items-center pb-0.5">
+        <Eyebrow>Queue · {remaining} left</Eyebrow>
       </div>
+      {/* Independent scroll: the rail keeps its header pinned while the
+          queue itself scrolls, so a long queue never pushes the hero or
+          right rail off-screen. */}
+      <ul className="-mr-2 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-2">
+        {items.map((item) => {
+          const isCurrent = item.id === selectedClusterId;
+          return (
+            <li key={item.id} ref={isCurrent ? currentRowRef : undefined}>
+              <QueueCard
+                isCurrent={isCurrent}
+                item={item}
+                onSelect={
+                  onSelectCluster ? () => onSelectCluster(item.id) : undefined
+                }
+              />
+            </li>
+          );
+        })}
+      </ul>
     </aside>
   );
 }
 
-function QueueRow({
+function QueueCard({
   item,
-  isCurrent = false,
+  isCurrent,
   onSelect,
 }: {
-  item: QueueItem;
-  isCurrent?: boolean;
+  item: DesktopReviewQueueItem;
+  isCurrent: boolean;
   onSelect?: () => void;
 }) {
   return (
-    // biome-ignore lint/nursery/useAriaPropsSupportedByRole: aria-current is a global ARIA attribute and is valid on buttons used as queue items.
+    // biome-ignore lint/nursery/useAriaPropsSupportedByRole: aria-current is a global ARIA attribute, valid on buttons used as queue items.
     <button
       aria-current={isCurrent ? "true" : undefined}
       className={cn(
-        "flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-ground",
-        isCurrent && "bg-ground"
+        "flex w-full items-stretch gap-3 rounded-[6px] border bg-paper p-2.5 text-left transition-colors",
+        isCurrent
+          ? "border-[#0e2235]"
+          : "border-line hover:border-steel/60 active:scale-[0.99]"
       )}
       onClick={onSelect}
       type="button"
     >
-      <span
-        aria-hidden="true"
-        className={cn("h-9 w-1 shrink-0 rounded-sm", isCurrent && "bg-primary")}
-      />
       {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. */}
       <img
         alt=""
-        className={cn(
-          "shrink-0 rounded-lg object-cover",
-          isCurrent ? "h-13 w-13" : "h-11 w-11"
-        )}
-        src={item.photo}
+        className="size-[60px] shrink-0 rounded-[4px] object-cover"
+        src={sizedPhoto(item.photo, 64)}
       />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p
-          className={cn(
-            "truncate text-left font-serif text-foreground",
-            isCurrent ? "text-sm" : "text-[13px]"
-          )}
-        >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="truncate font-semibold text-[12px] text-navy leading-4">
           {item.title}
         </p>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground">
-            {item.outcode} · {item.beds} bed
-          </span>
-          <span className="font-semibold text-[11px] text-foreground">
-            {item.price}
-          </span>
-        </div>
+        <p className="text-[11px] text-slate leading-[14px]">
+          {item.price} · {item.outcode}
+        </p>
+        <QueueSpec baths={item.baths} beds={item.beds} />
+        <QueueMeta availability={item.availability} furnished={item.furnished} />
       </div>
-      <QueueRowTrailing item={item} isCurrent={isCurrent} />
     </button>
   );
 }
 
-function QueueRowTrailing({
-  item,
-  isCurrent,
+/** Beds + baths row with icons (skips a value we don't have). */
+function QueueSpec({
+  beds,
+  baths,
 }: {
-  item: QueueItem;
-  isCurrent: boolean;
+  beds: number | null;
+  baths: number | null;
 }) {
-  if (isCurrent) {
-    return (
-      <span className="font-semibold text-[10px] text-primary uppercase tracking-wider">
-        Now
-      </span>
-    );
+  if (beds == null && baths == null) {
+    return null;
   }
-  if (item.peareaceFlag) {
-    return (
-      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-bone font-bold text-[8px] text-primary">
-        P
-      </span>
-    );
-  }
-  if (item.suffix) {
-    return (
-      <span className="font-semibold text-[10px] text-muted-foreground">
-        {item.suffix}
-      </span>
-    );
-  }
-  return null;
+  return (
+    <span className="flex items-center gap-2.5 pt-0.5 text-[10px] text-slate leading-3">
+      {beds != null ? (
+        <span className="flex items-center gap-1">
+          <HugeiconsIcon icon={BedIcon} size={11} strokeWidth={1.8} />
+          {beds}
+        </span>
+      ) : null}
+      {baths != null ? (
+        <span className="flex items-center gap-1">
+          <HugeiconsIcon icon={BathtubIcon} size={11} strokeWidth={1.8} />
+          {baths}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
-/* ---------------- Hero column (center) ---------------- */
+/** Furnishing + move-in chips; renders nothing when neither is known. */
+function QueueMeta({
+  furnished,
+  availability,
+}: {
+  furnished: string | null;
+  availability: string | null;
+}) {
+  const parts = [furnished, availability].filter(
+    (p): p is string => p != null
+  );
+  if (parts.length === 0) {
+    return null;
+  }
+  return (
+    <p className="truncate pt-0.5 text-[10px] text-steel leading-3">
+      {parts.join(" · ")}
+    </p>
+  );
+}
 
-function HeroColumn({
+/* ---------------- Main column (center) ---------------- */
+
+function MainColumn({
   hero,
-  onSkip,
-  onShortlist,
-  onUndo,
   onOpenDetail,
   onLightboxOpenChange,
-  disabled,
-  pendingAction,
 }: {
   hero: DesktopReviewData["hero"];
-  onSkip?: () => void;
-  onShortlist?: () => void;
-  onUndo?: () => void;
   onOpenDetail?: () => void;
   onLightboxOpenChange?: (open: boolean) => void;
-  disabled?: boolean;
-  pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3.5">
-      <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card">
-        <HeroPhoto
-          onLightboxOpenChange={onLightboxOpenChange}
-          photos={hero.photos}
-        />
-        <div className="flex shrink-0 flex-col gap-4 px-7 pt-6">
-          <HeroPriceRow
-            cheapestPortal={hero.cheapestPortal}
-            price={hero.price}
-            priceUnit={hero.priceUnit}
-            subtitle={hero.subtitle}
-            title={hero.title}
-          />
-          <HeroSpecRow spec={hero.spec} />
-          <HeroVerdicts verdicts={hero.verdicts} />
-        </div>
-        <HeroActions
-          disabled={disabled}
-          onOpenDetail={onOpenDetail}
-          onShortlist={onShortlist}
-          onSkip={onSkip}
-          onUndo={onUndo}
-          pendingAction={pendingAction}
-        />
-      </article>
+    <section className="-mr-2 flex min-h-0 min-w-0 flex-1 flex-col gap-[18px] overflow-y-auto pr-2">
+      <LeadHeader hero={hero} onOpenDetail={onOpenDetail} />
+      <HeroPhoto
+        onLightboxOpenChange={onLightboxOpenChange}
+        photos={hero.photos}
+      />
+      <div className="flex items-stretch gap-[18px]">
+        <WhatStandsOutCard signals={hero.signals} />
+        <NumbersCard stats={hero.stats} />
+      </div>
     </section>
+  );
+}
+
+function LeadHeader({
+  hero,
+  onOpenDetail,
+}: {
+  hero: DesktopReviewData["hero"];
+  onOpenDetail?: () => void;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-6">
+      <div className="flex min-w-0 flex-col gap-1">
+        <button
+          className="max-w-full truncate text-left font-semibold text-[32px] text-navy leading-[32px] tracking-[-0.025em] transition-opacity hover:opacity-80"
+          disabled={!onOpenDetail}
+          onClick={onOpenDetail}
+          title="View full details"
+          type="button"
+        >
+          {hero.title}
+        </button>
+        <p className="pt-0.5 text-[13px] text-slate leading-4">
+          {hero.subtitle}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex items-baseline gap-1">
+          <span className="font-light text-[38px] text-navy leading-[38px] tracking-[-0.02em]">
+            {hero.price}
+          </span>
+          <span className="text-[13px] text-slate leading-4">
+            {hero.priceUnit}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -496,13 +423,9 @@ function HeroPhoto({
     duration: 28,
     watchDrag: canPaginate,
   });
-  // Keep our progress + counter overlays in sync with whatever slide
-  // Embla settles on (drag, click, keyboard, programmatic).
   const index = useEmblaSelectedIndex(emblaApi);
 
-  // New card → snap back to the first photo without animation. `photos`
-  // is the trigger: when a new card arrives, the array identity changes
-  // and we re-snap to slide 0. It isn't referenced inside the body.
+  // New card → snap back to the first photo without animation.
   // biome-ignore lint/correctness/useExhaustiveDependencies: photos is the intentional re-run trigger.
   useEffect(() => {
     if (!emblaApi) {
@@ -520,8 +443,6 @@ function HeroPhoto({
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const isMobile = useIsMobile();
-  // ←/→ cycle the hero photos when the lightbox isn't already steering the
-  // arrow keys. `canPaginate` covers the single-photo edge case.
   const heroKeysEnabled = !lightboxOpen && !isMobile && canPaginate;
   useHotkey("ArrowLeft", scrollPrev, {
     enabled: heroKeysEnabled,
@@ -532,35 +453,25 @@ function HeroPhoto({
     meta: { category: "Review", description: "Next photo" },
   });
   const openLightbox = useCallback(() => setLightboxOpen(true), []);
-  // F enlarges the current hero photo into the lightbox. Unlike the ←/→
-  // hero keys this doesn't gate on `canPaginate` — a single photo is still
-  // worth viewing fullscreen — only on there being a photo at all.
   useHotkey("F", openLightbox, {
     enabled: !lightboxOpen && !isMobile && photoCount > 0,
     meta: { category: "Review", description: "View photo fullscreen" },
   });
 
-  // Mirror the lightbox state up so the route can disable its page-level
-  // keep/skip/shortlist/undo hotkeys while the lightbox is steering the
-  // keyboard (otherwise ArrowRight would advance the photo AND keep the card).
   useEffect(() => {
     onLightboxOpenChange?.(lightboxOpen);
   }, [lightboxOpen, onLightboxOpenChange]);
 
   if (photoCount === 0) {
     return (
-      <div className="relative flex min-h-0 w-full flex-1 items-center justify-center bg-muted">
-        <span className="text-muted-foreground text-xs">No photos</span>
+      <div className="flex aspect-[4/3] w-full items-center justify-center rounded-[6px] bg-[#c9d3dc]">
+        <span className="text-[12px] text-slate">No photos</span>
       </div>
     );
   }
 
   return (
-    // `min-h-0` (not a fixed floor) lets the photo absorb vertical
-    // overflow: when the verdict chips wrap to a second row the content
-    // block grows, and the photo yields space so the shrink-0 action
-    // footer below is never clipped by the card's overflow-hidden.
-    <div className="group relative min-h-0 w-full flex-1 select-none">
+    <div className="group relative aspect-[4/3] w-full select-none overflow-hidden rounded-[6px] bg-[#c9d3dc]">
       <div className="h-full w-full overflow-hidden" ref={emblaRef}>
         <div className="flex h-full touch-pan-y">
           {photos.map((src, i) => (
@@ -576,21 +487,18 @@ function HeroPhoto({
                 alt={`Listing view ${i + 1}`}
                 className="h-full w-full object-cover"
                 draggable={false}
-                src={src}
+                src={sizedPhoto(src, 900)}
               />
             </button>
           ))}
         </div>
       </div>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/45 to-transparent"
-      />
+
       {canPaginate ? (
         <>
           <button
             aria-label="Previous photo"
-            className="-translate-y-1/2 absolute top-1/2 left-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            className="-translate-y-1/2 absolute top-1/2 left-3 z-10 flex size-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
             onClick={scrollPrev}
             type="button"
           >
@@ -598,7 +506,7 @@ function HeroPhoto({
           </button>
           <button
             aria-label="Next photo"
-            className="-translate-y-1/2 absolute top-1/2 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+            className="-translate-y-1/2 absolute top-1/2 right-3 z-10 flex size-9 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/75 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
             onClick={scrollNext}
             type="button"
           >
@@ -606,25 +514,22 @@ function HeroPhoto({
           </button>
         </>
       ) : null}
+
       <PhotoLightbox
         onOpenChange={setLightboxOpen}
         open={lightboxOpen}
         photos={photos}
         startIndex={index}
       />
-      <span className="pointer-events-none absolute top-3.5 right-3.5 rounded-full bg-black/55 px-2.5 py-1 font-semibold text-[11px] text-white">
-        {index + 1} / {photoCount}
-      </span>
+
       {canPaginate ? (
-        <div className="absolute right-0 bottom-3.5 left-0 flex items-center justify-center gap-1.5">
+        <div className="absolute bottom-3.5 left-3.5 flex items-center gap-1.5">
           {photos.map((src, i) => (
             <button
               aria-label={`Go to photo ${i + 1}`}
               className={cn(
-                "h-1.5 rounded-full transition-all",
-                i === index
-                  ? "w-5 bg-white"
-                  : "w-1.5 bg-white/45 hover:bg-white/70"
+                "size-1.5 rounded-full transition-colors",
+                i === index ? "bg-white" : "bg-white/40 hover:bg-white/70"
               )}
               key={`dot-${src}-${i}`}
               onClick={() => scrollTo(i)}
@@ -633,6 +538,10 @@ function HeroPhoto({
           ))}
         </div>
       ) : null}
+
+      <span className="pointer-events-none absolute right-3.5 bottom-3.5 bg-[rgba(255,255,255,0.92)] px-2.5 py-[5px] text-[#0e2235] text-[11px] tracking-[0.08em]">
+        {index + 1} / {photoCount}
+      </span>
     </div>
   );
 }
@@ -659,27 +568,14 @@ function PhotoLightbox({
   });
   const index = useEmblaSelectedIndex(emblaApi, startIndex);
 
-  // Re-sync the carousel position when the lightbox opens to whatever
-  // slide the small carousel is currently showing. Embla's `startIndex`
-  // only applies on first mount.
   useEffect(() => {
     if (open && emblaApi) {
       emblaApi.scrollTo(startIndex, true);
     }
   }, [open, emblaApi, startIndex]);
 
-  // ArrowLeft / ArrowRight scroll the embla carousel while the lightbox is
-  // open. Mutually exclusive with HeroPhoto's same-key registrations (which
-  // gate on `!lightboxOpen`), so only one handler fires at a time. No
-  // `description` here — the help dialog's "Previous/Next photo" entry
-  // already covers both contexts; listing them twice would just confuse.
   useHotkey("ArrowLeft", () => emblaApi?.scrollPrev(), { enabled: open });
   useHotkey("ArrowRight", () => emblaApi?.scrollNext(), { enabled: open });
-  // base-ui's Dialog already closes on Esc; we register it explicitly too so
-  // it shows in the shortcuts help dialog (which only lists hotkeys carrying
-  // a `description`). Closing twice is idempotent, so racing base-ui's own
-  // handler is harmless. `enabled: false` keeps the registration visible in
-  // help even while the lightbox is shut — only the firing is suppressed.
   useHotkey("Escape", () => onOpenChange(false), {
     enabled: open,
     meta: { category: "Review", description: "Close fullscreen" },
@@ -715,19 +611,15 @@ function PhotoLightbox({
             <>
               <button
                 aria-label="Previous photo"
-                className="-translate-y-1/2 absolute top-1/2 left-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                className="-translate-y-1/2 absolute top-1/2 left-4 flex size-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
                 onClick={() => emblaApi?.scrollPrev()}
                 type="button"
               >
-                <HugeiconsIcon
-                  icon={ArrowLeft01Icon}
-                  size={20}
-                  strokeWidth={2}
-                />
+                <HugeiconsIcon icon={ArrowLeft01Icon} size={20} strokeWidth={2} />
               </button>
               <button
                 aria-label="Next photo"
-                className="-translate-y-1/2 absolute top-1/2 right-4 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+                className="-translate-y-1/2 absolute top-1/2 right-4 flex size-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
                 onClick={() => emblaApi?.scrollNext()}
                 type="button"
               >
@@ -744,7 +636,7 @@ function PhotoLightbox({
           </span>
           <DialogClose
             aria-label="Close"
-            className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
+            className="absolute top-4 right-4 flex size-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20"
           >
             <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={2} />
           </DialogClose>
@@ -754,455 +646,452 @@ function PhotoLightbox({
   );
 }
 
-function HeroPriceRow({
-  price,
-  priceUnit,
-  title,
-  subtitle,
-  cheapestPortal,
-}: {
-  price: string;
-  priceUnit: string;
-  title: string;
-  subtitle: string;
-  cheapestPortal: string;
-}) {
-  return (
-    <div className="flex items-end justify-between">
-      <div className="flex flex-col gap-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="font-serif text-[40px] text-foreground leading-none tracking-tight">
-            {price}
-          </span>
-          <span className="font-medium text-muted-foreground text-sm">
-            {priceUnit}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-serif text-[22px] text-foreground">
-            {title}
-          </span>
-          <span className="text-muted-foreground text-xs">· {subtitle}</span>
-        </div>
-      </div>
-      <div className="flex flex-col items-end gap-0.5">
-        <Eyebrow>Cheapest on</Eyebrow>
-        <span className="font-serif text-[18px] text-primary">
-          {cheapestPortal}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function HeroSpecRow({
-  spec,
-}: {
-  spec: DesktopReviewData["hero"]["spec"];
-}) {
-  return (
-    <div className="flex items-stretch border-bone border-y py-3.5">
-      {spec.map((cell, i) => (
-        <div className="flex flex-1 items-stretch" key={cell.label}>
-          <div className={cn("flex flex-1 flex-col gap-1", i > 0 && "pl-4")}>
-            <Eyebrow>{cell.label}</Eyebrow>
-            <div className="flex items-baseline gap-1">
-              <span className="font-serif text-[22px] text-foreground">
-                {cell.value}
-              </span>
-              {cell.suffix ? (
-                <span className="text-[11px] text-muted-foreground">
-                  {cell.suffix}
-                </span>
-              ) : null}
-            </div>
-          </div>
-          {i < spec.length - 1 ? (
-            <span aria-hidden="true" className="w-px bg-bone" />
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Verdict chips and the overflow "+N" pill share one base so the pill
-// measures and wraps exactly like a real chip. `leading-5` + `py-1.5` pin
-// every chip to 32px tall and `whitespace-nowrap` keeps each to a single
-// line, so the two-row packing maths below stay honest.
-const CHIP_BASE =
-  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 font-medium text-[13px] leading-5";
-
-// Two 32px chip rows plus one 8px (`gap-2`) row gap. The chip area is
-// pinned to this height so the card never reflows as you move between
-// listings, and so a long verdict set can't steal vertical space from the
-// photo above — anything past two rows collapses into the "+N" pill.
-const VERDICTS_TWO_ROW_PX = 72;
-const CHIP_GAP_PX = 8;
-
-/** Rows a run of chip widths needs when flex-wrapped at `containerWidth`. */
-function rowsFor(widths: number[], containerWidth: number): number {
-  let rows = 1;
-  let rowWidth = -1;
-  for (const w of widths) {
-    if (rowWidth < 0) {
-      rowWidth = w;
-    } else if (rowWidth + CHIP_GAP_PX + w <= containerWidth + 0.5) {
-      rowWidth += CHIP_GAP_PX + w;
-    } else {
-      rows += 1;
-      rowWidth = w;
-    }
-  }
-  return rows;
-}
+/** Six slots (2 columns × 3 rows) — fixes the card height so it doesn't jump
+ *  with the signal count. */
+const WHAT_STANDS_OUT_SLOTS = 6;
 
 /**
- * How many leading chips fit in two rows. If every chip fits we keep them
- * all (caller renders no pill); otherwise we pack `chips + pill` so the
- * trailing row leaves room for the "+N" pill, and return the largest such
- * prefix.
+ * A single signal label: truncated to one line so the 2-up grid keeps its
+ * column rhythm, with a tooltip revealing the full text only when it actually
+ * overflows (measured against its rendered width, re-checked on resize).
  */
-function fitTwoRows(
-  chipWidths: number[],
-  pillWidth: number,
-  containerWidth: number
-): number {
-  if (rowsFor(chipWidths, containerWidth) <= 2) {
-    return chipWidths.length;
-  }
-  for (let k = chipWidths.length - 1; k >= 0; k--) {
-    if (rowsFor([...chipWidths.slice(0, k), pillWidth], containerWidth) <= 2) {
-      return k;
-    }
-  }
-  return 0;
-}
-
-function HeroVerdicts({ verdicts }: { verdicts: VerdictChip[] }) {
-  const measureRef = useRef<HTMLDivElement>(null);
-  // `desktopData` rebuilds the verdicts array on every parent render, so its
-  // identity is useless as a change signal — key off the labels instead.
-  const verdictsKey = verdicts.map((v) => v.label).join("");
-  // Start by "showing" them all: SSR and the first client render are then
-  // identical (the fixed-height box simply clips any overflow), so there's
-  // no hydration mismatch. After mount we measure real chip widths and fold
-  // whatever spills past two rows into the pill.
-  const [visibleCount, setVisibleCount] = useState(verdicts.length);
-  // Card changed → snap back to show-all (clipped) for this render so we
-  // never flash a stale "+N" from the previous listing; the effect below
-  // re-measures and folds the overflow back in. Safe against the unstable
-  // array identity because `verdictsKey` only moves on real content change.
-  const [trackedKey, setTrackedKey] = useState(verdictsKey);
-  if (trackedKey !== verdictsKey) {
-    setTrackedKey(verdictsKey);
-    setVisibleCount(verdicts.length);
-  }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: verdictsKey is the intentional re-measure trigger — it changes only when the verdict set does, which is exactly when we must re-pack.
+function SignalLabel({ label }: { label: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
   useEffect(() => {
-    const el = measureRef.current;
+    const el = ref.current;
     if (!el) {
       return;
     }
-    const measure = () => {
-      const containerWidth = el.clientWidth;
-      if (containerWidth === 0) {
-        return;
-      }
-      // Measuring layout: the chips followed by one trailing pill.
-      const kids = Array.from(el.children) as HTMLElement[];
-      const pillWidth = kids.at(-1)?.offsetWidth ?? 0;
-      const chipWidths = kids.slice(0, -1).map((k) => k.offsetWidth);
-      setVisibleCount(fitTwoRows(chipWidths, pillWidth, containerWidth));
-    };
+    const measure = () => setOverflowing(el.scrollWidth > el.clientWidth + 1);
     measure();
-    // Re-pack when the column resizes (sidebar toggle, window resize).
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [verdictsKey]);
-
-  // Hide the whole section (header included) when the listing has no
-  // verdicts — either it isn't AI-enriched yet, or the model grounded
-  // nothing. An empty "What stands out" heading reads as broken.
-  if (verdicts.length === 0) {
-    return null;
-  }
-
-  const visible = verdicts.slice(0, visibleCount);
-  const hidden = verdicts.slice(visibleCount);
-
-  return (
-    <section className="flex flex-col gap-2.5">
-      <div className="flex items-center gap-1.5">
-        <HugeiconsIcon
-          className="text-primary"
-          icon={AiMagicIcon}
-          size={12}
-          strokeWidth={2}
-        />
-        <Eyebrow tone="primary">What stands out</Eyebrow>
-      </div>
-      <div
-        className="relative overflow-hidden"
-        style={{ height: VERDICTS_TWO_ROW_PX }}
-      >
-        {/* Measuring layer: all chips + a worst-case pill, laid out at the
-            real width but invisible and inert, so packing reads true widths
-            independent of what's currently shown. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none invisible absolute inset-0 flex flex-wrap gap-2"
-          ref={measureRef}
-        >
-          {verdicts.map((v) => (
-            <Verdict key={v.label} tone={v.tone}>
-              {v.label}
-            </Verdict>
-          ))}
-          <span className={cn(CHIP_BASE, "bg-bone text-muted-foreground")}>
-            +{verdicts.length}
-          </span>
-        </div>
-        {/* Display layer. */}
-        <div className="flex flex-wrap gap-2">
-          {visible.map((v) => (
-            <Verdict key={v.label} tone={v.tone}>
-              {v.label}
-            </Verdict>
-          ))}
-          {hidden.length > 0 ? <VerdictOverflow hidden={hidden} /> : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function VerdictOverflow({ hidden }: { hidden: VerdictChip[] }) {
+  }, []);
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
-            aria-label={`${hidden.length} more`}
-            className={cn(
-              CHIP_BASE,
-              "cursor-default bg-bone text-muted-foreground transition-colors hover:bg-bone/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            )}
-            type="button"
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] text-navy leading-4"
+            ref={ref}
           >
-            {`+${hidden.length}`}
-          </button>
+            {label}
+          </span>
         }
       />
-      <TooltipContent align="start" className="flex-col items-start gap-1.5">
-        {hidden.map((v) => (
-          <span className="flex items-center gap-1.5" key={v.label}>
-            <span
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                v.tone === "positive" ? "bg-[#7FAE63]" : "bg-[#D08A57]"
-              )}
-            />
-            {v.label}
-          </span>
-        ))}
-      </TooltipContent>
+      {overflowing ? <TooltipContent>{label}</TooltipContent> : null}
     </Tooltip>
   );
 }
 
-function Verdict({
-  tone,
-  children,
-}: {
-  tone: VerdictChip["tone"];
-  children: ReactNode;
-}) {
-  const icon = tone === "positive" ? Tick01Icon : Alert01Icon;
-  // Tints derived from each tone's accent colour so the pill keeps its
-  // hue distinction in light mode AND stays legible in dark mode — the
-  // 15% alpha means the same class reads as a subtle warm wash over
-  // either page background, and `text-foreground` always inverts.
-  const palette =
-    tone === "positive"
-      ? "bg-[#5D7A4A]/15 text-foreground"
-      : "bg-[#B26B3F]/15 text-foreground";
-  const iconColor = tone === "positive" ? "text-[#5D7A4A]" : "text-[#B26B3F]";
+function WhatStandsOutCard({ signals }: { signals: DesktopReviewSignal[] }) {
+  const items = signals.slice(0, WHAT_STANDS_OUT_SLOTS);
   return (
-    <span className={cn(CHIP_BASE, palette)}>
-      <HugeiconsIcon
-        className={iconColor}
-        icon={icon}
-        size={12}
-        strokeWidth={2.2}
-      />
-      {children}
-    </span>
+    <article className="flex flex-[1.3] flex-col rounded-[6px] border border-line bg-paper p-[18px]">
+      <div className="pb-3">
+        <Eyebrow>What stands out</Eyebrow>
+      </div>
+      {items.length > 0 ? (
+        // Always render all six slots (empty ones reserve their row) so the
+        // card holds a constant height regardless of how many signals exist.
+        <ul className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+          {Array.from({ length: WHAT_STANDS_OUT_SLOTS }).map((_, i) => {
+            const item = items[i];
+            if (!item) {
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length filler slots have no stable id.
+              return <li className="h-5" key={`slot-${i}`} />;
+            }
+            return (
+              <li
+                className="flex h-5 min-w-0 items-center gap-2"
+                key={item.label}
+              >
+                {item.warn ? (
+                  <span
+                    aria-hidden="true"
+                    className="flex size-3.5 shrink-0 items-center justify-center font-bold text-[13px] text-copper leading-none"
+                  >
+                    !
+                  </span>
+                ) : (
+                  <HugeiconsIcon
+                    className="shrink-0 text-navy"
+                    icon={Tick02Icon}
+                    size={14}
+                    strokeWidth={2.4}
+                  />
+                )}
+                <SignalLabel label={item.label} />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-[12px] text-slate leading-4">
+          No AI read yet — highlights appear once the listing is enriched.
+        </p>
+      )}
+    </article>
   );
 }
 
-function HeroActions({
+/** Value colour for a stat cell's tone. Neutral keeps the default navy. */
+function statToneClass(tone: DesktopReviewStatCell["tone"]): string {
+  if (tone === "good") {
+    return "text-success";
+  }
+  if (tone === "bad") {
+    return "text-destructive";
+  }
+  return "text-navy";
+}
+
+function NumbersCard({ stats }: { stats: DesktopReviewStatCell[] }) {
+  return (
+    <article className="flex flex-1 flex-col rounded-[6px] border border-line bg-paper p-[18px]">
+      <div className="pb-3">
+        <Eyebrow>The numbers</Eyebrow>
+      </div>
+      {/* 3-up grid that wraps to a second row as cells grow (transport ·
+          EPC · council tax · size). Left hairline on every cell
+          that isn't first in its row keeps the column rhythm. */}
+      <div className="grid flex-1 grid-cols-3 gap-x-3 gap-y-4">
+        {stats.map((cell, i) => (
+          <div
+            className={cn(
+              "flex flex-col gap-1",
+              i % 3 !== 0 && "border-mist border-l pl-3"
+            )}
+            key={cell.label}
+          >
+            <span className='font-semibold text-[9px] text-slate uppercase leading-3 tracking-[0.12em]'>
+              {cell.label}
+            </span>
+            <div className="flex items-baseline gap-[3px]">
+              <span
+                className={cn(
+                  "font-medium text-[20px] leading-6",
+                  statToneClass(cell.tone)
+                )}
+              >
+                {cell.value}
+              </span>
+              {cell.unit ? (
+                <span className="text-[10px] text-slate leading-3">
+                  {cell.unit}
+                </span>
+              ) : null}
+            </div>
+            {cell.sub ? (
+              <span className="text-[10px] text-slate leading-3">
+                {cell.sub}
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+/* ---------------- Right rail ---------------- */
+
+function RightRail({
+  matchPct,
+  portals,
+  today,
   onSkip,
   onShortlist,
-  onUndo,
   onOpenDetail,
   disabled,
   pendingAction,
 }: {
+  matchPct: string | null;
+  portals: DesktopReviewPortalPrice[];
+  today: DesktopReviewData["today"];
   onSkip?: () => void;
   onShortlist?: () => void;
-  onUndo?: () => void;
   onOpenDetail?: () => void;
   disabled?: boolean;
   pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <div className="mt-4 flex shrink-0 flex-col gap-2.5 border-bone border-t px-7 pt-3 pb-6">
-      <HeroActionHints />
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <ActionButton
-            disabled={disabled}
-            hint="Z"
-            icon={ArrowReloadHorizontalIcon}
-            label="Undo"
-            loading={pendingAction === "undo"}
-            onClick={onUndo}
-          />
-          <ActionButton
-            disabled={disabled}
-            hint="S"
-            icon={Cancel01Icon}
-            label="Skip"
-            loading={pendingAction === "skip"}
-            onClick={onSkip}
-          />
-          <ActionButton
-            disabled={disabled}
-            hint="I"
-            icon={InformationCircleIcon}
-            label="Details"
-            onClick={onOpenDetail}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <ActionButton
-            disabled={disabled}
-            hint="L"
-            icon={FavouriteIcon}
-            label="Shortlist"
-            loading={pendingAction === "shortlist"}
-            onClick={onShortlist}
-            variant="primary"
-          />
-        </div>
-      </div>
-    </div>
+    <aside className="-mr-2 flex min-h-0 w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pr-2">
+      <TodayPanel today={today} />
+      <PortalsPanel matchPct={matchPct} portals={portals} />
+      <ActionStack
+        disabled={disabled}
+        onOpenDetail={onOpenDetail}
+        onShortlist={onShortlist}
+        onSkip={onSkip}
+        pendingAction={pendingAction}
+      />
+    </aside>
   );
 }
 
-/**
- * Thin strip above the action button row that surfaces the keyboard
- * shortcuts that *don't* have buttons of their own — arrow keys for
- * photos / queue navigation and `?` for the help dialog. Kept subtle
- * so it reads as a tip, not a control.
- */
-function HeroActionHints() {
+function PortalsPanel({
+  matchPct,
+  portals,
+}: {
+  matchPct: string | null;
+  portals: DesktopReviewPortalPrice[];
+}) {
+  if (portals.length === 0) {
+    return null;
+  }
   return (
-    <div className="flex items-center justify-between gap-3 text-muted-foreground text-xs">
-      <div className="flex items-center gap-4">
-        <span className="inline-flex items-center gap-1.5">
-          <Kbd>←</Kbd>
-          <Kbd>→</Kbd>
-          <span>photos</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Kbd>↑</Kbd>
-          <Kbd>↓</Kbd>
-          <span>queue</span>
-        </span>
+    <section className="flex flex-col gap-2.5 rounded-[6px] border border-line bg-paper p-[18px]">
+      <div className="flex items-center justify-between">
+        <Eyebrow>Across portals</Eyebrow>
+        {matchPct ? (
+          <span className="font-semibold text-[11px] text-navy leading-[14px]">
+            {matchPct} match
+          </span>
+        ) : null}
       </div>
-      <span className="inline-flex items-center gap-1.5">
-        <Kbd>?</Kbd>
-        <span>shortcuts</span>
-      </span>
+      <ul className="flex flex-col">
+        {portals.map((p) => (
+          <li key={p.portal}>
+            <PortalRow portal={p} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function PortalRow({ portal }: { portal: DesktopReviewPortalPrice }) {
+  return (
+    <a
+      className="-mx-2 group flex flex-col gap-1 rounded-[4px] px-2 py-2 transition-colors hover:bg-mist focus-visible:bg-mist focus-visible:outline-none"
+      href={portal.url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <div className="flex items-center gap-2.5">
+        <PortalLogo portal={portal.portal} />
+        <span className="min-w-0 flex-1 truncate text-[13px] text-navy leading-4 group-hover:underline">
+          {portal.portal}
+        </span>
+        <HugeiconsIcon
+          className="shrink-0 text-steel opacity-0 transition-opacity group-hover:opacity-100"
+          icon={ArrowUpRight01Icon}
+          size={13}
+          strokeWidth={1.8}
+        />
+      </div>
+      <div className="flex items-baseline gap-1.5 pl-[34px]">
+        {portal.cheapest ? (
+          <>
+            <span className="font-semibold text-[13px] text-navy leading-4">
+              {portal.price}
+            </span>
+            <span className="font-bold text-[9px] text-copper uppercase tracking-[0.08em]">
+              Cheapest
+            </span>
+          </>
+        ) : (
+          <span className="text-[13px] text-slate leading-4">
+            {portal.price}
+            {portal.delta ? ` ${portal.delta}` : null}
+          </span>
+        )}
+      </div>
+    </a>
+  );
+}
+
+function ActionStack({
+  onShortlist,
+  onSkip,
+  onOpenDetail,
+  disabled,
+  pendingAction,
+}: {
+  onShortlist?: () => void;
+  onSkip?: () => void;
+  onOpenDetail?: () => void;
+  disabled?: boolean;
+  pendingAction?: DesktopReviewPendingAction;
+}) {
+  const keepBusy = pendingAction === "shortlist";
+  const vetoBusy = pendingAction === "skip";
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        aria-busy={keepBusy || undefined}
+        className={cn(
+          "flex items-center justify-center gap-2.5 rounded-[6px] bg-[#0e2235] p-4 font-medium text-[#eef1f4] text-[13px] transition-opacity",
+          (!onShortlist || disabled) && "cursor-not-allowed opacity-40",
+          onShortlist && !disabled && "hover:opacity-90 active:scale-[0.99]"
+        )}
+        disabled={!onShortlist || disabled}
+        onClick={onShortlist}
+        type="button"
+      >
+        {keepBusy ? (
+          <HugeiconsIcon
+            className="animate-spin text-copper"
+            icon={Loading03Icon}
+            size={16}
+            strokeWidth={2}
+          />
+        ) : (
+          <HeartGlyph />
+        )}
+        <span>Keep</span>
+        <ActionKbd onDark>K</ActionKbd>
+      </button>
+      <div className="flex gap-2">
+        <OutlineAction
+          hint="X"
+          icon={Cancel01Icon}
+          label="Veto"
+          loading={vetoBusy}
+          onClick={onSkip}
+          disabled={disabled}
+        />
+        <OutlineAction
+          hint="I"
+          icon={InformationCircleIcon}
+          label="Details"
+          onClick={onOpenDetail}
+        />
+      </div>
     </div>
   );
 }
 
-function ActionButton({
+/** Outline secondary action (Veto / Details) — shares one shell so the
+ *  two sit as an even two-up row under the navy Keep button. */
+function OutlineAction({
   icon,
   label,
   hint,
-  variant = "ghost",
   onClick,
   disabled,
   loading = false,
 }: {
-  icon: typeof FavouriteIcon;
+  icon: typeof Cancel01Icon;
   label: string;
   hint: string;
-  variant?: "ghost" | "primary";
   onClick?: () => void;
   disabled?: boolean;
   loading?: boolean;
 }) {
+  const inert = !onClick || disabled;
   return (
     <button
       aria-busy={loading || undefined}
-      aria-label={label}
       className={cn(
-        "inline-flex h-10 items-center gap-2 rounded-full pr-2 pl-3.5 font-medium text-sm transition-opacity",
-        variant === "primary"
-          ? "bg-primary text-primary-foreground shadow-[0_6px_18px_rgba(155,90,62,0.28)]"
-          : "border border-border bg-card text-foreground",
-        (!onClick || disabled) && "cursor-not-allowed opacity-40",
-        onClick && !disabled && "hover:opacity-90 active:scale-[0.98]"
+        "flex flex-1 items-center justify-center gap-2 rounded-[6px] border border-line bg-paper p-3.5 text-[12px] text-navy transition-opacity",
+        inert ? "cursor-not-allowed opacity-40" : "hover:opacity-90 active:scale-[0.99]"
       )}
-      disabled={!onClick || disabled}
+      disabled={inert}
       onClick={onClick}
       type="button"
     >
       <HugeiconsIcon
         className={loading ? "animate-spin" : undefined}
         icon={loading ? Loading03Icon : icon}
-        size={16}
+        size={14}
         strokeWidth={1.8}
       />
       <span>{label}</span>
-      <Kbd
-        className={cn(
-          "ml-1 h-6 min-w-6 rounded-md px-1.5 font-mono font-semibold text-[10px] uppercase",
-          variant === "primary" &&
-            "bg-primary-foreground/15 text-primary-foreground"
-        )}
-      >
-        {hint}
-      </Kbd>
+      <ActionKbd>{hint}</ActionKbd>
     </button>
+  );
+}
+
+function TodayPanel({ today }: { today: DesktopReviewData["today"] }) {
+  return (
+    <section className="flex flex-col gap-2.5 rounded-[6px] border border-line bg-paper p-4">
+      <div className="flex items-center justify-between">
+        <Eyebrow>Today</Eyebrow>
+        <div className="flex shrink-0">
+          <span className="flex size-[18px] items-center justify-center rounded-full border-2 border-white bg-[#0e2235] font-semibold text-[#eef1f4] text-[9px]">
+            {today.youInitial}
+          </span>
+          {today.partnerInitial ? (
+            <span className="-ml-1.5 flex size-[18px] items-center justify-center rounded-full border-2 border-white bg-[#d77a4a] font-semibold text-[9px] text-white">
+              {today.partnerInitial}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex gap-[18px]">
+        {today.cells.map((cell) => (
+          <div className="flex flex-col gap-0.5" key={cell.label}>
+            <span
+              className={cn(
+                "font-medium text-[22px] leading-[22px]",
+                cell.accent ? "text-copper" : "text-navy"
+              )}
+            >
+              {cell.value}
+            </span>
+            <span className="text-[10px] text-slate leading-3">
+              {cell.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
 /* ---------------- Atoms ---------------- */
 
-function Eyebrow({
+function Eyebrow({ children }: { children: ReactNode }) {
+  return (
+    <span className='font-semibold text-[10px] text-slate uppercase leading-3 tracking-[0.14em]'>
+      {children}
+    </span>
+  );
+}
+
+/** Small keycap used inside the Keep / Veto buttons. */
+function ActionKbd({
   children,
-  tone = "muted",
+  onDark = false,
 }: {
   children: ReactNode;
-  tone?: "muted" | "primary";
+  onDark?: boolean;
 }) {
   return (
-    <span
+    <kbd
       className={cn(
-        "font-semibold text-[11px] uppercase tracking-[0.12em]",
-        tone === "primary" ? "text-primary" : "text-muted-foreground"
+        "pointer-events-none inline-flex h-[18px] min-w-[18px] select-none items-center justify-center rounded-[4px] px-1 font-medium font-sans text-[10px]",
+        onDark
+          ? "bg-white/10 text-[#c9d3dc]"
+          : "bg-mist text-slate"
       )}
     >
       {children}
-    </span>
+    </kbd>
+  );
+}
+
+/** Filled copper heart for the Keep button (matches the Paper SVG). */
+function HeartGlyph() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="shrink-0"
+      fill="none"
+      height="16"
+      viewBox="0 0 16 16"
+      width="16"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M8 14C8 14 1.5 10 1.5 5.5C1.5 3.5 3 2 5 2C6.5 2 7.5 3 8 4C8.5 3 9.5 2 11 2C13 2 14.5 3.5 14.5 5.5C14.5 10 8 14 8 14Z"
+        fill="#D77A4A"
+      />
+    </svg>
   );
 }
 
@@ -1220,88 +1109,132 @@ const PHOTO_BATH =
   "https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=200&q=80";
 
 export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
-  searchOptions: [{ id: "north-london", name: "North London · 2-bed" }],
-  selectedSearchId: null,
-  reviewedToday: 5,
-  keptToday: 1,
-  skippedToday: 4,
-  leftToday: 18,
   queue: {
-    remaining: 6,
+    remaining: 23,
+    position: 1,
     selectedClusterId: "belsize",
     items: [
       {
         id: "belsize",
         title: "Belsize Park Mews",
+        price: "£2,450",
         outcode: "NW3",
         beds: 2,
-        price: "£2,450",
+        baths: 1,
+        availability: "Avail now",
+        furnished: "Furnished",
         photo: PHOTO_HERO,
       },
       {
         id: "camden",
-        title: "Camden Lock Mews",
+        title: "Camden Lock Studio",
+        price: "£2,200",
         outcode: "NW1",
-        beds: 2,
-        price: "£2,300",
+        beds: 1,
+        baths: 1,
+        availability: "Avail 12 Jun",
+        furnished: "Unfurnished",
         photo: PHOTO_BEDROOM,
-        peareaceFlag: true,
       },
       {
         id: "highgate",
         title: "Highgate Studios",
+        price: "£2,300",
         outcode: "N6",
         beds: 2,
-        price: "£2,200",
+        baths: 1,
+        availability: "Avail now",
+        furnished: "Part furnished",
         photo: PHOTO_COOKING,
-        suffix: "·3",
       },
       {
         id: "kentish",
         title: "Kentish Town Loft",
+        price: "£2,550",
         outcode: "NW5",
         beds: 2,
-        price: "£2,550",
+        baths: 2,
+        availability: "Avail 1 Jul",
+        furnished: "Furnished",
         photo: PHOTO_HOUSE,
       },
       {
-        id: "hampstead",
-        title: "Hampstead Conversion",
-        outcode: "NW3",
-        beds: 1,
-        price: "£2,100",
+        id: "tufnell",
+        title: "Tufnell Park Garden",
+        price: "£2,650",
+        outcode: "N19",
+        beds: 2,
+        baths: 1,
+        availability: "Avail now",
+        furnished: "Unfurnished",
         photo: PHOTO_BATH,
       },
       {
-        id: "tufnell",
-        title: "Tufnell Park Garden Flat",
-        outcode: "N19",
-        beds: 2,
-        price: "£2,395",
+        id: "hampstead",
+        title: "Hampstead Bridge",
+        price: "£2,600",
+        outcode: "NW3",
+        beds: 3,
+        baths: 1,
+        availability: "Avail 20 Jun",
+        furnished: "Furnished",
         photo: PHOTO_BEDROOM,
       },
     ],
   },
   hero: {
     photos: [PHOTO_HERO, PHOTO_BEDROOM, PHOTO_COOKING],
-    alsoOn: "Also on Zoopla · Rightmove",
+    title: "Belsize Park Mews",
+    subtitle: "2 bed · 1 bath · 712 sqft · Listed 2 days ago",
     price: "£2,450",
     priceUnit: "/mo",
-    title: "Belsize Park Mews",
-    subtitle: "NW3 · Listed 2 days ago",
-    cheapestPortal: "OpenRent",
-    spec: [
-      { label: "Beds", value: "2" },
-      { label: "Baths", value: "1" },
-      { label: "Sq ft", value: "712" },
-      { label: "EPC", value: "C" },
-      { label: "Commute", value: "28", suffix: "min" },
+    signals: [
+      { label: "Separate kitchen, 6.8 m²", warn: false },
+      { label: "Dual-aspect living, west onto Belsize Lane", warn: false },
+      { label: "Bed 1 · 14.2 m² · king-suitable", warn: false },
+      { label: "Bed 2 · 8.1 m² · double only, not king", warn: true },
     ],
-    verdicts: [
-      { label: "Separate kitchen · 6.8 m²", tone: "positive" },
-      { label: "Dual-aspect living", tone: "positive" },
-      { label: "Bed 2 fits double, not king", tone: "caution" },
-      { label: "Real storage cupboard", tone: "positive" },
+    stats: [
+      { label: "Transport", value: "8", unit: "min", sub: "Belsize Park" },
+      { label: "EPC", value: "C", tone: "good" },
+      { label: "Council tax", value: "C", sub: "band" },
+      { label: "Size", value: "712", unit: "sq ft" },
+    ],
+  },
+  matchPct: "98%",
+  portals: [
+    {
+      portal: "OpenRent",
+      initial: "O",
+      url: "https://www.openrent.co.uk/",
+      price: "£2,450",
+      delta: null,
+      cheapest: true,
+    },
+    {
+      portal: "Rightmove",
+      initial: "R",
+      url: "https://www.rightmove.co.uk/",
+      price: "£2,500",
+      delta: "+£50",
+      cheapest: false,
+    },
+    {
+      portal: "Zoopla",
+      initial: "Z",
+      url: "https://www.zoopla.co.uk/",
+      price: "£2,500",
+      delta: "+£50",
+      cheapest: false,
+    },
+  ],
+  today: {
+    youInitial: "T",
+    partnerInitial: "P",
+    cells: [
+      { value: "8", label: "kept by you" },
+      { value: "5", label: "by Partner" },
+      { value: "3", label: "both kept", accent: true },
     ],
   },
 };

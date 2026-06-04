@@ -24,15 +24,15 @@ type Props = {
 
 export function FurnishedPicker({ value, onChange }: Props) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {OPTIONS.map((opt) => {
         const active = value === opt.id;
         return (
           <button
             className={
               active
-                ? "rounded-full bg-foreground px-4 py-2 font-medium text-background text-sm"
-                : "rounded-full bg-muted px-4 py-2 text-muted-foreground text-sm"
+                ? "rounded-full bg-navy px-3.5 py-1.5 font-medium text-[#eef1f4] text-[12px]"
+                : "rounded-full border border-line bg-paper px-3.5 py-1.5 text-[12px] text-navy"
             }
             key={opt.id ?? "any"}
             onClick={() => onChange(opt.id)}

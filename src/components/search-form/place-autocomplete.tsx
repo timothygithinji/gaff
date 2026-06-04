@@ -186,10 +186,13 @@ export function PlaceAutocomplete({ onSelect, placeholder }: Props) {
     return (
       <div
         aria-hidden
-        className="h-10 w-full animate-pulse rounded-md bg-card"
+        className="h-10 w-full animate-pulse rounded-md border border-line bg-card"
       />
     );
   }
 
+  // Border lives on the `gmp-place-autocomplete` host (see globals.css),
+  // not this wrapper — a wrapper border gets covered at the corners by the
+  // web component's own rounded, filled input box.
   return <div className="w-full" ref={containerRef} />;
 }
