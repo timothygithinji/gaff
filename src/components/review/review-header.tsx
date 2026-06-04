@@ -11,6 +11,7 @@
  * Presentation only — consumes the same `searchPill` + `leftToday`
  * props the route already passed.
  */
+import { Link } from "@tanstack/react-router";
 import { useHousehold } from "../../lib/household-context";
 
 type Props = {
@@ -28,12 +29,13 @@ export function ReviewHeader({ searchPill, leftToday }: Props) {
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between bg-background px-5 py-3.5">
       <div className="flex items-center gap-3">
-        <span
-          aria-label={me?.name ?? me?.email ?? "Profile"}
+        <Link
+          aria-label={`${me?.name ?? me?.email ?? "Profile"} — household settings`}
           className="flex size-[30px] items-center justify-center rounded-full bg-primary font-semibold text-[13px] text-white"
+          to="/settings/household"
         >
           {initial}
-        </span>
+        </Link>
         <div className="flex flex-col gap-0.5">
           <span className="font-semibold text-[10px] text-slate uppercase tracking-[0.1em]">
             Search · Active
