@@ -12,3 +12,10 @@ bun scripts/validation/branch-name.ts || exit 1
 bun run typecheck || exit 1
 bun run lint:ci || exit 1
 bunx vitest run || exit 1
+
+# Production Worker bundle. typecheck/lint/test all pass on code that still
+# fails `vite build` (e.g. a dep whose rollup-time exports don't resolve in the
+# Worker bundle) — and deploy.yml applies migrations BEFORE shipping the Worker,
+# so a build-only failure can strand prod on old code against new schema. Build
+# here so that class of error never reaches a push to main.
+bun run build || exit 1
