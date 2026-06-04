@@ -461,7 +461,7 @@ function ReviewPage() {
         navigate,
       })}
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 lg:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 sm:max-w-2xl lg:hidden">
         <ReviewHeader
           leftToday={card?.leftToday ?? 0}
           searchPill={card?.searchPill}
@@ -1107,7 +1107,7 @@ function DesktopReviewSkeleton() {
 
 /**
  * Mobile counterpart of {@link DesktopReviewSkeleton}. Shown inside the
- * existing `md:hidden` shell so the bottom nav stays anchored.
+ * existing `lg:hidden` shell so the bottom nav stays anchored.
  */
 function MobileReviewSkeleton() {
   return (

@@ -94,7 +94,7 @@ function SearchesIndexPage() {
         searches={data}
       />
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 lg:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 sm:max-w-2xl lg:hidden">
         <header className="flex items-start justify-between gap-4 px-5 pt-2 pb-3.5">
           <div className="flex flex-col gap-1">
             <p className="font-normal text-[11px] text-slate uppercase tracking-[0.14em]">
@@ -161,7 +161,7 @@ function SearchList({
 }) {
   const statsBySearch = new Map(portfolio.perSearch.map((s) => [s.searchId, s]));
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0">
       {searches.map((s) => (
         <li key={s.id}>
           <MobileCard

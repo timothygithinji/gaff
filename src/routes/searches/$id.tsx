@@ -292,7 +292,7 @@ function EditSearchPage() {
           onSubmit={(v) => update.mutate(v)}
           pending={pending}
         />
-        <div className="mx-auto flex max-w-md justify-end gap-2 border-border border-t bg-card px-5 py-3">
+        <div className="mx-auto flex max-w-md justify-end gap-2 border-border border-t bg-card px-5 py-3 sm:max-w-2xl">
           <Button
             disabled={deleteAction.disabled}
             loading={remove.isPending}
