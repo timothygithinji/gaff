@@ -31,7 +31,7 @@ export function CostEstimateBar({
   onSubmit,
 }: BarProps) {
   return (
-    <div className="sticky right-0 bottom-0 left-0 z-10 mx-auto flex max-w-md items-center justify-between border-line border-t bg-ground/95 px-5 pt-4 pb-7 backdrop-blur">
+    <div className="sticky right-0 bottom-0 left-0 z-10 mx-auto flex max-w-md items-center justify-between border-line border-t bg-ground/95 px-5 pt-4 pb-7 backdrop-blur sm:max-w-2xl">
       <div className="flex flex-col gap-px">
         <span className="text-[10px] text-slate uppercase tracking-[0.12em]">
           Estimate

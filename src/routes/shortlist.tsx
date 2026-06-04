@@ -314,7 +314,7 @@ function ShortlistPage() {
         tabs={tabs}
       />
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 lg:hidden">
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 sm:max-w-2xl lg:hidden">
         {toast ? (
           <div
             aria-live="polite"
