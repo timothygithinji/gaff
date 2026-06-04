@@ -84,7 +84,14 @@ export function DesktopShortlist({
           />
         ) : null}
       </header>
-      <div className="flex min-w-0 flex-1 flex-col px-10 pt-2 pb-10">
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-col px-10 pt-2",
+          // The kanban manages its own bounded-height scroll; the card-grid
+          // view keeps the page's natural vertical scroll.
+          bodySlot ? "min-h-0 overflow-hidden pb-6" : "pb-10"
+        )}
+      >
         {bodySlot ? (
           bodySlot
         ) : (
