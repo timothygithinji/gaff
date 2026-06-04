@@ -20,6 +20,9 @@ out/
 # Vite / Cloudflare dev caches
 .vite/
 
+# TanStack Start dev cache
+.tanstack/
+
 # Test + coverage
 coverage/
 *.lcov
