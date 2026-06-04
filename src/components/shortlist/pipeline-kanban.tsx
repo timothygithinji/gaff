@@ -143,7 +143,7 @@ export function PipelineKanban({
       onDragStart={handleDragStart}
       sensors={sensors}
     >
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="flex h-full min-h-0 gap-4 overflow-x-auto pb-2">
         {BOARD_STATUSES.map((status) => (
           <Column
             cards={columns[status]}
@@ -178,12 +178,12 @@ function Column({
   return (
     <section
       className={cn(
-        "flex flex-col gap-2.5 rounded-md transition-colors",
+        "flex w-[280px] shrink-0 flex-col gap-2.5 rounded-md transition-colors",
         isOver && 'outline-dashed outline-2 outline-[#d77a4a]'
       )}
       ref={setNodeRef}
     >
-      <header className="flex items-center justify-between pb-1">
+      <header className="flex shrink-0 items-center justify-between pb-1">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-[12px] text-navy uppercase leading-4 tracking-[0.12em]">
             {STAGE_LABEL[status]}
@@ -191,21 +191,23 @@ function Column({
           <StageCountPill count={cards.length} status={status} />
         </div>
       </header>
-      {cards.length === 0 ? (
-        <EmptyColumn hint={EMPTY_HINTS[status]} isOver={isOver} />
-      ) : (
-        cards.map((card, idx) => (
-          <Card
-            card={card}
-            disabled={disabled}
-            key={card.clusterId}
-            lead={idx === 0}
-            onArchive={onArchive}
-            onMove={onMove}
-            onOpenCluster={onOpenCluster}
-          />
-        ))
-      )}
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
+        {cards.length === 0 ? (
+          <EmptyColumn hint={EMPTY_HINTS[status]} isOver={isOver} />
+        ) : (
+          cards.map((card, idx) => (
+            <Card
+              card={card}
+              disabled={disabled}
+              key={card.clusterId}
+              lead={idx === 0}
+              onArchive={onArchive}
+              onMove={onMove}
+              onOpenCluster={onOpenCluster}
+            />
+          ))
+        )}
+      </div>
     </section>
   );
 }
