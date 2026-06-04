@@ -22,6 +22,13 @@
  * neighborhood. Anything broader (administrative_area_level_1 etc.)
  * would scrape too coarse to be useful and is filtered out by the
  * autocomplete's `includedPrimaryTypes`.
+ *
+ * `colloquial_area` is the one type that does NOT come from Google —
+ * informal London regions ("North London", "South London", …) have no
+ * place_id in Google's database (verified against the live Places API),
+ * so they're supplied as hand-curated presets in `london-areas.ts` with
+ * fixed bounds. They flow through the exact same geometry-based outcode
+ * fan-out as a real area pick; only the source differs.
  */
 import { z } from "zod";
 
@@ -30,6 +37,7 @@ export const SEARCH_LOCATION_TYPES = [
   "locality",
   "sublocality",
   "neighborhood",
+  "colloquial_area",
 ] as const;
 
 export type SearchLocationType = (typeof SEARCH_LOCATION_TYPES)[number];
