@@ -69,11 +69,6 @@ const emptyContext: ExtractContext = {
       uploadMbps: 110,
       fttpAvailable: true,
     },
-    crime: {
-      month: "2026-03",
-      total: 412,
-      topCategories: [{ category: "anti-social-behaviour", count: 95 }],
-    },
     amenities: { withinMeters: 800, counts: { cafe: 8, supermarket: 3 } },
     flood: { riskLevel: "very-low" },
   },
@@ -146,7 +141,6 @@ describe("buildUserMessage", () => {
   it("includes enrichment data so the model can ground watchouts", () => {
     const msg = buildUserMessage(emptyContext);
     expect(msg).toContain("downloadMbps");
-    expect(msg).toContain("topCategories");
     expect(msg).toContain("commuteMinutes");
   });
 

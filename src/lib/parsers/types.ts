@@ -101,9 +101,9 @@ export interface ListingDetail extends ListingSummary {
    * area centroid. Rightmove only — `location.pinType === "ACCURATE_POINT"`
    * vs `"ESTIMATE"`. `undefined` when the portal didn't say.
    *
-   * Read at enrichment time to gate radius-based queries (crime, flood,
+   * Read at enrichment time to gate radius-based queries (flood,
    * amenities) — when the coords aren't trustworthy we shouldn't claim
-   * a 1mi crime stat is meaningful.
+   * a 1mi area stat is meaningful.
    */
   coordsAccurate?: boolean;
 

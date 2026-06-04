@@ -43,6 +43,7 @@ import {
 } from "../../../db/schema";
 import { filterFeatures } from "../../lib/ai/feature-filter";
 import type { Features } from "../../lib/ai/prompt";
+import { parseEnrichmentEpc, pickPortalEpcRating, resolveEpc } from "../../lib/epc";
 import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
@@ -82,6 +83,9 @@ const reviewCardInputSchema = z
   })
   .optional();
 
+/** Square metres → square feet (EPC floor areas are recorded in m²). */
+const SQM_TO_SQFT = 10.7639;
+
 export type ReviewCardCluster = {
   id: string;
   normalisedAddress: string;
@@ -111,6 +115,17 @@ export type ReviewCardHeadlineListing = {
    * hasn't run yet — caller falls back to `firstSeenAt`.
    */
   publishedAt: Date | null;
+  /**
+   * Move-in date as ISO string, resolved from `available_from` (detail)
+   * with a fallback to the "Available from <date>" summary tag; null when
+   * unknown or when only "available immediately" is known (see
+   * `availableNow`). A past/today date still means "now" — the UI decides.
+   */
+  availableFrom: string | null;
+  /** True when the listing is flagged "available immediately/now". */
+  availableNow: boolean;
+  /** Furnishing status (detail blob, else summary tags); null = unknown. */
+  furnished: FurnishedStatus | null;
   /**
    * Free-form portal badges off the listing card ("Reduced", "Just
    * added", "Available from 1 June 2026", "House share"). Surfaced
@@ -170,18 +185,25 @@ export type ReviewCard = {
   headlineListing: ReviewCardHeadlineListing;
   portalsAlsoOn: ReviewCardAlsoOn[];
   features?: Features;
-  epcRating?: string;
   /**
-   * True when `epcRating` is a postcode-level estimate rather than this
-   * building's own certificate (the listing exposed no house number to
-   * match on). The card marks it with a "~" so it doesn't read as exact.
+   * The building's own EPC band (portal-published or an exact register
+   * match), or undefined when neither is known — we never surface a
+   * postcode-level estimate. See `src/lib/epc.ts`.
    */
-  epcIsEstimate?: boolean;
+  epcRating?: string;
   /** Soonest commute target, in minutes, when enriched. */
   commuteMinutes: number | null;
   /** Closest scraped station (with derived walk minutes). */
   nearestStation: ReviewCardStation | null;
   broadband: ReviewCardBroadband | null;
+  /** Council tax band (A–H) published on the headline listing; null if unknown. */
+  councilTaxBand: string | null;
+  /**
+   * Total floor area from the EPC certificate, in sq ft — the fallback for the
+   * "Size" stat when no portal published `sizeSqFt`. Null when the EPC carries
+   * no floor area (or the listing isn't EPC-enriched yet).
+   */
+  epcFloorAreaSqFt: number | null;
   /**
    * The size of the queue *right now*, including the card currently
    * being returned. The UI surfaces this as "N LEFT TODAY". When the
@@ -200,7 +222,77 @@ export type ReviewCard = {
    * "search pill". e.g. `"North London · 2-bed"`.
    */
   searchPill: string;
+  /**
+   * Relative-time strings computed ON THE SERVER so SSR and the first
+   * client render agree (computing `Date.now()` during render would
+   * diverge and trip React's hydration check). The card consumes these
+   * directly instead of recomputing.
+   *
+   *   - `firstSeenLabel`: e.g. "today" / "yesterday" / "2 days ago"
+   *     (no "Listed" prefix — caller composes the line). Based on the
+   *     portal's `publishedAt` when present, else our `firstSeenAt`.
+   *   - `freshnessLabel`: e.g. "New · 4 hr" / "New · 2 d", or null when
+   *     the listing is older than the freshness window.
+   */
+  firstSeenLabel: string;
+  freshnessLabel: string | null;
 };
+
+/**
+ * "today" / "yesterday" / "N days ago" / "Nw ago" / "Nmo ago" from a
+ * date, computed server-side. Mirrors the old client `relativeFirstSeen`
+ * so the wording is unchanged — just deterministic now.
+ */
+function relativeFromNow(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const day = 24 * 60 * 60 * 1000;
+  const days = Math.floor(diffMs / day);
+  if (days <= 0) {
+    return "today";
+  }
+  if (days === 1) {
+    return "yesterday";
+  }
+  if (days < 7) {
+    return `${days} days ago`;
+  }
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) {
+    return `${weeks}w ago`;
+  }
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
+/**
+ * "New · 4 hr" / "New · 2 d" freshness badge, or null once the listing
+ * is older than the 2-day window. Server-computed twin of the old
+ * client `freshnessLabel` in `review-card.tsx`.
+ */
+function freshnessFromNow(date: Date): string | null {
+  const diffMs = Date.now() - date.getTime();
+  const hours = Math.floor(diffMs / (60 * 60 * 1000));
+  if (hours < 0) {
+    return null;
+  }
+  if (hours < 24) {
+    return `New · ${Math.max(hours, 1)} hr`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days <= 2) {
+    return `New · ${days} d`;
+  }
+  return null;
+}
+
+/** Coerce a possibly-string timestamp off the wire into a Date. */
+function asDate(value: Date | string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 /**
  * Best-effort 2/3-letter outcode pulled off the listing postcode. The
@@ -268,13 +360,101 @@ function pickSoonestCommute(value: unknown): number | null {
   return best;
 }
 
+/** Enriched walk/transit minutes per station, from `enrich-station-routes`. */
+type StationRouteRow = {
+  name: string;
+  walkMinutes: number | null;
+  transitMinutes: number | null;
+};
+
+/** Map of station name → straight-line distance, from raw `nearestStations`. */
+function stationDistanceByName(rawJson: unknown): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!rawJson || typeof rawJson !== "object") {
+    return out;
+  }
+  const arr = (rawJson as Record<string, unknown>).nearestStations;
+  if (!Array.isArray(arr)) {
+    return out;
+  }
+  for (const s of arr) {
+    if (!s || typeof s !== "object") {
+      continue;
+    }
+    const name = typeof s.name === "string" ? s.name : "";
+    const dist = typeof s.distanceMiles === "number" ? s.distanceMiles : null;
+    if (name && dist !== null) {
+      out.set(name, dist);
+    }
+  }
+  return out;
+}
+
 /**
- * Lift the nearest scraped station out of `listing.rawJson.nearestStations`
- * (Rightmove parser populates this; Zoopla/OpenRent don't). We pick the
- * closest by distanceMiles and derive walk minutes at ~20 min/mile so
- * the card has a usable headline.
+ * The station with the shortest enriched walk time (fall back to transit
+ * when a route has only that leg). Returns null when no usable routes —
+ * the caller drops to the scraped-distance heuristic.
  */
-function pickNearestStation(rawJson: unknown): ReviewCardStation | null {
+function pickNearestEnrichedStation(
+  stationRoutes: unknown,
+  distanceByName: Map<string, number>
+): ReviewCardStation | null {
+  if (!Array.isArray(stationRoutes)) {
+    return null;
+  }
+  const rows: StationRouteRow[] = [];
+  for (const r of stationRoutes) {
+    if (!r || typeof r !== "object") {
+      continue;
+    }
+    const o = r as Record<string, unknown>;
+    const name = typeof o.name === "string" ? o.name : "";
+    if (!name) {
+      continue;
+    }
+    const walk =
+      typeof o.walkMinutes === "number" && Number.isFinite(o.walkMinutes)
+        ? o.walkMinutes
+        : null;
+    const transit =
+      typeof o.transitMinutes === "number" && Number.isFinite(o.transitMinutes)
+        ? o.transitMinutes
+        : null;
+    if (walk === null && transit === null) {
+      continue;
+    }
+    rows.push({ name, walkMinutes: walk, transitMinutes: transit });
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  const effective = (r: StationRouteRow) =>
+    r.walkMinutes ?? r.transitMinutes ?? Number.POSITIVE_INFINITY;
+  const best = rows.reduce((a, b) => (effective(b) < effective(a) ? b : a));
+  return {
+    name: best.name,
+    distanceMiles: distanceByName.get(best.name) ?? null,
+    walkMinutes: best.walkMinutes ?? best.transitMinutes,
+  };
+}
+
+/**
+ * Lift the nearest station for the review-card headline. Prefers the
+ * real walk minutes from `enrich-station-routes` (Google Routes) when
+ * they've been computed, picking the station with the shortest walk;
+ * falls back to the closest scraped station with a ~20 min/mile estimate
+ * when the enrichment hasn't run (or the listing carries no station
+ * routes). `rawJson.nearestStations` still supplies the distance label.
+ */
+function pickNearestStation(
+  rawJson: unknown,
+  stationRoutes?: unknown
+): ReviewCardStation | null {
+  const distanceByName = stationDistanceByName(rawJson);
+  const enriched = pickNearestEnrichedStation(stationRoutes, distanceByName);
+  if (enriched) {
+    return enriched;
+  }
   if (!rawJson || typeof rawJson !== "object") {
     return null;
   }
@@ -379,6 +559,82 @@ function readDeposit(rawJson: unknown): number | null {
 }
 
 /**
+ * Furnishing status. The detail blob (`rawJson.furnished`, written by
+ * `scrape-detail`) is authoritative but sparse — only ~a third of
+ * headline listings have been detail-scraped. So we fall back to the
+ * summary `tags`, where Zoopla/Rightmove put "Furnished" / "Unfurnished"
+ * / "Part furnished" right on the card. Closed set; null = unknown.
+ */
+type FurnishedStatus = "furnished" | "unfurnished" | "part_furnished";
+const PART_FURNISHED_RE = /^part[\s-]?furnished$/i;
+const UNFURNISHED_RE = /^un\s*furnished$/i;
+const FURNISHED_RE = /^furnished$/i;
+function deriveFurnished(
+  rawFurnished: unknown,
+  tags: string[]
+): FurnishedStatus | null {
+  const fromDetail = normaliseFurnished(rawFurnished);
+  if (fromDetail) {
+    return fromDetail;
+  }
+  for (const tag of tags) {
+    // Order matters: "Unfurnished" / "Part furnished" both contain the
+    // substring "furnished", so test the qualified forms first.
+    if (PART_FURNISHED_RE.test(tag)) {
+      return "part_furnished";
+    }
+    if (UNFURNISHED_RE.test(tag)) {
+      return "unfurnished";
+    }
+    if (FURNISHED_RE.test(tag)) {
+      return "furnished";
+    }
+  }
+  return null;
+}
+
+/** Coerce an arbitrary value (e.g. a JSONB `->>` extraction) to the closed set. */
+function normaliseFurnished(v: unknown): FurnishedStatus | null {
+  return v === "furnished" || v === "unfurnished" || v === "part_furnished"
+    ? v
+    : null;
+}
+
+/**
+ * Move-in resolution. `available_from` (detail scrape) is authoritative
+ * but sparse; the summary `tags` carry "Available immediately" /
+ * "Available from <date>" for far more listings, so we parse those as a
+ * fallback. Returns `{ iso, now }`: `now` is the "available immediately"
+ * case (no date), `iso` an absolute date the UI can format/compare.
+ */
+const AVAIL_IMMEDIATE_RE = /available\s+(?:immediately|now)/i;
+const AVAIL_FROM_TAG_RE = /available\s+from\s+(.+)/i;
+function resolveAvailability(
+  column: Date | string | null,
+  tags: string[]
+): { iso: string | null; now: boolean } {
+  if (column) {
+    const d = column instanceof Date ? column : new Date(column);
+    if (!Number.isNaN(d.getTime())) {
+      return { iso: d.toISOString(), now: false };
+    }
+  }
+  for (const tag of tags) {
+    if (AVAIL_IMMEDIATE_RE.test(tag)) {
+      return { iso: null, now: true };
+    }
+    const m = tag.match(AVAIL_FROM_TAG_RE);
+    if (m?.[1]) {
+      const d = new Date(m[1].trim());
+      if (!Number.isNaN(d.getTime())) {
+        return { iso: d.toISOString(), now: false };
+      }
+    }
+  }
+  return { iso: null, now: false };
+}
+
+/**
  * Pull just the bit of the Rightmove flood disclosure the meta-badge
  * derivation needs. The full shape lives on the listing detail page.
  */
@@ -396,30 +652,6 @@ function readFloodDisclosureForBadges(
   return {
     floodedInLastFiveYears: typeof flooded === "boolean" ? flooded : null,
   };
-}
-
-/**
- * EPC rating string from the `enrichments.epc` jsonb blob. The blob's
- * shape is `{ currentRating?: string; potentialRating?: string; ... }`.
- */
-function asEpcRating(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  const obj = value as { currentRating?: unknown };
-  if (typeof obj.currentRating === "string") {
-    return obj.currentRating;
-  }
-  return;
-}
-
-/** True when the stored EPC blob is a postcode-level estimate. */
-function isEpcEstimate(value: unknown): boolean {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    (value as { source?: unknown }).source === "estimate"
-  );
 }
 
 /**
@@ -453,26 +685,6 @@ function listingMatchesBedroomBand() {
     OR (
       (${searches.minBedrooms} IS NULL OR ${listings.bedrooms} >= ${searches.minBedrooms})
       AND (${searches.maxBedrooms} IS NULL OR ${listings.bedrooms} <= ${searches.maxBedrooms})
-    )
-  )`;
-}
-
-/**
- * SQL backstop mirroring `filterByExclusions` in scrape-portal.ts.
- * Today only `house_share` is enforced here — every portal that hosts
- * student / retirement listings has dedicated URL switches that work,
- * OpenRent is the gap (it has rooms-in-shared but no URL filter for
- * them). Matches the same `propertyType`/`title` heuristics the scrape
- * filter uses.
- */
-function listingPassesExclusions() {
-  return sql`NOT (
-    'house_share' = ANY(${searches.exclusions})
-    AND (
-      ${listings.propertyType} ~* '^room\\M'
-      OR ${listings.propertyType} ~* '\\mshared\\M'
-      OR ${listings.title} ~* '^room in a shared\\M'
-      OR ${listings.title} ~* '\\mhmo\\M'
     )
   )`;
 }
@@ -514,27 +726,237 @@ function bedroomsWithinBand(
 }
 
 /**
- * JS twin of {@link listingPassesExclusions} for already-fetched rows.
- * Kept in sync with `looksLikeRoomShare` in `scrape-portal.ts` — both
- * read the same `propertyType` / `title` strings the parser writes.
+ * Category signals for the `exclusions` filter, keyed by the closed-set
+ * value stored on `searches.exclusions`. Each value is a regex source
+ * shared verbatim by the SQL predicate (Postgres `~*`) and its JS twin
+ * (`new RegExp(src, "i")`) so a listing is classified identically at the
+ * DB and in-memory. Patterns mirror `scripts/verify/audit-filter-leaks.ts`.
+ * Matched against `property_type || ' ' || title` because OpenRent has no
+ * URL handle for house-share/retirement — it leaks "Room in a Shared X"
+ * (and would leak retirement schemes) into the feed unfiltered.
  */
+const EXCLUSION_PATTERNS = {
+  house_share: "house\\s*share|room\\s+in\\s+a?\\s*shared",
+  student: "student",
+  retirement: "retirement|over\\s*55|over\\s*60|mccarthy|churchill",
+} as const;
+
+/**
+ * SQL predicate (requires `searches` joined on `listings.searchId`): the
+ * listing is NOT in any category the search asked to exclude. A category
+ * only bites when it's present in `searches.exclusions`; otherwise the
+ * clause is a no-op. This is the read-time backstop for exclusions — the
+ * scrape side enforces them only via portal URL params, which OpenRent
+ * ignores, so without this a house_share-excluding search still surfaces
+ * shared rooms (today they're caught only incidentally by the bedroom
+ * band, since shares list as 1-bed — this stops relying on that).
+ */
+function listingPassesExclusions() {
+  const haystack = sql`(coalesce(${listings.propertyType}, '') || ' ' || ${listings.title})`;
+  const notExcluded = (value: string, pattern: string) =>
+    sql`NOT (${value}::text = ANY(${searches.exclusions}) AND ${haystack} ~* ${pattern})`;
+  return sql`(
+    ${notExcluded("house_share", EXCLUSION_PATTERNS.house_share)}
+    AND ${notExcluded("student", EXCLUSION_PATTERNS.student)}
+    AND ${notExcluded("retirement", EXCLUSION_PATTERNS.retirement)}
+  )`;
+}
+
+/** JS twin of {@link listingPassesExclusions} for already-fetched rows. */
 function passesExclusions(
   propertyType: string | null,
-  title: string | null,
-  exclusions: readonly string[]
+  title: string,
+  exclusions: string[]
 ): boolean {
-  if (!exclusions.includes("house_share")) {
+  if (exclusions.length === 0) {
     return true;
   }
-  const pt = propertyType ?? "";
-  const t = title ?? "";
-  if (/^room\b/i.test(pt) || /\bshared\b/i.test(pt)) {
-    return false;
-  }
-  if (/^room in a shared\b/i.test(t) || /\bhmo\b/i.test(t)) {
-    return false;
+  const haystack = `${propertyType ?? ""} ${title}`;
+  for (const value of exclusions) {
+    const pattern =
+      EXCLUSION_PATTERNS[value as keyof typeof EXCLUSION_PATTERNS];
+    if (pattern && new RegExp(pattern, "i").test(haystack)) {
+      return false;
+    }
   }
   return true;
+}
+
+/**
+ * Approximate minutes-per-mile by travel mode, used to turn a transport
+ * target's `maxMinutes` into a reachable straight-line distance. The
+ * commute filter has real Google Routes times (`commuteMinutes`) so it's
+ * exact; transport targets have only the stop's distance, so this is the
+ * honest best-effort — documented as a heuristic, not a routed time.
+ */
+const MIN_PER_MILE: Record<string, number> = {
+  walk: 20,
+  cycle: 5,
+  transit: 6,
+  drive: 4,
+};
+
+/** Map a transport target's amenity onto a `nearbyTransit` kind. */
+const AMENITY_KIND: Record<string, "tube" | "rail" | "tram" | "bus"> = {
+  tube_station: "tube",
+  train_station: "rail",
+  bus_stop: "bus",
+  tram_stop: "tram",
+};
+
+type ClusterTargetEnrichment = {
+  commuteMinutes: Record<string, number> | null;
+  nearbyTransit: Array<{
+    kind: string | null;
+    distanceMiles: number;
+  }> | null;
+};
+
+type ActiveSearch = typeof searches.$inferSelect;
+
+/** True when a search carries any commute/transport criteria to filter on. */
+function searchHasTargets(s: ActiveSearch): boolean {
+  return (
+    (Array.isArray(s.commuteTargets) && s.commuteTargets.length > 0) ||
+    (Array.isArray(s.transportTargets) && s.transportTargets.length > 0)
+  );
+}
+
+/**
+ * Does a cluster satisfy one search's commute + transport criteria?
+ *
+ *   - Commute: every target whose Google-Routes time is known must be
+ *     within `maxMinutes`. A target with no computed time yet is treated
+ *     as passing (enrichment pending — we don't drop a place for not yet
+ *     being measured), mirroring the null-edge convention elsewhere.
+ *   - Transport: for each target, the nearest `nearbyTransit` stop of the
+ *     requested kind must be within the distance implied by `maxMinutes`
+ *     and the mode (see {@link MIN_PER_MILE}). If the cluster has been
+ *     swept and carries NO stop of that kind, it genuinely fails; if it
+ *     hasn't been swept yet (`nearbyTransit` absent), it passes (pending).
+ */
+function clusterPassesSearch(
+  search: ActiveSearch,
+  enr: ClusterTargetEnrichment | undefined
+): boolean {
+  for (const t of search.commuteTargets ?? []) {
+    const max = typeof t.maxMinutes === "number" ? t.maxMinutes : null;
+    if (max === null) {
+      continue;
+    }
+    const minutes = enr?.commuteMinutes?.[t.label];
+    if (typeof minutes === "number" && minutes > max) {
+      return false;
+    }
+  }
+  for (const t of search.transportTargets ?? []) {
+    const kind = AMENITY_KIND[t.amenity];
+    const max = typeof t.maxMinutes === "number" ? t.maxMinutes : null;
+    if (!kind || max === null) {
+      continue;
+    }
+    const stops = enr?.nearbyTransit;
+    if (!stops) {
+      continue;
+    }
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const s of stops) {
+      if (s.kind === kind && s.distanceMiles < nearest) {
+        nearest = s.distanceMiles;
+      }
+    }
+    if (!Number.isFinite(nearest)) {
+      return false;
+    }
+    const maxDistanceMiles = max / (MIN_PER_MILE[t.mode] ?? 20);
+    if (nearest > maxDistanceMiles) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Filter the candidate clusters down to those matching their search's
+ * commute/transport criteria. A search with no criteria admits every
+ * cluster under it (no filter); a cluster shown under multiple searches
+ * survives if it passes ANY of them. Returns the input order untouched
+ * when no active search has criteria, so the common case pays nothing.
+ */
+async function filterCandidatesByTargets(
+  db: Db,
+  candidates: string[],
+  activeSearches: ActiveSearch[]
+): Promise<string[]> {
+  if (!activeSearches.some(searchHasTargets)) {
+    return candidates;
+  }
+  const activeSearchIds = activeSearches.map((s) => s.id);
+
+  // cluster → the active searches it has listings under.
+  const memberRows = await db
+    .select({ clusterId: listings.clusterId, searchId: listings.searchId })
+    .from(listings)
+    .where(
+      and(
+        inArray(listings.clusterId, candidates),
+        inArray(listings.searchId, activeSearchIds)
+      )
+    );
+  const searchesByCluster = new Map<string, Set<string>>();
+  for (const r of memberRows) {
+    if (!r.clusterId) {
+      continue;
+    }
+    const set = searchesByCluster.get(r.clusterId) ?? new Set<string>();
+    set.add(r.searchId);
+    searchesByCluster.set(r.clusterId, set);
+  }
+
+  // cluster → its enrichment's commute/transit data (one per cluster; the
+  // values are replicated across every listing in the cluster). Highest
+  // promptVersion wins, matching the hydration queries.
+  const enrRows = await db
+    .select({
+      clusterId: listings.clusterId,
+      promptVersion: enrichments.promptVersion,
+      commuteMinutes: enrichments.commuteMinutes,
+      nearbyTransit: enrichments.nearbyTransit,
+    })
+    .from(enrichments)
+    .innerJoin(listings, eq(enrichments.listingId, listings.id))
+    .where(inArray(listings.clusterId, candidates))
+    .orderBy(desc(enrichments.promptVersion));
+  const enrByCluster = new Map<string, ClusterTargetEnrichment>();
+  for (const r of enrRows) {
+    if (!r.clusterId || enrByCluster.has(r.clusterId)) {
+      continue;
+    }
+    enrByCluster.set(r.clusterId, {
+      commuteMinutes: r.commuteMinutes ?? null,
+      nearbyTransit: r.nearbyTransit ?? null,
+    });
+  }
+
+  const searchById = new Map(activeSearches.map((s) => [s.id, s]));
+  return candidates.filter((cid) => {
+    const searchIds = searchesByCluster.get(cid);
+    if (!searchIds || searchIds.size === 0) {
+      return true;
+    }
+    const enr = enrByCluster.get(cid);
+    for (const sid of searchIds) {
+      const s = searchById.get(sid);
+      if (!s) {
+        continue;
+      }
+      // A no-criteria search admits the cluster unconditionally.
+      if (!searchHasTargets(s) || clusterPassesSearch(s, enr)) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 /**
@@ -609,6 +1031,18 @@ async function loadRankedQueueClusterIds(
     return { clusterIds: [], activeSearches };
   }
 
+  // Commute/transport filter: drop clusters that fall outside the
+  // search's configured commute time or nearest-stop distance. No-op
+  // (and no extra queries) when no active search has any such criteria.
+  const ranked = await filterCandidatesByTargets(
+    db,
+    candidates,
+    activeSearches
+  );
+  if (ranked.length === 0) {
+    return { clusterIds: [], activeSearches };
+  }
+
   const [mySwipes, householdSkips] = await Promise.all([
     db
       .select({ clusterId: swipes.clusterId })
@@ -616,7 +1050,7 @@ async function loadRankedQueueClusterIds(
       .where(
         and(
           eq(swipes.userId, currentUserId),
-          inArray(swipes.clusterId, candidates)
+          inArray(swipes.clusterId, ranked)
         )
       ),
     db
@@ -626,13 +1060,13 @@ async function loadRankedQueueClusterIds(
         and(
           inArray(swipes.userId, memberUserIds),
           eq(swipes.outcome, "skip"),
-          inArray(swipes.clusterId, candidates)
+          inArray(swipes.clusterId, ranked)
         )
       ),
   ]);
   const mySwipedSet = new Set(mySwipes.map((s) => s.clusterId));
   const skipSet = new Set(householdSkips.map((s) => s.clusterId));
-  const clusterIds = candidates.filter(
+  const clusterIds = ranked.filter(
     (cid) => !(mySwipedSet.has(cid) || skipSet.has(cid))
   );
 
@@ -790,6 +1224,23 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         )}`
       : "Your queue";
 
+    const headlineTags = readTags(headline.rawJson);
+    const headlineAvailability = resolveAvailability(
+      headline.availableFrom,
+      headlineTags
+    );
+
+    // EPC: prefer the building's own band published on any listing in the
+    // cluster over the postcode-level estimate, via the shared resolver —
+    // the listing-detail page resolves it identically (see `src/lib/epc.ts`).
+    const enrichmentEpc = parseEnrichmentEpc(enrichment?.epc);
+    const epc = resolveEpc(pickPortalEpcRating(sortedListings), enrichmentEpc);
+    // EPC floor area (m²) → sq ft, used when the portal didn't publish a size.
+    const epcFloorAreaSqFt =
+      enrichmentEpc?.floorAreaSqM != null
+        ? Math.round(enrichmentEpc.floorAreaSqM * SQM_TO_SQFT)
+        : null;
+
     return {
       cluster: {
         id: cluster.id,
@@ -813,7 +1264,13 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         outcode: outcodeOf(headline.postcode ?? cluster.postcode),
         firstSeenAt: headline.firstSeenAt,
         publishedAt: headline.publishedAt,
-        tags: readTags(headline.rawJson),
+        availableFrom: headlineAvailability.iso,
+        availableNow: headlineAvailability.now,
+        furnished: deriveFurnished(
+          (headline.rawJson as Record<string, unknown> | null)?.furnished,
+          headlineTags
+        ),
+        tags: headlineTags,
         sizeSqFt: headline.sizeSqFt,
         floorplanUrl: readFloorplanUrl(headline.rawJson),
         listedBuilding: readBool(headline.rawJson, "listedBuilding"),
@@ -831,14 +1288,27 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         deposit: readDeposit(headline.rawJson),
         priceMonthly: headline.priceMonthly,
       }),
-      epcRating: asEpcRating(enrichment?.epc),
-      epcIsEstimate: isEpcEstimate(enrichment?.epc),
+      // EPC comes from the shared resolver above (`resolveEpc`), which prefers
+      // a listing's published band over the postcode-level estimate — this
+      // supersedes main's `asEpcRating`/`isEpcEstimate` helpers.
+      epcRating: epc?.rating,
       commuteMinutes: pickSoonestCommute(enrichment?.commuteMinutes),
-      nearestStation: pickNearestStation(headline.rawJson),
+      nearestStation: pickNearestStation(
+        headline.rawJson,
+        enrichment?.stationRoutes
+      ),
       broadband: asBroadband(enrichment?.broadband),
+      councilTaxBand: headline.councilTaxBand ?? null,
+      epcFloorAreaSqFt,
       leftToday: clusterIds.length,
       searchId: headline.searchId,
       searchPill,
+      firstSeenLabel: relativeFromNow(
+        asDate(headline.publishedAt) ?? asDate(headline.firstSeenAt) ?? new Date()
+      ),
+      freshnessLabel: freshnessFromNow(
+        asDate(headline.publishedAt) ?? asDate(headline.firstSeenAt) ?? new Date()
+      ),
     };
   });
 
@@ -854,9 +1324,17 @@ export type ReviewQueueItem = {
   searchId: string;
   headlineListingId: string;
   title: string;
+  addressRaw: string;
   outcode: string;
   bedrooms: number | null;
+  bathrooms: number | null;
   priceMonthly: number | null;
+  /** Move-in date as ISO string; null = unknown or "available immediately". */
+  availableFrom: string | null;
+  /** True when the listing is flagged "available immediately/now". */
+  availableNow: boolean;
+  /** Furnishing status; null = unknown. */
+  furnished: FurnishedStatus | null;
   photo: string | null;
   portalCount: number;
 };
@@ -927,9 +1405,18 @@ async function hydrateQueueItems(
       searchId: listings.searchId,
       portal: listings.portal,
       title: listings.title,
+      addressRaw: listings.addressRaw,
       postcode: listings.postcode,
       bedrooms: listings.bedrooms,
+      bathrooms: listings.bathrooms,
       priceMonthly: listings.priceMonthly,
+      availableFrom: listings.availableFrom,
+      // Furnishing + availability live in the detail blob / summary tags,
+      // not columns — pull just those bits out of JSONB rather than
+      // hauling the whole rawJson per queue row. `tags` backstops the
+      // sparse detail-scrape fields (see `deriveFurnished`/`resolveAvailability`).
+      furnished: sql<string | null>`${listings.rawJson}->>'furnished'`,
+      tags: sql<string[] | null>`${listings.rawJson}->'tags'`,
     })
     .from(listings)
     .innerJoin(searches, eq(listings.searchId, searches.id))
@@ -980,14 +1467,26 @@ async function hydrateQueueItems(
       if (!g) {
         return null;
       }
+      const headlineTags = Array.isArray(g.headline.tags)
+        ? g.headline.tags.filter((t): t is string => typeof t === "string")
+        : [];
+      const headlineAvail = resolveAvailability(
+        g.headline.availableFrom,
+        headlineTags
+      );
       return {
         clusterId,
         searchId: g.headline.searchId,
         headlineListingId: g.headline.id,
         title: g.headline.title,
+        addressRaw: g.headline.addressRaw,
         outcode: outcodeOf(g.headline.postcode),
         bedrooms: g.headline.bedrooms,
+        bathrooms: g.headline.bathrooms,
         priceMonthly: g.headline.priceMonthly,
+        availableFrom: headlineAvail.iso,
+        availableNow: headlineAvail.now,
+        furnished: deriveFurnished(g.headline.furnished, headlineTags),
         photo: photoByListingId.get(g.headline.id) ?? null,
         portalCount: g.portals.size,
       };

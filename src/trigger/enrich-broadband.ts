@@ -1,14 +1,15 @@
 /**
  * Per-cluster broadband enrichment.
  *
- * Calls BT Wholesale's availability API via Zyte (see `src/lib/broadband.ts`
- * for the proxy reasoning). Keyed on the cluster's postcode — broadband
- * availability is street-level not address-level, so the postcode is
- * the right granularity.
+ * Looks the cluster's postcode up against the Ofcom Connected Nations
+ * coverage snapshot in `broadband_coverage` (see `src/lib/broadband.ts`).
+ * Broadband availability is street-level not address-level, so the
+ * postcode is the right granularity; most scraped postcodes are
+ * outcode-only, and the lookup falls back to an outcode aggregate.
  *
- * Status: best-effort. BT's undocumented API is brittle; on parse
- * failure we still write a row with null fields so the UI can fall back
- * to the AI's verbatim broadband string when present.
+ * Status: best-effort. When the postcode is missing from the snapshot we
+ * still write a row with null fields so the UI can fall back to the AI's
+ * verbatim broadband string when present.
  *
  * Fan-out: dispatched from `clusterTask.onSuccess` alongside the other
  * enrichment tasks. No-ops when the cluster has no postcode.
@@ -16,7 +17,7 @@
 
 import { logger, task } from "@trigger.dev/sdk";
 import { getDb } from "../../db";
-import { getBroadband } from "../lib/broadband";
+import { getBroadbandForPostcode } from "../lib/broadband";
 import { upsertEnrichmentForCluster } from "./enrich-helpers";
 import { scrapeQueue } from "./queues";
 
@@ -29,14 +30,6 @@ export type EnrichBroadbandOutput = {
   technology: string | null;
   listingsTouched: number;
 };
-
-function getZyteKey(): string {
-  const key = process.env.ZYTE_API_KEY;
-  if (!key) {
-    throw new Error("ZYTE_API_KEY not set in the Trigger.dev worker env");
-  }
-  return key;
-}
 
 export const enrichBroadbandTask = task({
   id: "enrich-broadband",
@@ -67,14 +60,11 @@ export const enrichBroadbandTask = task({
       return empty;
     }
 
-    const broadband = await getBroadband({
-      zyteApiKey: getZyteKey(),
-      postcode: cluster.postcode,
-    });
+    const broadband = await getBroadbandForPostcode(db, cluster.postcode);
 
     if (broadband.technology === null) {
       logger.warn(
-        "enrich-broadband: BT returned no usable products, writing nulls",
+        "enrich-broadband: postcode not in Ofcom snapshot, writing nulls",
         { clusterId, postcode: cluster.postcode }
       );
     }

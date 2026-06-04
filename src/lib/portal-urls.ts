@@ -44,9 +44,10 @@
  *     comma list. Zoopla uses path selection (default `/property/` path
  *     already hides student-accommodation and retirement-homes which
  *     have their own paths) plus explicit `is_shared_accommodation=false`
- *     for house-share. OpenRent only supports `acceptStudents=false`;
- *     it has no retirement-homes or house-share categories at all, so
- *     those exclusions are no-ops on OR (nothing to hide).
+ *     for house-share. OpenRent only supports `acceptNonStudents=true`
+ *     ("Accepts non-students"); it has no retirement-homes or house-share
+ *     categories at all, so those exclusions are no-ops on OR (nothing to
+ *     hide).
  */
 
 // Search-filter furnished states (two-valued): the portals' search UIs
@@ -280,8 +281,14 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
 // -----------------------------------------------------------------------------
 
 /**
- * OpenRent's search URL params (verified against a real OR URL with
- * the corresponding UI toggles enabled):
+ * OpenRent's search URL params.
+ *
+ * IMPORTANT: OpenRent applies ALL of these filters CLIENT-SIDE in JS, so
+ * they only take effect when the page is fetched with a real browser
+ * (`browserHtml: true` in `scrape-portal.ts`). A raw HTTP fetch returns
+ * the unfiltered default result set and silently ignores every param
+ * below — that's the OpenRent leak `audit-filter-leaks.ts` was written
+ * for. Don't "optimise" OR back to a plain HTTP fetch.
  *
  *   - Furnished: `furnishedType` is an INTEGER code, not a string:
  *     1 = Furnished, 2 = Unfurnished, 3 = Either (omit for "any").
@@ -289,10 +296,11 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
  *     `acceptPets=true`. NB the param names differ from RM/ZP and
  *     OpenRent's own "acceptPets" is in the same group as the "accept
  *     X tenant" filters, not its own group.
- *   - Exclusions: only `student` has a URL handle
- *     (`acceptStudents=false`). OpenRent has no retirement-homes or
- *     house-share categories at all, so those exclusions are no-ops
- *     on OR — nothing to hide.
+ *   - Exclusions: only `student` has a URL handle — `acceptNonStudents=true`
+ *     ("Accepts non-students"), which hides student-only lets. (The
+ *     inverse `acceptStudents=false` is NOT honoured.) OpenRent has no
+ *     retirement-homes or house-share categories at all, so those
+ *     exclusions are no-ops on OR — nothing to hide.
  *
  * `isLive=true` is OpenRent's equivalent of "exclude let-agreed".
  * `area=<km integer>` caps the radius around the term. We accept the
@@ -360,14 +368,16 @@ export function openrentSearchUrl(params: OpenrentSearchUrlParams): string {
     }
   }
   if (params.exclusions?.includes("student")) {
-    // `acceptStudents=false` hides listings marketed to students.
-    // `retirement` is genuinely not a category on OR. `house_share` IS
-    // a category (OR returns `Room in a Shared Flat` / `Room in a
-    // Shared House` listings) but has no URL switch — see
-    // `filterByExclusions` in `src/trigger/scrape-portal.ts` for the
-    // post-scrape drop and `listingPassesExclusions` in
-    // `src/server/functions/review.ts` for the read-time backstop.
-    usp.set("acceptStudents", "false");
+    // `acceptNonStudents=true` ("Accepts non-students") hides student-only
+    // lets — verified live to actually filter under the browser tier,
+    // unlike the `acceptStudents=false` we used to send (no-op). `retirement`
+    // is genuinely not a category on OR. `house_share` IS a category (OR
+    // returns `Room in a Shared Flat` / `Room in a Shared House` listings) but
+    // has no URL switch — see `filterByExclusions` in
+    // `src/trigger/scrape-portal.ts` for the post-scrape drop and
+    // `listingPassesExclusions` in `src/server/functions/review.ts` for the
+    // read-time backstop.
+    usp.set("acceptNonStudents", "true");
   }
   return `https://www.openrent.co.uk/properties-to-rent/?${usp.toString()}`;
 }

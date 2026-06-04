@@ -24,10 +24,17 @@ export type GoogleTravelMode =
 
 export type LatLng = { lat: number; lng: number };
 
+/**
+ * A Routes v2 waypoint — either explicit coordinates or a geocodable address
+ * string. The Routes API geocodes `address` waypoints as part of the route
+ * request, so there's no separate Geocoding API call (or quota) to pay for.
+ */
+export type Waypoint = LatLng | { address: string };
+
 export type ComputeRouteInput = {
   apiKey: string;
-  origin: LatLng;
-  destination: LatLng;
+  origin: Waypoint;
+  destination: Waypoint;
   travelMode: GoogleTravelMode;
   /**
    * Targeted arrival time. The Google Routes API accepts arrivalTime
@@ -162,6 +169,14 @@ export function nextWeekdayAt(hourLondon: number, fromUtcMillis: number): Date {
   return new Date(target);
 }
 
+/** Build a Routes v2 waypoint payload from coordinates or an address. */
+function toWaypoint(wp: Waypoint): Record<string, unknown> {
+  if ("address" in wp) {
+    return { address: wp.address };
+  }
+  return { location: { latLng: { latitude: wp.lat, longitude: wp.lng } } };
+}
+
 /**
  * Call Routes v2 for a single origin/destination pair. Throws on HTTP
  * error or when the response has no usable route.
@@ -170,19 +185,8 @@ export async function computeRoute(
   input: ComputeRouteInput
 ): Promise<ComputeRouteResult> {
   const body: Record<string, unknown> = {
-    origin: {
-      location: {
-        latLng: { latitude: input.origin.lat, longitude: input.origin.lng },
-      },
-    },
-    destination: {
-      location: {
-        latLng: {
-          latitude: input.destination.lat,
-          longitude: input.destination.lng,
-        },
-      },
-    },
+    origin: toWaypoint(input.origin),
+    destination: toWaypoint(input.destination),
     travelMode: input.travelMode,
     languageCode: "en-GB",
     units: "METRIC",

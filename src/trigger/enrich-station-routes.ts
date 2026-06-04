@@ -23,19 +23,24 @@
  *      `{ name, walkMinutes, transitMinutes }` (same order as the
  *      stations were ranked by distance).
  *
- * No-ops gracefully when the cluster lacks lat/lng, has no listings,
- * or none of its listings carry `nearestStations` with geocodable
- * coordinates. A station whose Routes lookup fails for both modes is
- * dropped from the output — the section just shows the survivors.
+ * Each station is routed to by NAME (e.g. "Bounds Green Station, London") —
+ * Rightmove's `nearestStations` carry no coordinates, and the Routes API
+ * geocodes an address waypoint in-request, so no separate Geocoding call is
+ * needed. The cluster's own lat/lng anchors the origin.
+ *
+ * No-ops gracefully when the cluster lacks lat/lng, has no listings, or none
+ * of its listings carry any `nearestStations`. A station whose Routes lookup
+ * fails for both modes is dropped — the section just shows the survivors.
  */
 
 import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { env } from "../lib/env";
+import { mapsServerKey } from "../lib/env";
 import {
   type LatLng,
+  type Waypoint,
   computeRoute,
   nextWeekdayAt,
 } from "../lib/google-routes";
@@ -68,19 +73,28 @@ const MAX_STATIONS = 3;
 
 type StationCandidate = {
   name: string;
-  lat: number;
-  lng: number;
   distanceMiles: number;
 };
 
+const STATION_NAME_RE = /\bstation\b/i;
+
 /**
- * Pull the closest stations out of a listing's parsed `rawJson`. The
- * portal parser is the source of truth on shape — see
- * `src/lib/parsers/types.ts`. We accept either lat/lng directly on the
- * station (rare) or a sibling `coordinates`/`location` object (more
- * common). Stations with no usable coords are skipped: Google Routes
- * needs a real destination point, and inferring it from the name would
- * cost a Geocoding API call we can avoid.
+ * Turn a station name into a geocodable address for a Routes waypoint. The
+ * Routes API geocodes the address in-request (no separate Geocoding call), so
+ * we don't need the station's coordinates — which Rightmove's `nearestStations`
+ * never carry (only `name` / `types` / `distance`).
+ */
+function stationAddressQuery(name: string): string {
+  const withKind = STATION_NAME_RE.test(name) ? name : `${name} Station`;
+  return `${withKind}, London`;
+}
+
+/**
+ * Pull the closest stations out of a listing's parsed `rawJson`. The portal
+ * parser is the source of truth on shape — see `src/lib/parsers/types.ts`.
+ * Rightmove (the only portal that populates this) gives `name` + `distance`
+ * but NO coordinates, so we route to each station by name/address rather than
+ * requiring a lat/lng. Kept closest-first, capped at {@link MAX_STATIONS}.
  */
 function readStationCandidates(rawJson: unknown): StationCandidate[] {
   if (!rawJson || typeof rawJson !== "object") {
@@ -100,13 +114,9 @@ function readStationCandidates(rawJson: unknown): StationCandidate[] {
     if (!name) {
       continue;
     }
-    const lat = readNumber(s.lat ?? (s.coordinates as Record<string, unknown> | undefined)?.lat ?? (s.location as Record<string, unknown> | undefined)?.lat);
-    const lng = readNumber(s.lng ?? s.lon ?? (s.coordinates as Record<string, unknown> | undefined)?.lng ?? (s.location as Record<string, unknown> | undefined)?.lng);
-    if (lat === null || lng === null) {
-      continue;
-    }
-    const distanceMiles = readNumber(s.distanceMiles) ?? Number.POSITIVE_INFINITY;
-    out.push({ name, lat, lng, distanceMiles });
+    const distanceMiles =
+      readNumber(s.distanceMiles) ?? Number.POSITIVE_INFINITY;
+    out.push({ name, distanceMiles });
   }
   out.sort((a, b) => a.distanceMiles - b.distanceMiles);
   return out.slice(0, MAX_STATIONS);
@@ -200,7 +210,7 @@ export const enrichStationRoutesTask = task({
   ): Promise<EnrichStationRoutesOutput> => {
     const db = getDb();
     const { clusterId } = payload;
-    const { GOOGLE_MAPS_API_KEY } = env();
+    const GOOGLE_MAPS_API_KEY = mapsServerKey();
     const empty = { clusterId, stationsComputed: 0, listingsTouched: 0 };
 
     const ctx = await loadStationContext(db, clusterId, (reason, extra) => {
@@ -217,7 +227,7 @@ export const enrichStationRoutesTask = task({
 
     const routes: StationRoute[] = [];
     for (const station of ctx.stations) {
-      const dest: LatLng = { lat: station.lat, lng: station.lng };
+      const dest: Waypoint = { address: stationAddressQuery(station.name) };
       const [walkMinutes, transitMinutes] = await Promise.all([
         runMode(GOOGLE_MAPS_API_KEY, ctx.origin, dest, "WALK", null, station.name, clusterId),
         runMode(GOOGLE_MAPS_API_KEY, ctx.origin, dest, "TRANSIT", transitArrival, station.name, clusterId),
@@ -262,7 +272,7 @@ export const enrichStationRoutesTask = task({
 async function runMode(
   apiKey: string,
   origin: LatLng,
-  destination: LatLng,
+  destination: Waypoint,
   mode: "WALK" | "TRANSIT",
   arrivalTime: Date | null,
   stationName: string,
