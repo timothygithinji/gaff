@@ -23,9 +23,9 @@ export type BathOption = {
 };
 
 export const BED_OPTIONS: BedOption[] = [
-  { id: "1+", label: "1", min: 1, max: null },
-  { id: "2+", label: "2", min: 2, max: null },
-  { id: "3+", label: "3", min: 3, max: null },
+  { id: "1+", label: "1+", min: 1, max: null },
+  { id: "2+", label: "2+", min: 2, max: null },
+  { id: "3+", label: "3+", min: 3, max: null },
   { id: "4+", label: "4+", min: 4, max: null },
 ];
 
