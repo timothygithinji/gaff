@@ -38,6 +38,15 @@ export function createAuth(env: AuthEnv) {
     database: drizzleAdapter(db, { provider: "pg" }),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    // The baseURL origin is always trusted. In a local `vite dev` server we
+    // additionally trust localhost so sign-in works even when pointed at prod
+    // data (`dev:prod`), where BETTER_AUTH_URL is the deployed domain and a
+    // localhost origin would otherwise be rejected. `import.meta.env.DEV` is
+    // statically `false` in the production Worker build, so this never widens
+    // trusted origins in real prod.
+    ...(import.meta.env.DEV
+      ? { trustedOrigins: ["http://localhost:3000"] }
+      : {}),
     emailAndPassword: {
       enabled: true,
     },
