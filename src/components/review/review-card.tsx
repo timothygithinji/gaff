@@ -1,15 +1,19 @@
+import useEmblaCarousel from "embla-carousel-react";
+import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react";
+import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
 import { sizedPhoto } from "../../lib/photo-size";
 import { cn } from "../../lib/utils";
 /**
- * The mobile review card — pixel-matched to Paper "Review · Mobile"
- * (artboard 23F, "Hero card").
+ * The mobile review card — rooted in Paper "Review · Mobile" (artboard 23F,
+ * "Hero card"), extended into the swipe deck {@link MobileReviewCard}.
  *
  * Sharp 2px radius (Paper uses a crisp corner on the review card, not the
  * global pillowy radius), 1px hairline border, white surface. Structure
  * top → bottom:
  *
- *   1. Photo (full-bleed, 240h) — sharp "New · Nhr" pill top-left (copper
- *      dot) + "1 / N" counter chip bottom-right.
+ *   1. Photo — fills the phone screen (fixed comfortable height on tablet),
+ *      swipeable Embla carousel, "New · Nhr" pill top-left (copper dot) +
+ *      "n / N" counter and dot indicator bottom.
  *   2. Headline row — address + sub-spec on the left, price + "per month"
  *      on the right.
  *   3. Tag row — sharp highlight pills (navy ✓) + watch-out pills (copper !)
@@ -21,10 +25,6 @@ import { cn } from "../../lib/utils";
  * Presentation only — consumes the same `ReviewCard` the route hands in.
  */
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
-
-type Props = {
-  card: ReviewCardData;
-};
 
 function formatPrice(monthly: number | null): string {
   if (monthly === null) {
@@ -65,66 +65,179 @@ function subSpec(card: ReviewCardData): string {
   return parts.join(" · ");
 }
 
-export function ReviewCardView({ card }: Props) {
-  const { headlineListing: hl } = card;
-  const heroPhoto = hl.photos[0];
-  const photoCount = Math.max(hl.photos.length, 1);
-  // Freshness is computed on the SERVER (`card.freshnessLabel`) so SSR and
-  // the first client render agree — computing `Date.now()` here would trip
-  // React's hydration mismatch check.
+const DECIDE_THRESHOLD = 110;
+
+/**
+ * Mobile review deck — the swipe surface. Photos browse via a horizontal
+ * Embla carousel; dragging the card *body* left/right past a threshold
+ * skips/keeps (the photo strip keeps its own horizontal swipe, so the two
+ * gestures live in separate regions and never fight); a tap opens the full
+ * listing. Headline/tags/stats/portals are shared with {@link ReviewCardView}.
+ * Sized to fill the phone screen; on tablet it sits at a fixed comfortable
+ * height (the route centres it).
+ */
+export function MobileReviewCard({
+  card,
+  disabled,
+  onOpenDetail,
+  onSkip,
+  onShortlist,
+}: {
+  card: ReviewCardData;
+  disabled?: boolean;
+  onOpenDetail: () => void;
+  onSkip: () => void;
+  onShortlist: () => void;
+}) {
+  const hl = card.headlineListing;
+  const photos = hl.photos;
+  const photoCount = Math.max(photos.length, 1);
   const fresh = card.freshnessLabel;
+  const [emblaRef, emblaApi] = useEmblaCarousel({ align: "start" });
+  const photoIndex = useEmblaSelectedIndex(emblaApi);
+
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startRef = useRef<{ x: number; y: number; t: number } | null>(null);
+
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (disabled) {
+      return;
+    }
+    startRef.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (startRef.current) {
+      setDx(e.clientX - startRef.current.x);
+    }
+  };
+  const onPointerEnd = (e: ReactPointerEvent) => {
+    const start = startRef.current;
+    startRef.current = null;
+    setDragging(false);
+    setDx(0);
+    if (!start) {
+      return;
+    }
+    const moveX = e.clientX - start.x;
+    const moveY = e.clientY - start.y;
+    const elapsed = e.timeStamp - start.t;
+    // A near-stationary quick press is a tap → open the full listing.
+    if (Math.hypot(moveX, moveY) < 8 && elapsed < 350) {
+      onOpenDetail();
+      return;
+    }
+    if (moveX > DECIDE_THRESHOLD) {
+      onShortlist();
+    } else if (moveX < -DECIDE_THRESHOLD) {
+      onSkip();
+    }
+  };
+
+  const keepHint = Math.max(0, Math.min(1, dx / DECIDE_THRESHOLD));
+  const skipHint = Math.max(0, Math.min(1, -dx / DECIDE_THRESHOLD));
 
   return (
-    <article className="mx-5 overflow-hidden rounded-[2px] border border-line bg-paper">
-      {/* 1 — Photo */}
-      <div className="relative h-[240px] w-full overflow-hidden bg-[#d6dee5]">
-        {heroPhoto ? (
-          // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available. Photo URLs already point at R2 with cache-friendly headers.
-          <img
-            alt={hl.title}
-            className="h-full w-full object-cover"
-            src={sizedPhoto(heroPhoto, 640)}
-          />
+    <article
+      className="relative mx-5 flex flex-1 flex-col overflow-hidden rounded-[2px] border border-line bg-paper sm:flex-none"
+      style={{
+        transform: dx
+          ? `translateX(${dx}px) rotate(${dx * 0.015}deg)`
+          : undefined,
+        transition: dragging ? "none" : "transform 0.2s ease-out",
+      }}
+    >
+      <span
+        className='pointer-events-none absolute top-4 left-4 z-10 rounded bg-primary px-2.5 py-1 font-semibold text-[#eef1f4] text-[11px] uppercase tracking-[0.14em]'
+        style={{ opacity: keepHint }}
+      >
+        Keep
+      </span>
+      <span
+        className="pointer-events-none absolute top-4 right-4 z-10 rounded bg-warning-text px-2.5 py-1 font-semibold text-[11px] text-white uppercase tracking-[0.14em]"
+        style={{ opacity: skipHint }}
+      >
+        Skip
+      </span>
+
+      {/* 1 — Photos (swipe to browse · tap to open) */}
+      <div className="relative min-h-[260px] w-full flex-1 overflow-hidden bg-[#d6dee5] sm:h-[420px] sm:flex-none">
+        {photos.length ? (
+          <div className="absolute inset-0 overflow-hidden" ref={emblaRef}>
+            <div className="flex h-full">
+              {photos.map((p, i) => (
+                <div
+                  className="relative h-full w-full flex-[0_0_100%]"
+                  key={`${p}-${i}`}
+                >
+                  {/* biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; R2 URLs are already cache-friendly. */}
+                  <img
+                    alt={hl.title}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    src={sizedPhoto(p, 720)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <p className="text-[12px] text-slate">No photo yet</p>
           </div>
         )}
         {fresh ? (
-          <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 bg-[rgba(14,34,53,0.85)] px-2.5 py-1.5 font-semibold text-[10px] text-white uppercase tracking-[0.12em] backdrop-blur">
+          <span className="pointer-events-none absolute top-3 left-3 inline-flex items-center gap-1.5 bg-[rgba(14,34,53,0.85)] px-2.5 py-1.5 font-semibold text-[10px] text-white uppercase tracking-[0.12em] backdrop-blur">
             <span className="size-[5px] rounded-full bg-copper" />
             {fresh}
           </span>
         ) : null}
-        <span className="absolute right-3 bottom-3 inline-flex items-center bg-[rgba(255,255,255,0.92)] px-2 py-1 text-[10px] text-navy tracking-[0.08em]">
-          1 / {photoCount}
+        <span className="pointer-events-none absolute right-3 bottom-3 inline-flex items-center bg-[rgba(255,255,255,0.92)] px-2 py-1 text-[10px] text-navy tracking-[0.08em]">
+          {Math.min(photoIndex + 1, photoCount)} / {photoCount}
         </span>
+        {photoCount > 1 ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
+            {photos.map((p, i) => (
+              <span
+                className={cn(
+                  "size-1.5 rounded-full transition-colors",
+                  i === photoIndex ? "bg-white" : "bg-white/45"
+                )}
+                key={`dot-${p}-${i}`}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {/* 2 — Headline row */}
-      <div className="flex items-baseline justify-between gap-3 px-[18px] pt-[18px]">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="font-semibold text-[17px] text-navy leading-[22px] tracking-[-0.01em]">
-            {hl.title}
-          </h2>
-          <p className="text-[12px] text-slate leading-4">{subSpec(card)}</p>
+      {/* 2 — Body (drag to decide · tap to open) */}
+      <div
+        className="cursor-pointer select-none"
+        onPointerCancel={onPointerEnd}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        style={{ touchAction: "pan-y" }}
+      >
+        <div className="flex items-baseline justify-between gap-3 px-[18px] pt-[18px]">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <h2 className="font-semibold text-[17px] text-navy leading-[22px] tracking-[-0.01em]">
+              {hl.title}
+            </h2>
+            <p className="text-[12px] text-slate leading-4">{subSpec(card)}</p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end">
+            <p className="font-light text-[22px] text-navy leading-[22px] tracking-[-0.02em]">
+              {formatPrice(hl.priceMonthly)}
+            </p>
+            <p className="text-[10px] text-slate leading-3">per month</p>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end">
-          <p className="font-light text-[22px] text-navy leading-[22px] tracking-[-0.02em]">
-            {formatPrice(hl.priceMonthly)}
-          </p>
-          <p className="text-[10px] text-slate leading-3">per month</p>
-        </div>
+        <CardTags card={card} />
+        <CardStats card={card} />
+        <CardPortals card={card} />
       </div>
-
-      {/* 3 — Tags */}
-      <CardTags card={card} />
-
-      {/* 4 — Stats strip */}
-      <CardStats card={card} />
-
-      {/* 5 — Portals */}
-      <CardPortals card={card} />
     </article>
   );
 }
@@ -232,7 +345,7 @@ function portalInitial(portal: string): string {
   return portalLabel(portal).charAt(0).toUpperCase();
 }
 
-const AVATAR_BG = ["bg-navy", "bg-slate", "bg-steel"];
+const AVATAR_BG = ["bg-primary", "bg-slate", "bg-steel"];
 
 function CardPortals({ card }: { card: ReviewCardData }) {
   const { headlineListing, portalsAlsoOn } = card;

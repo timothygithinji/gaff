@@ -32,7 +32,7 @@ import {
   DesktopReview,
   type DesktopReviewData,
 } from "../components/review/desktop-review";
-import { ReviewCardView } from "../components/review/review-card";
+import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
 import { Skeleton } from "../components/ui/skeleton";
@@ -461,7 +461,7 @@ function ReviewPage() {
         navigate,
       })}
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 sm:max-w-2xl lg:hidden">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col bg-background pb-24 sm:max-w-2xl lg:hidden">
         <ReviewHeader
           leftToday={card?.leftToday ?? 0}
           searchPill={card?.searchPill}
@@ -475,6 +475,7 @@ function ReviewPage() {
           doSkip,
           doShortlist,
           doUndo,
+          doOpenDetail,
         })}
 
         <BottomNav />
@@ -641,11 +642,19 @@ function renderMobileHero(args: {
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
+  doOpenDetail: () => void;
 }) {
   if (args.card) {
     return (
-      <main className="space-y-4 pb-4">
-        <ReviewCardView card={args.card} />
+      <main className="flex flex-1 flex-col gap-3.5 pb-3 sm:justify-center sm:py-5">
+        <MobileReviewCard
+          card={args.card}
+          disabled={args.pending}
+          key={args.card.cluster.id}
+          onOpenDetail={args.doOpenDetail}
+          onShortlist={args.doShortlist}
+          onSkip={args.doSkip}
+        />
         <ActionButtons
           clusterId={args.card.cluster.id}
           disabled={args.pending}
