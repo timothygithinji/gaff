@@ -11,13 +11,13 @@
  *   - The cluster's other listings on different portals (for cross-portal
  *     price spread context).
  *   - Any existing geo enrichments on the headline listing's enrichment
- *     row (EPC, commute, broadband, crime, amenities, flood) so the model
- *     can reason about commute time, fibre availability, crime counts,
- *     etc. instead of guessing them from the description.
+ *     row (EPC, commute, broadband, amenities, flood) so the model
+ *     can reason about commute time, fibre availability, etc. instead
+ *     of guessing them from the description.
  *
  * The geo enrichments are written by sibling cluster tasks
  * (`enrich-epc.ts`, `enrich-commute.ts`, `enrich-broadband.ts`,
- * `enrich-crime.ts`, `enrich-amenities.ts`, `enrich-flood.ts`). They
+ * `enrich-amenities.ts`, `enrich-flood.ts`). They
  * key on `(listing_id, prompt_version)` so we look them up under the
  * v2 prompt version; if v2 is fresh and no row exists yet, we fall back
  * to whatever exists at any version (best-effort — geo data is geo data
@@ -58,7 +58,6 @@ import { AI_BUDGET, PROMPT_VERSION } from "../lib/ai/config";
 import { computeFiveWeeksRent } from "../lib/ai/feature-filter";
 import type {
   AmenitiesInput,
-  CrimeInput,
   EnrichmentInput,
   ExtractContext,
   FloodInput,
@@ -94,20 +93,6 @@ function readListingDetail(rawJson: unknown): ListingDetail | null {
     return null;
   }
   return rawJson as ListingDetail;
-}
-
-/** Project an Enrichment row's `crime` JSONB to the model-facing shape. */
-function toCrimeInput(
-  raw: typeof schema.enrichments.$inferSelect.crime
-): CrimeInput | null {
-  if (!raw) {
-    return null;
-  }
-  const top = Object.entries(raw.byCategory ?? {})
-    .map(([category, count]) => ({ category, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-  return { month: raw.month, total: raw.total, topCategories: top };
 }
 
 function toBroadbandInput(
@@ -445,7 +430,6 @@ export const enrichAiTask = task({
         epcPotential: toEpcPotential(geo?.epc ?? null),
         commuteMinutes: toCommuteMinutes(geo?.commuteMinutes ?? null),
         broadband: toBroadbandInput(geo?.broadband ?? null),
-        crime: toCrimeInput(geo?.crime ?? null),
         amenities: toAmenitiesInput(geo?.amenities ?? null),
         flood: toFloodInput(geo?.flood ?? null),
       },

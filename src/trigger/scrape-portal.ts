@@ -677,9 +677,16 @@ export const scrapePortalTask = task({
       };
     }
 
-    // Rightmove + Zoopla need the browser tier to get past CF and
-    // hydrate __NEXT_DATA__. OpenRent is plain server-side HTML.
-    const useBrowser = portal === "rightmove" || portal === "zoopla";
+    // All three portals need the browser tier. Rightmove + Zoopla to get
+    // past CF and hydrate __NEXT_DATA__; OpenRent because its search
+    // filters (bedrooms_min, prices_*, acceptNonStudents, …) are applied
+    // CLIENT-SIDE in JS — a raw HTTP fetch returns the *unfiltered* default
+    // result set, so studios and 1-beds leak into a 2-bed search. Running
+    // a real browser lets OR's own JS apply the URL filters before we
+    // parse. (See `scripts/verify/audit-filter-leaks.ts` for the leak this
+    // closed.)
+    const useBrowser =
+      portal === "rightmove" || portal === "zoopla" || portal === "openrent";
     // R2 archive base scope: kebabbed place name (e.g. "camden-town").
     // Per-outcode iterations append the outcode label so each iteration
     // gets a unique key — otherwise the storeRawHtml writes would

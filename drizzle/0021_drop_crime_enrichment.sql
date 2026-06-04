@@ -1,0 +1,1 @@
+ALTER TABLE "enrichments" DROP COLUMN "crime";

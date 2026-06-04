@@ -226,6 +226,14 @@ export const searches = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     active: boolean("active").default(true).notNull(),
+    /**
+     * Soft-delete tombstone. NULL = live; a timestamp = the user deleted
+     * the search. Distinct from `active` (pause): a paused search still
+     * shows in the list, a deleted one is hidden everywhere. The row +
+     * its listings / runs / swipes survive (history is preserved and the
+     * delete is recoverable) — every read path filters `deletedAt IS NULL`.
+     */
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .$onUpdate(() => new Date())
@@ -275,6 +283,42 @@ export const propertyClusters = pgTable(
     ),
   ]
 );
+
+/**
+ * Ofcom Connected Nations fixed-broadband coverage, loaded once per
+ * snapshot from the open-data postcode CSVs (see
+ * `scripts/load-ofcom-broadband.ts`). Keyed by lookup string:
+ * - level 'postcode': full unit postcode, spaces removed ("SE19HA").
+ * - level 'outcode':  the outcode ("SE1"), an unweighted mean of the
+ *   `%`-fields across every unit postcode in that outcode. Used as the
+ *   fallback because most scraped cluster postcodes are outcode-only.
+ *
+ * Figures are "% of premises" (0–100). At postcode level Ofcom withholds
+ * full-fibre coverage, so `gigabitPct` (gigabit-capable) is the best
+ * fibre proxy. `enrich-broadband` reads this at write time; nothing here
+ * is per-address truth — it's a postcode/outcode estimate.
+ */
+export const broadbandCoverage = pgTable("broadband_coverage", {
+  /** "SE19HA" (unit) or "SE1" (outcode) — disjoint, so safe as a PK. */
+  key: text("key").primaryKey(),
+  /** 'postcode' | 'outcode'. */
+  level: text("level").notNull(),
+  /** % premises with superfast (≥30 Mbit/s) coverage. */
+  sfbbPct: numeric("sfbb_pct", { precision: 5, scale: 2 }),
+  /** % premises with ultrafast (≥100 Mbit/s) coverage. */
+  ufbb100Pct: numeric("ufbb100_pct", { precision: 5, scale: 2 }),
+  /** % premises with ultrafast (≥300 Mbit/s) coverage. */
+  ufbb300Pct: numeric("ufbb300_pct", { precision: 5, scale: 2 }),
+  /** % premises with gigabit-capable coverage (FTTP or cable). */
+  gigabitPct: numeric("gigabit_pct", { precision: 5, scale: 2 }),
+  /** % premises with Next Generation Access (anything but ADSL). */
+  ngaPct: numeric("nga_pct", { precision: 5, scale: 2 }),
+  /** Unit postcodes averaged into an outcode row; 1 for unit rows. */
+  sampleSize: integer("sample_size").notNull().default(1),
+  /** Provenance, e.g. "ofcom-cn-2025-07". */
+  source: text("source").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 /**
  * Council tax rates by billing authority, seeded once per tax year from
@@ -455,27 +499,26 @@ export const enrichments = pgTable(
     epc: jsonb("epc"),
     commuteMinutes: jsonb("commute_minutes").$type<Record<string, number>>(),
     /**
-     * Broadband availability from BT Wholesale.
-     * - technology: best available, in order FTTP > FTTC > ADSL.
-     * - downloadMbps / uploadMbps: estimated max speed for that tier.
-     * - fttpAvailable: shortcut for the headline "fibre or not" check.
+     * Broadband availability, derived from Ofcom Connected Nations
+     * postcode-level coverage (`broadband_coverage`). See
+     * `src/lib/broadband.ts` for the mapping.
+     * - technology: best-estimate tier (FTTP > FTTC > ADSL). Ofcom's
+     *   postcode data reports gigabit-capable %, not the line technology,
+     *   so this is an estimate — `source`/`asOf` record its provenance.
+     * - downloadMbps: representative max for that tier. uploadMbps is null
+     *   (Ofcom's postcode file carries no upload figure).
+     * - fttpAvailable: gigabit-capable to a majority of premises. Ofcom
+     *   can't separate FTTP from gigabit cable at postcode level, so treat
+     *   this as "gigabit-capable", the closest honest fibre proxy.
+     * - source: e.g. "ofcom-cn-2025-07"; asOf: the snapshot, e.g. "2025-07".
      */
     broadband: jsonb("broadband").$type<{
       technology: "FTTP" | "FTTC" | "ADSL" | null;
       downloadMbps: number | null;
       uploadMbps: number | null;
       fttpAvailable: boolean;
-    }>(),
-    /**
-     * data.police.uk monthly crime aggregate, fetched once per cluster.
-     * - month: e.g. "2026-03" (most recent month with data).
-     * - total: count of all crimes within a 1mi radius for that month.
-     * - byCategory: per-category counts (anti-social-behaviour, burglary, …).
-     */
-    crime: jsonb("crime").$type<{
-      month: string;
-      total: number;
-      byCategory: Record<string, number>;
+      source?: string | null;
+      asOf?: string | null;
     }>(),
     /**
      * Environment Agency flood risk for the cluster's location.
@@ -513,6 +556,46 @@ export const enrichments = pgTable(
         name: string;
         walkMinutes: number | null;
         transitMinutes: number | null;
+      }>
+    >(),
+    /**
+     * Every relevant place within ~1 mile of the cluster, from a Google
+     * Places Nearby (New) sweep in `enrich-nearby-transit.ts`. Unlike
+     * `stationRoutes` (Rightmove-only, nearest few, names only), this is
+     * portal-agnostic and carries coordinates, so the detail map can plot
+     * each place and draw an on-demand route to it on click.
+     *
+     * NOTE: the column is named `nearby_transit` for historical reasons —
+     * it began transit-only and was broadened to all POI categories
+     * before it ever carried data, so no rename migration was warranted.
+     *
+     *   - `category`: transport / park / shop / gp / restaurant.
+     *   - `kind`: tube / rail / tram / bus for transport; null otherwise.
+     *   - `lat` / `lng`: the place's location (map marker + the client-
+     *     side Directions origin/destination).
+     *   - `distanceMiles`: straight-line distance, nearest-first.
+     */
+    nearbyTransit: jsonb("nearby_transit").$type<
+      Array<{
+        name: string;
+        category: "transport" | "park" | "shop" | "gp" | "restaurant";
+        kind: "tube" | "rail" | "tram" | "bus" | null;
+        /**
+         * TfL modes serving a station, for the line roundels — e.g.
+         * ["tube"] or ["national-rail","overground"]. Absent for buses,
+         * non-stations, and Google-only stations outside TfL coverage.
+         */
+        modes?: Array<
+          | "tube"
+          | "overground"
+          | "elizabeth-line"
+          | "dlr"
+          | "tram"
+          | "national-rail"
+        >;
+        lat: number;
+        lng: number;
+        distanceMiles: number;
       }>
     >(),
     aiRunId: text("ai_run_id").references(() => aiRuns.id, {

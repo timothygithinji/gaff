@@ -142,12 +142,13 @@ export async function zyteFetch(
  * so that `scrape_runs.cost_usd` still records something defensible.
  *
  * Numbers cross-checked against the live verify scripts in
- * `scripts/verify/zyte-*.ts` — Rightmove and Zoopla require the browser
- * tier (~$0.0008/page), OpenRent works with plain HTTP fetch
- * (~$0.0004/page).
+ * `scripts/verify/zyte-*.ts` — all three portals now use the browser
+ * tier (~$0.0008/page). OpenRent moved off the cheaper plain-HTTP fetch
+ * because its search filters only apply client-side in JS (see
+ * `openrentSearchUrl` + `scrape-portal.ts`).
  */
 export const PORTAL_COST_USD = {
   rightmove: 0.0008,
   zoopla: 0.0008,
-  openrent: 0.0004,
+  openrent: 0.0008,
 } as const;

@@ -33,7 +33,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { env } from "../lib/env";
+import { mapsServerKey } from "../lib/env";
 import {
   computeRoute,
   nextWeekdayAt,
@@ -175,7 +175,7 @@ export const enrichCommuteTask = task({
   run: async (payload: EnrichCommutePayload): Promise<EnrichCommuteOutput> => {
     const db = getDb();
     const { clusterId } = payload;
-    const { GOOGLE_MAPS_API_KEY } = env();
+    const GOOGLE_MAPS_API_KEY = mapsServerKey();
     const empty = { clusterId, targetsComputed: 0, listingsTouched: 0 };
 
     const ctx = await loadCommuteContext(db, clusterId, (reason, extra) => {

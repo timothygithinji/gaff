@@ -10,7 +10,7 @@
  * their rawJson coords but landed a NULL column, and `scrape-detail`
  * never re-runs for an already-clustered listing, so they can't
  * self-heal. The NULL columns starve every per-cluster geo enrichment
- * (`enrich-crime`/`enrich-flood`/`enrich-amenities` no-op without lat/lng,
+ * (`enrich-flood`/`enrich-amenities` no-op without lat/lng,
  * and `enrich-council-tax` loses its precise arm). See [[enrichment-coords-bug]].
  *
  * This promotes the stranded coords — `rawJson` → `listings.lat/lng` →
@@ -40,7 +40,6 @@ import * as schema from "../db/schema";
 // EPC + broadband key off the postcode directly and aren't gated on
 // coordinates, so they're left alone here.
 const GEO_TASK_IDS = [
-  "enrich-crime",
   "enrich-flood",
   "enrich-amenities",
   "enrich-council-tax",
@@ -169,7 +168,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    "\nDone. Watch the Trigger.dev dashboard; each run stamps its cluster's crime/flood/amenities/council-tax."
+    "\nDone. Watch the Trigger.dev dashboard; each run stamps its cluster's flood/amenities/council-tax."
   );
 }
 
