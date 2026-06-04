@@ -61,7 +61,7 @@ export function PillGroup<T extends { id: string; label: string }>({
               className={cn(
                 "flex-1 rounded-sm py-1.5 text-center text-[12px] leading-4",
                 active
-                  ? "bg-navy font-semibold text-[#eef1f4]"
+                  ? "bg-primary font-semibold text-[#eef1f4]"
                   : "bg-mist text-slate"
               )}
               key={opt.id}

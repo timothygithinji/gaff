@@ -31,7 +31,7 @@ export function FurnishedPicker({ value, onChange }: Props) {
           <button
             className={
               active
-                ? "rounded-full bg-navy px-3.5 py-1.5 font-medium text-[#eef1f4] text-[12px]"
+                ? "rounded-full bg-primary px-3.5 py-1.5 font-medium text-[#eef1f4] text-[12px]"
                 : "rounded-full border border-line bg-paper px-3.5 py-1.5 text-[12px] text-navy"
             }
             key={opt.id ?? "any"}

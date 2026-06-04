@@ -41,7 +41,7 @@ export function CostEstimateBar({
         </span>
       </div>
       <button
-        className='inline-flex items-center gap-1.5 rounded-full bg-navy px-5.5 py-3.5 font-medium text-[#eef1f4] text-[13px] disabled:opacity-50'
+        className='inline-flex items-center gap-1.5 rounded-full bg-primary px-5.5 py-3.5 font-medium text-[#eef1f4] text-[13px] disabled:opacity-50'
         disabled={disabled || pending}
         onClick={onSubmit}
         type="button"

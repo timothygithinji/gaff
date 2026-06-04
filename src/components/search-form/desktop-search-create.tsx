@@ -108,7 +108,7 @@ function Breadcrumb({
       <div className="flex items-center gap-2">
         <button
           aria-busy={pending || undefined}
-          className="inline-flex items-center gap-1.5 rounded-md bg-navy px-3.5 py-1.5 font-medium text-[#eef1f4] text-xs disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 font-medium text-[#eef1f4] text-xs disabled:opacity-50"
           disabled={pending || !dirty}
           form={DESKTOP_FORM_ID}
           type="submit"

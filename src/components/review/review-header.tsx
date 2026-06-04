@@ -30,7 +30,7 @@ export function ReviewHeader({ searchPill, leftToday }: Props) {
       <div className="flex items-center gap-3">
         <span
           aria-label={me?.name ?? me?.email ?? "Profile"}
-          className="flex size-[30px] items-center justify-center rounded-full bg-navy font-semibold text-[13px] text-white"
+          className="flex size-[30px] items-center justify-center rounded-full bg-primary font-semibold text-[13px] text-white"
         >
           {initial}
         </span>
