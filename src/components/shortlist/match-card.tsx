@@ -80,7 +80,7 @@ export function MatchCard({
     .join(" · ");
 
   return (
-    <div className="mx-4 mb-5 overflow-hidden rounded-[18px] bg-foreground">
+    <div className="mx-5 mb-5 overflow-hidden rounded-2xl bg-[#0e2235]">
       <button
         className="relative block h-50 w-full overflow-hidden text-left"
         onClick={onOpen}
@@ -114,16 +114,16 @@ export function MatchCard({
         </div>
         <div className="absolute right-3.5 bottom-3.5 left-4 flex items-end justify-between">
           <div className="flex flex-col gap-0.5">
-            <span className="font-serif text-[22px] text-primary-foreground leading-[110%] tracking-[-0.02em]">
+            <span className='font-semibold text-[#eef1f4] text-[22px] leading-[110%] tracking-[-0.02em]'>
               {headline.addressRaw}
             </span>
-            <span className="text-[#E8D6C9] text-xs">{subtitle || "—"}</span>
+            <span className="text-white/65 text-xs">{subtitle || "—"}</span>
           </div>
           <div className="flex flex-col items-end">
-            <span className="font-serif text-[24px] text-primary-foreground leading-none tracking-[-0.02em]">
+            <span className='font-semibold text-[#eef1f4] text-[24px] leading-none tracking-[-0.02em]'>
               {formatPrice(headline.priceMonthly)}
             </span>
-            <span className="mt-0.5 text-[#E8D6C9] text-[10px]">
+            <span className='mt-0.5 text-[10px] text-white/55'>
               /mo · {portalLabel(headline.portal)}
             </span>
           </div>
@@ -131,7 +131,7 @@ export function MatchCard({
       </button>
       <div className="flex items-center gap-2.5 px-4 py-3.5">
         <Button
-          className="flex-1 rounded-full font-semibold text-[13px]"
+          className="flex-1 rounded-full bg-[#d77a4a] font-semibold text-[13px] text-white hover:bg-[#c56c3f]"
           onClick={onPlanViewing}
           type="button"
         >
@@ -140,7 +140,7 @@ export function MatchCard({
         </Button>
         <Button
           aria-label="Share"
-          className="size-9.5 shrink-0 rounded-full border-bone/20 bg-transparent text-primary-foreground hover:bg-muted/10"
+          className="size-9.5 shrink-0 rounded-full border-white/20 bg-transparent text-[#eef1f4] hover:bg-white/10"
           onClick={() => {
             if (typeof navigator !== "undefined" && navigator.share) {
               navigator

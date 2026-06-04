@@ -4,7 +4,7 @@
  * A 2-person household running a blind-veto shortlist tends to end up
  * with 4–8 mutually-shortlisted properties. Picking between them means
  * tabbing through full listing detail pages, holding photos / costs /
- * commute / EPC / crime in your head. This page strips the listing
+ * commute / EPC in your head. This page strips the listing
  * detail down to the decision-changing fields and renders two listings
  * in a single view, so the comparison happens visually rather than in
  * your head.

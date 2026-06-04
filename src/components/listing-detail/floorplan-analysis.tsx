@@ -1,50 +1,37 @@
 /**
  * Floor plan card — shows the floor plan image scraped from the portal.
  *
- * v1 also rendered an AI-extracted "room readout" overlay (top-left
- * Kitchen, top-right Bed 1, …) plus GIA in sq m. That readout was
- * hallucinated — Claude Haiku 4.5 runs in text-only mode in this app
- * and cannot OCR a floorplan PNG, so the room sizes were either fake
- * or extracted from rare descriptions that bothered to list them. v2
- * drops the readout. If we want it back we'll need a vision-enabled
- * prompt (`image_url` content block) or an actual OCR pass.
+ * v1 rendered a hallucinated AI room-readout overlay; v2 drops it (the
+ * text-only model can't OCR a PNG). When the portal didn't expose a floor
+ * plan URL, the card shows an honest placeholder.
  *
- * When the portal didn't expose a floor plan URL, the card shows a
- * "Floor plan not available" placeholder — surfaces the absence
- * honestly rather than rendering a fake schematic.
+ * Paper (mobile 2T3-0 floor-plan header): slate eyebrow "FLOOR PLAN ·
+ * CLAUDE READ" with a copper "Open plan ⏵" affordance on the right, then
+ * the plan inside a white card (radius 6, hairline).
  */
-import { FloorPlanIcon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-
 type Props = {
   floorplan?: { url: string };
+  /** Internal area in square feet, when a portal reported it. */
+  sizeSqFt?: number | null;
 };
 
-export function FloorplanAnalysis({ floorplan }: Props) {
+import { SectionLabel } from "./section-label";
+
+export function FloorplanAnalysis({ floorplan, sizeSqFt }: Props) {
   return (
-    <section className="flex flex-col gap-3.5 px-6 pt-7">
-      <header className="flex items-start justify-between">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5">
-            <HugeiconsIcon
-              className="text-primary"
-              icon={FloorPlanIcon}
-              size={12}
-              strokeWidth={2}
-            />
-            <span className="font-semibold text-[10px] text-primary uppercase tracking-[0.12em]">
-              Floor plan
-            </span>
-          </div>
-          <h2 className="font-medium font-serif text-[22px] text-foreground leading-[130%] tracking-[-0.02em]">
-            How it lays out
-          </h2>
-        </div>
+    <section className="flex flex-col gap-3.5 px-5 pb-5">
+      <header className="flex items-center justify-between">
+        <SectionLabel>Floor plan</SectionLabel>
+        {sizeSqFt ? (
+          <span className="font-medium text-[11px] text-slate-2">
+            {sizeSqFt.toLocaleString("en-GB")} sq ft
+          </span>
+        ) : null}
       </header>
 
       {floorplan?.url ? (
         <a
-          className="block overflow-hidden rounded-[14px] border border-border bg-card"
+          className="block overflow-hidden rounded-md border border-line bg-card"
           href={floorplan.url}
           rel="noopener noreferrer"
           target="_blank"
@@ -57,10 +44,8 @@ export function FloorplanAnalysis({ floorplan }: Props) {
           />
         </a>
       ) : (
-        <div className="flex h-40 w-full items-center justify-center rounded-[14px] border border-border bg-card">
-          <p className="text-muted-foreground text-sm">
-            Floor plan not available
-          </p>
+        <div className="flex h-[180px] w-full items-center justify-center rounded-md border border-line bg-card">
+          <p className="text-[12px] text-slate-2">Floor plan not available</p>
         </div>
       )}
     </section>

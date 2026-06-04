@@ -215,8 +215,6 @@ function ShortlistPage() {
     clusterId: string;
     to: PipelineStatus;
   } | null>(null);
-  const [mobileStatus, setMobileStatus] =
-    useState<PipelineStatus>("shortlisted");
 
   const me = members.find((m) => m.userId === currentUserId);
 
@@ -300,7 +298,8 @@ function ShortlistPage() {
       <DesktopShortlist
         activeTab={activeTab}
         bodySlot={isPipeline ? pipelineKanban : undefined}
-        featured={null}
+        featured={visibleMatches[0] ?? null}
+        featuredAgeLabel={visibleMatches[0] ? timeAgo(visibleMatches[0].matchedAt) : ""}
         memberCount={memberCount}
         onOpen={(clusterId) => openCluster(clusterId)}
         onPlanViewing={(m) => planViewing(m.headline)}
@@ -308,8 +307,9 @@ function ShortlistPage() {
         onTabChange={setActiveTab}
         partnerLabel={partnerLabel}
         rowAgeLabel={(m) => timeAgo(m.matchedAt)}
-        rows={visibleMatches}
+        rows={visibleMatches[0] ? visibleMatches.slice(1) : visibleMatches}
         sectionLabel={sectionLabel}
+        shortlistedCount={totalPipelineCount(columns)}
         sortKey={sort}
         tabs={tabs}
       />
@@ -324,8 +324,13 @@ function ShortlistPage() {
           </div>
         ) : null}
 
-        <header className="flex flex-col gap-1 px-6 pt-6 pb-5">
-          <h1 className="font-medium font-serif text-[32px] text-foreground leading-[110%] tracking-[-0.03em]">
+        <header className="flex flex-col gap-1 px-5 pt-6 pb-4.5">
+          {partnerLabel ? (
+            <span className="text-[11px] text-slate uppercase leading-[14px] tracking-[0.14em]">
+              You &amp; {partnerLabel}
+            </span>
+          ) : null}
+          <h1 className="font-semibold text-[26px] text-navy leading-8 tracking-[-0.02em]">
             Shortlist
           </h1>
         </header>
@@ -340,10 +345,9 @@ function ShortlistPage() {
 
         {isPipeline ? (
           <PipelineMobile
-            active={mobileStatus}
             columns={columns}
             disabled={moveMutation.isPending}
-            onActiveChange={setMobileStatus}
+            memberCount={memberCount}
             onArchive={(clusterId, reason) =>
               moveMutation.mutate({
                 clusterId,
@@ -367,12 +371,11 @@ function ShortlistPage() {
           />
         )}
 
-        {/* Settings link for the empty-state corner — pipeline tab with
-            no entries is the most likely scenario, so we surface a
-            useful next step. */}
+        {/* Empty pipeline: nudge toward searches (PipelineMobile renders
+            its own empty copy, so this only adds the action). */}
         {isPipeline && totalPipelineCount(columns) === 0 ? (
-          <div className="mt-6 px-6 text-center">
-            <Link className="text-primary text-xs" to="/searches">
+          <div className="mt-4 px-6 text-center">
+            <Link className="text-[13px] text-copper" to="/searches">
               Manage your searches →
             </Link>
           </div>

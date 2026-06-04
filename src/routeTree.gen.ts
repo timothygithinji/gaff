@@ -17,6 +17,7 @@ import { Route as CompareRouteImport } from './routes/compare'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
+import { Route as SettingsDuplicatesRouteImport } from './routes/settings/duplicates'
 import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as ListingsClusterIdRouteImport } from './routes/listings/$clusterId'
@@ -62,6 +63,11 @@ const SettingsHouseholdRoute = SettingsHouseholdRouteImport.update({
   path: '/settings/household',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsDuplicatesRoute = SettingsDuplicatesRouteImport.update({
+  id: '/settings/duplicates',
+  path: '/settings/duplicates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchesNewRoute = SearchesNewRouteImport.update({
   id: '/searches/new',
   path: '/searches/new',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
+  '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches/': typeof SearchesIndexRoute
 }
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
+  '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches': typeof SearchesIndexRoute
 }
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
+  '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches/': typeof SearchesIndexRoute
 }
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
+    | '/settings/duplicates'
     | '/settings/household'
     | '/searches/'
   fileRoutesByTo: FileRoutesByTo
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
+    | '/settings/duplicates'
     | '/settings/household'
     | '/searches'
   id:
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
+    | '/settings/duplicates'
     | '/settings/household'
     | '/searches/'
   fileRoutesById: FileRoutesById
@@ -182,6 +194,7 @@ export interface RootRouteChildren {
   ListingsClusterIdRoute: typeof ListingsClusterIdRoute
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
+  SettingsDuplicatesRoute: typeof SettingsDuplicatesRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
   SearchesIndexRoute: typeof SearchesIndexRoute
 }
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsHouseholdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/duplicates': {
+      id: '/settings/duplicates'
+      path: '/settings/duplicates'
+      fullPath: '/settings/duplicates'
+      preLoaderRoute: typeof SettingsDuplicatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/searches/new': {
       id: '/searches/new'
       path: '/searches/new'
@@ -286,6 +306,7 @@ const rootRouteChildren: RootRouteChildren = {
   ListingsClusterIdRoute: ListingsClusterIdRoute,
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
+  SettingsDuplicatesRoute: SettingsDuplicatesRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
   SearchesIndexRoute: SearchesIndexRoute,
 }

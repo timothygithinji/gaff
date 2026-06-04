@@ -17,7 +17,7 @@
  *   6. "What we see" — floorplan analysis.
  *   7. "What's in the small print" — AI-extracted issues.
  *   8. "Where it sits" — map + commute card.
- *   9. "Public records" — EPC / broadband / crime / flood / amenities.
+ *   9. "Public records" — EPC / broadband / flood / amenities.
  *  10. Sticky bottom CTA bar.
  *
  * No bottom-nav on this screen — the sticky CTA + back button replace
@@ -47,6 +47,7 @@ import { PropertyFacts } from "../../components/listing-detail/property-facts";
 import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
 import { WhereItSits } from "../../components/listing-detail/where-it-sits";
+import { PlacesAutocompleteInput } from "../../components/places-autocomplete-input";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -56,7 +57,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
-import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
@@ -143,12 +143,16 @@ function listedAgoLabel(iso: string): string {
 function shortAddressTitle(addressRaw: string): string {
   // Take the first comma-separated chunk — the design uses a short
   // street-level title (e.g. "Belsize Park Mews") rather than the full
-  // postal address.
+  // postal address — then drop a leading house/flat number to match Paper.
   const idx = addressRaw.indexOf(",");
-  if (idx === -1) {
-    return addressRaw;
-  }
-  return addressRaw.slice(0, idx).trim();
+  const firstLine = idx === -1 ? addressRaw : addressRaw.slice(0, idx);
+  return stripLeadingHouseNumber(firstLine.trim());
+}
+
+function stripLeadingHouseNumber(line: string): string {
+  const stripped = line.replace(/^(flat|unit|apartment|apt)\s+\w+\s+/i, "");
+  const withoutNumber = stripped.replace(/^\d+[a-z]?\s+/i, "");
+  return withoutNumber.length > 0 ? withoutNumber : line;
 }
 
 function localityFromPostcode(postcode: string | null): string {
@@ -248,6 +252,7 @@ function ListingDetailPage() {
     epc,
     commuteMinutes,
     stationRoutes,
+    nearbyTransit,
     publicRecords,
     propertyFacts,
     agentExtras,
@@ -287,15 +292,16 @@ function ListingDetailPage() {
         from={from}
         onEditAddress={openAddressDialog}
         onShortlist={() => swipe.mutate({ outcome: "shortlist" })}
+        onSkip={() => swipe.mutate({ outcome: "skip" })}
         pendingAction={pendingAction}
       />
 
       <div className="mx-auto min-h-screen max-w-md bg-background pb-32 lg:hidden">
-        {/* Top bar */}
-        <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
+        {/* Top bar — Paper: 36px circular hairline buttons, px-5 */}
+        <header className="flex items-center justify-between px-5 pt-2 pb-[18px]">
           <button
             aria-label="Back"
-            className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
+            className="flex size-9 items-center justify-center rounded-full border border-line bg-card text-foreground"
             onClick={() => {
               // Prefer real back navigation; fall back to wherever the
               // user came from (`?from=` search param).
@@ -307,12 +313,12 @@ function ListingDetailPage() {
             }}
             type="button"
           >
-            <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={2.2} />
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={1.8} />
           </button>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               aria-label="Share"
-              className="flex size-9 items-center justify-center rounded-[999px] border border-border bg-card text-foreground"
+              className="flex size-9 items-center justify-center rounded-full border border-line bg-card text-foreground"
               onClick={() => {
                 if (typeof navigator !== "undefined" && navigator.share) {
                   navigator
@@ -327,13 +333,13 @@ function ListingDetailPage() {
               }}
               type="button"
             >
-              <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={2} />
+              <HugeiconsIcon icon={Share05Icon} size={16} strokeWidth={1.6} />
             </button>
             <button
               aria-busy={pendingAction === "shortlist" || undefined}
               aria-label="Bookmark"
-              className={`flex size-9 items-center justify-center rounded-[999px] border border-border bg-card disabled:opacity-50 ${
-                mySwipe === "shortlist" ? "text-primary" : "text-foreground"
+              className={`flex size-9 items-center justify-center rounded-full border border-line bg-card disabled:opacity-50 ${
+                mySwipe === "shortlist" ? "text-copper" : "text-foreground"
               }`}
               disabled={swipe.isPending}
               onClick={() => swipe.mutate({ outcome: "shortlist" })}
@@ -347,7 +353,7 @@ function ListingDetailPage() {
                   pendingAction === "shortlist" ? Loading03Icon : Bookmark01Icon
                 }
                 size={16}
-                strokeWidth={2}
+                strokeWidth={1.8}
               />
             </button>
           </div>
@@ -356,63 +362,56 @@ function ListingDetailPage() {
         {/* Photo gallery */}
         <PhotoGallery alt={headline.addressRaw} photos={photos} />
 
-        {/* Price + listed-ago */}
-        <section className="flex flex-col gap-3 px-6 pt-6">
-          <div className="flex items-baseline justify-between">
-            <div className="flex items-baseline gap-1">
-              <span className="font-medium font-serif text-[40px] text-foreground leading-[100%] tracking-[-0.03em]">
+        {/* Header block — Paper: eyebrow, then title-left / price-right */}
+        <section className="flex flex-col gap-1.5 px-5 pt-[22px] pb-4">
+          <span className="font-normal text-[10px] text-slate uppercase leading-3 tracking-[0.14em]">
+            {listedAgoLabel(headline.firstSeenAt)} · {portalsTrackingLabel}
+          </span>
+          <div className="flex items-end justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <h1 className="truncate font-semibold text-[26px] text-foreground leading-7 tracking-[-0.02em]">
+                {title}
+              </h1>
+              {locality ? (
+                <p className="text-[12px] text-slate leading-4">{locality}</p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-col items-end">
+              <span className="font-light text-[26px] text-foreground leading-[26px] tracking-[-0.02em]">
                 {formatPrice(headline.priceMonthly)}
               </span>
-              <span className="font-medium text-[13px] text-muted-foreground">
-                /mo
-              </span>
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="font-semibold text-[10px] text-muted-foreground uppercase leading-[110%] tracking-widest">
-                {listedAgoLabel(headline.firstSeenAt)}
-              </span>
-              <span className="mt-1 font-serif text-[13px] text-muted-foreground italic leading-[110%]">
-                {portalsTrackingLabel}
-              </span>
+              <span className="text-[10px] text-slate leading-3">per month</span>
             </div>
           </div>
-          <div className="flex flex-col gap-0.5">
-            <h1 className="font-medium font-serif text-[24px] text-foreground leading-[115%] tracking-[-0.02em]">
-              {title}
-            </h1>
-            {locality ? (
-              <p className="text-[14px] text-muted-foreground">{locality}</p>
-            ) : null}
-            <button
-              className="mt-1 self-start text-[13px] text-primary underline-offset-2 hover:underline"
-              onClick={openAddressDialog}
-              type="button"
-            >
-              {cluster.userAddress
-                ? "Edit pinned address"
-                : "Fix address for exact EPC"}
-            </button>
-          </div>
+          <button
+            className="mt-1 self-start text-[12px] text-copper underline-offset-2 hover:underline"
+            onClick={openAddressDialog}
+            type="button"
+          >
+            {cluster.userAddress
+              ? "Edit pinned address"
+              : "Fix address for exact EPC"}
+          </button>
         </section>
 
         {/* Portal cross-list */}
         <PortalCrossList portals={portalSpread} />
 
-        {/* Consolidated costs — rent + council tax + service charge +
-            amortised deposit, with bills as an indicator. */}
-        <Costs
-          fineprint={fineprint}
-          priceMonthly={headline.priceMonthly}
-        />
-
-        {/* "Why it's worth a look" — AI highlights + one-line summary */}
+        {/* "What stands out" — AI highlights + one-line summary */}
         <Highlights items={highlights} summary={summary} />
 
         {/* "What's in the small print" — AI watch-outs */}
         <SmallPrint items={watchouts} />
 
+        {/* Consolidated costs — rent + council tax + service charge +
+            amortised deposit, with bills as an indicator. */}
+        <Costs fineprint={fineprint} priceMonthly={headline.priceMonthly} />
+
         {/* Floor plan — image only, no AI room-slot fakery */}
-        <FloorplanAnalysis floorplan={floorplan} />
+        <FloorplanAnalysis
+          floorplan={floorplan}
+          sizeSqFt={fineprint.sizeSqFt}
+        />
 
         {/* "Where it sits" — map + commute */}
         <WhereItSits
@@ -420,6 +419,7 @@ function ListingDetailPage() {
           commuteMinutes={commuteMinutes}
           lat={cluster.lat}
           lng={cluster.lng}
+          nearbyTransit={nearbyTransit}
           stationRoutes={stationRoutes}
           title={whereTitle || "Where it sits"}
         />
@@ -450,9 +450,7 @@ function ListingDetailPage() {
           <DialogHeader>
             <DialogTitle>Pin the exact address</DialogTitle>
             <DialogDescription>
-              Portals usually hide the door number. Read it off the photos
-              against Google Maps and enter the full address (with postcode) so
-              we can pull this building's exact EPC instead of a postcode-level
+              Search the exact building for its real EPC, not a postcode
               estimate.
             </DialogDescription>
           </DialogHeader>
@@ -464,11 +462,24 @@ function ListingDetailPage() {
               }
             }}
           >
-            <Input
-              onChange={(e) => setAddrValue(e.target.value)}
-              placeholder="e.g. Flat 2, 14 Brownlow Road, London N11 2BP"
-              value={addrValue}
-            />
+            <div className="space-y-2">
+              {cluster.userAddress ? (
+                <p className="text-muted-foreground text-xs">
+                  Current:{" "}
+                  <span className="text-foreground">{cluster.userAddress}</span>
+                </p>
+              ) : null}
+              <PlacesAutocompleteInput
+                onSelect={({ formattedAddress }) =>
+                  setAddrValue(formattedAddress)
+                }
+              />
+              {addrValue ? (
+                <p className="text-muted-foreground text-xs">
+                  Selected: <span className="text-foreground">{addrValue}</span>
+                </p>
+              ) : null}
+            </div>
             <DialogFooter className="mt-4">
               {cluster.userAddress ? (
                 <Button
@@ -485,7 +496,7 @@ function ListingDetailPage() {
                 loading={setAddress.isPending}
                 type="submit"
               >
-                Save & re-check EPC
+                Re-check EPC
               </Button>
             </DialogFooter>
           </form>

@@ -7,6 +7,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { AuthEyebrow, AuthLayout } from "../../components/auth/auth-layout";
 import { requireSession } from "../../lib/auth-guard";
 import { queryKeys } from "../../lib/query-keys";
 import { acceptInvite } from "../../server/functions/household";
@@ -57,7 +58,7 @@ function InvitePage() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.household(),
       });
-      navigate({ to: "/" });
+      await navigate({ to: "/" });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.household() });
@@ -72,18 +73,48 @@ function InvitePage() {
     mutate();
   }, [mutate]);
 
+  const isError = accept.isError;
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-sm rounded-lg bg-card p-6 text-center shadow">
-        <h1 className="font-serif text-foreground text-xl">
-          Joining household…
-        </h1>
-        {accept.isError && (
-          <p className="mt-3 text-primary text-sm">
+    <AuthLayout>
+      <div className="flex flex-col items-center gap-6 text-center">
+        {/* Stacked household avatars, as drawn in the Paper invite artboard. */}
+        <div className="flex items-center">
+          <span className="flex size-14 items-center justify-center rounded-full border-2 border-ground bg-[#1f3a5f] font-semibold text-[20px] text-white leading-6">
+            P
+          </span>
+          <span className="-ml-3 flex size-14 items-center justify-center rounded-full border-2 border-ground bg-[#d77a4a] font-semibold text-[20px] text-white leading-6">
+            T
+          </span>
+        </div>
+
+        <div className="flex flex-col items-center gap-2.5">
+          <AuthEyebrow>You're invited</AuthEyebrow>
+          <h1 className="font-semibold text-[26px] text-foreground leading-8 tracking-[-0.02em] lg:text-[28px] lg:leading-[34px]">
+            You've been invited to
+            <br />
+            a household
+          </h1>
+          <p className="max-w-[300px] text-[#5a7596] text-sm leading-[22px]">
+            Join to share a single queue, swipe together, and only see flats you
+            both like.
+          </p>
+        </div>
+
+        <div className="flex w-full items-center justify-center rounded-full bg-navy px-4 py-4 font-medium text-[14px] text-white leading-[18px]">
+          {isError ? "Couldn't join" : "Joining household…"}
+        </div>
+
+        {isError ? (
+          <p className="max-w-[300px] text-[13px] text-warning leading-[18px]">
             {inviteErrorMessage((accept.error as Error).message)}
+          </p>
+        ) : (
+          <p className="max-w-[280px] text-[#5a7596] text-[12px] leading-4">
+            Hang tight — we're adding you to the shared queue.
           </p>
         )}
       </div>
-    </main>
+    </AuthLayout>
   );
 }

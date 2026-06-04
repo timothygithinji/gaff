@@ -1,30 +1,24 @@
 /**
  * Re-scrape cadence picker.
  *
- * Renders the current pick as a single-line card with the friendly
- * label only — the cost estimate lives in the sticky footer, not here,
- * so the picker stays uncluttered. Tapping opens a shadcn Dialog with
- * the full preset list.
+ * A segmented control matching the Paper "Re-scrape" card: equal-width
+ * segments (1 hr · 4 hr · 12 hr · Daily · Off), selected fills navy.
+ * The "Off" segment is the explicit pause sentinel (`cron: null`).
+ *
+ * The estimate line beneath ("Est. cost · $X/day") is rendered by the
+ * form's cost panel, so this control stays focused on the choice.
  */
-import {
-  ArrowRight01Icon,
-  Clock02Icon,
-  Tick02Icon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-  DialogTrigger,
-} from "../../components/ui/dialog";
-import {
-  CADENCE_PRESETS,
-  type CadencePreset,
-  findCadenceById,
-} from "../../lib/cron-presets";
+import { CADENCE_PRESETS, findCadenceById } from "../../lib/cron-presets";
+import { cn } from "../../lib/utils";
+
+/** Segments shown in the picker, in display order, with short labels. */
+const SEGMENTS: Array<{ id: string; label: string }> = [
+  { id: "hourly", label: "1 hr" },
+  { id: "4h", label: "4 hr" },
+  { id: "12h", label: "12 hr" },
+  { id: "daily", label: "Daily" },
+  { id: "off", label: "Off" },
+];
 
 type Props = {
   selectedId: string;
@@ -32,75 +26,54 @@ type Props = {
 };
 
 export function CadencePicker({ selectedId, onChange }: Props) {
-  const [open, setOpen] = useState(false);
-  const selected = findCadenceById(selectedId);
+  // Snap any cadence outside the segment set (e.g. legacy 6h / 2h rows)
+  // to the closest visible segment so the control always shows a pick.
+  const visibleId = SEGMENTS.some((s) => s.id === selectedId)
+    ? selectedId
+    : nearestSegment(selectedId);
 
   return (
-    <Dialog onOpenChange={setOpen} open={open}>
-      <DialogTrigger className="flex w-full items-center justify-between rounded-2xl bg-muted px-4 py-4 text-left">
-        <span className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary">
-            <HugeiconsIcon icon={Clock02Icon} size={18} strokeWidth={1.8} />
-          </span>
-          <span className="text-foreground text-sm">{labelFor(selected)}</span>
-        </span>
-        <HugeiconsIcon
-          className="text-muted-foreground"
-          icon={ArrowRight01Icon}
-          size={16}
-          strokeWidth={2}
-        />
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogTitle className="font-serif text-foreground text-lg">
-          Re-scrape cadence
-        </DialogTitle>
-        <DialogDescription>
-          How often we ping the portals for fresh listings.
-        </DialogDescription>
-        <ul className="mt-2 divide-y divide-border">
-          {CADENCE_PRESETS.map((preset) => {
-            const active = preset.id === selected.id;
-            return (
-              <li key={preset.id}>
-                <button
-                  className="flex w-full items-center justify-between py-3 text-left"
-                  onClick={() => {
-                    onChange(preset.id);
-                    setOpen(false);
-                  }}
-                  type="button"
-                >
-                  <span className="text-foreground text-sm">
-                    {labelFor(preset)}
-                  </span>
-                  {active && (
-                    <HugeiconsIcon
-                      className="text-primary"
-                      icon={Tick02Icon}
-                      size={16}
-                      strokeWidth={2.5}
-                    />
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </DialogContent>
-    </Dialog>
+    <div className="flex gap-1.5">
+      {SEGMENTS.map((seg) => {
+        const active = seg.id === visibleId;
+        return (
+          <button
+            className={cn(
+              "flex-1 rounded-sm py-2 text-center text-[12px] leading-4",
+              active
+                ? "bg-navy font-semibold text-[#eef1f4]"
+                : "bg-mist text-slate"
+            )}
+            key={seg.id}
+            onClick={() => onChange(seg.id)}
+            type="button"
+          >
+            {seg.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-function labelFor(preset: CadencePreset): string {
-  if (preset.id === "daily") {
-    return "Re-scrape daily";
+function nearestSegment(id: string): string {
+  const preset = findCadenceById(id);
+  if (preset.cron === null) {
+    return "off";
   }
-  if (preset.id === "off") {
-    return "Off";
+  // Map by scrapes-per-day to the closest visible segment.
+  const visible = CADENCE_PRESETS.filter((p) =>
+    SEGMENTS.some((s) => s.id === p.id)
+  );
+  let best = visible[0];
+  for (const p of visible) {
+    if (
+      best &&
+      Math.abs(p.scrapesPerDay - preset.scrapesPerDay) <
+        Math.abs(best.scrapesPerDay - preset.scrapesPerDay)
+    ) {
+      best = p;
+    }
   }
-  if (preset.id === "hourly") {
-    return "Re-scrape hourly";
-  }
-  return `Re-scrape ${preset.label.toLowerCase()}`;
+  return best?.id ?? "daily";
 }

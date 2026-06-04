@@ -2,98 +2,137 @@
  * Gaff global stylesheet.
  *
  * Tailwind v4 is CSS-driven — there's no JS config file. The `@theme inline`
- * block below promotes BOTH the mineral palette (so `bg-copper`, `font-serif`
+ * block below promotes BOTH the maritime palette (so `bg-navy`, `text-copper`
  * keep working) AND the shadcn/ui semantic tokens (so `bg-primary`,
  * `text-muted-foreground` resolve to the same scene) into utility classes.
  *
- * The shadcn tokens are aliases over the mineral palette — there is one
- * source of truth (the six mineral vars), and the semantic names just
- * point at them. Changing `--copper` retunes every `bg-primary` in one go.
+ * Design system source of truth: the "Gaff" Paper file (maritime palette,
+ * all-Inter type). Exact hexes pulled from Paper computed styles 2026-05-31.
+ * Every hex lives once in the maritime block; the shadcn tokens are aliases
+ * over it. Legacy names (--ink/--copper/--brass/--bone/--ground/--paper) are
+ * kept so existing components keep resolving to the right roles.
+ *
+ * Roles: navy #0e2235 = ink + primary buttons. copper #d77a4a = the ONE
+ * accent (links, toggles, badges, warning pills) used sparingly. ground
+ * #eef1f4 = page bg. paper #fff = cards. slate #1f3a5f = labels/body-muted.
  */
 
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@import "@fontsource/fraunces/index.css";
-@import "@fontsource/fraunces/400.css";
-@import "@fontsource/fraunces/500.css";
-@import "@fontsource/fraunces/600.css";
 @import "@fontsource/inter/index.css";
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root,
 [data-theme="light"] {
-  /* Mineral palette — the only place hex values live. */
-  --ground: #f4efe6;
-  --copper: #9b5a3e;
-  --brass: #7a6a4a;
-  --ink: #18120b;
-  --bone: #fbf7ee;
-  --paper: #ffffff;
+  /* Maritime palette — the only place hex values live (light scene). */
+  --navy: #0e2235; /* ink + primary buttons */
+  --slate: #1f3a5f; /* labels / muted body text */
+  --slate-2: #5a7596; /* tertiary text (inactive tabs, captions) */
+  --copper: #d77a4a; /* THE accent: links, toggles, badges, warning */
+  --ground: #eef1f4; /* page background */
+  --paper: #ffffff; /* surface / cards */
+  --line: #c9d3dc; /* hairline borders */
+  --steel: #5a7596; /* text on tinted pills / tertiary (== slate-2) */
+  --fog: #8a97a0; /* small-caps labels (lighter than slate) */
+  --mist: #eef2f4; /* secondary surface == ground tint (tag pills) */
+  --success: #2e7d5b; /* positive deltas: kept count, below-baseline stats */
+
+  /* Legacy aliases → maritime roles, so existing utilities resolve right. */
+  --ink: var(--navy);
+  --brass: var(--slate-2);
+  --bone: var(--ground); /* secondary surface (tag pills) == ground tint */
 
   /* shadcn semantic aliases — same scene, role names. */
   --background: var(--ground);
-  --foreground: var(--ink);
+  --foreground: var(--navy);
   --card: var(--paper);
-  --card-foreground: var(--ink);
+  --card-foreground: var(--navy);
   --popover: var(--paper);
-  --popover-foreground: var(--ink);
-  --primary: var(--copper);
-  --primary-foreground: var(--bone);
-  --secondary: var(--bone);
-  --secondary-foreground: var(--ink);
-  --muted: var(--bone);
-  --muted-foreground: var(--brass);
-  --accent: var(--bone);
-  --accent-foreground: var(--ink);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: color-mix(in srgb, var(--brass) 22%, transparent);
-  --input: color-mix(in srgb, var(--brass) 22%, transparent);
+  --popover-foreground: var(--navy);
+  --primary: var(--navy);
+  --primary-foreground: var(--ground);
+  --secondary: var(--ground);
+  --secondary-foreground: var(--navy);
+  --muted: var(--ground);
+  --muted-foreground: var(--slate);
+  --accent: var(--copper);
+  --accent-foreground: var(--paper);
+  --destructive: var(--copper);
+  --destructive-foreground: var(--paper);
+  --border: var(--line);
+  --input: var(--line);
   --ring: var(--copper);
   --radius: 0.75rem;
 
-  /* shadcn sidebar tokens — mineral palette pinned to the same scene.
-   * The sidebar uses paper for its surface (matches the existing
-   * AdminSidebar before the migration), ink for text, copper for the
-   * active item, and ground for hover/accent so resting + active states
-   * stay distinct against the paper ground. */
+  /* shadcn sidebar tokens — maritime. White surface, navy text/active,
+   * ground hover, copper accent text. */
   --sidebar: var(--paper);
-  --sidebar-foreground: var(--ink);
-  --sidebar-primary: var(--copper);
-  --sidebar-primary-foreground: var(--bone);
+  --sidebar-foreground: var(--navy);
+  --sidebar-primary: var(--navy);
+  --sidebar-primary-foreground: var(--ground);
   --sidebar-accent: var(--ground);
   --sidebar-accent-foreground: var(--copper);
-  --sidebar-border: color-mix(in srgb, var(--brass) 22%, transparent);
+  --sidebar-border: var(--line);
   --sidebar-ring: var(--copper);
 }
 
-/* Dark scene — the mineral palette flips, every shadcn alias (which is
- * defined as `var(--...)` above) inherits the new scene automatically.
- * Hex values still only live in mineral vars; semantic tokens stay aliased. */
+/* Dark scene — maritime after dusk. No Paper reference exists for dark, so
+ * these are a sensible interpretation. Every shadcn alias inherits it.
+ * GOTCHA: tokens flip here. A surface that must stay one fixed colour in both
+ * themes (e.g. the navy auth marketing panel) must pin BOTH bg AND text to
+ * literal hex (bg-[#0e2235] text-[#eef1f4]), never a single token. */
 .dark,
 [data-theme="dark"] {
-  --ground: #14100a;
-  --copper: #d18664;
-  --brass: #a89673;
-  --ink: #f5ede0;
-  --bone: #2a2118;
-  --paper: #1c1610;
+  --navy: #dbe6f0; /* "ink" flips light in dark scene */
+  --slate: #9fb4cc;
+  --slate-2: #7d93ab;
+  --copper: #e08c5a;
+  --ground: #0a151d;
+  --paper: #122230;
+  --line: #25394b;
+  --steel: #7d93ab;
+  --fog: #6f8295;
+  --mist: #18293a;
+  --success: #4caa82;
 
-  --destructive: oklch(0.704 0.191 22.216);
+  --ink: var(--navy);
+  --brass: var(--slate-2);
+  --bone: var(--paper);
+
+  --primary: #1f3a5f;
+  --primary-foreground: #eef1f4;
 }
 
 @theme inline {
-  /* Mineral palette utilities — bg-copper, text-ink, etc. */
-  --color-ground: var(--ground);
+  /* Maritime palette utilities — bg-navy, text-slate, text-copper, etc. */
+  --color-navy: var(--navy);
+  --color-slate: var(--slate);
+  --color-slate-2: var(--slate-2);
   --color-copper: var(--copper);
-  --color-brass: var(--brass);
-  --color-ink: var(--ink);
-  --color-bone: var(--bone);
+  --color-ground: var(--ground);
   --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-steel: var(--steel);
+  --color-fog: var(--fog);
+  --color-mist: var(--mist);
+  --color-success: var(--success);
+
+  /* Legacy palette utilities (bg-ink, text-brass, bg-bone…) → maritime. */
+  --color-ink: var(--ink);
+  --color-brass: var(--brass);
+  --color-bone: var(--bone);
+
+  /* Warning / alert == copper terracotta in this scene (Paper's warning pill
+   * uses #d77a4a icon, #b04a2f text). Enables text-warning / bg-warning /
+   * text-warning-text used for form errors + the review-card watchout pill. */
+  --color-warning: var(--copper);
+  --color-warning-text: #b04a2f;
 
   /* shadcn semantic utilities — bg-primary, text-muted-foreground, etc. */
   --color-background: var(--background);
@@ -111,6 +150,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -130,8 +170,15 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  /* All-Inter type system (Paper uses no serif). --font-serif kept as an
+   * Inter alias so any lingering `font-serif` usage stays on-brand. */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Maritime card shadow (from Paper hero card). */
+  --shadow-card:
+    0px 1px 2px 0px rgba(14, 34, 53, 0.04),
+    0px 12px 32px -8px rgba(14, 34, 53, 0.12);
 }
 
 html,
@@ -141,10 +188,13 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Paper is all-Inter — headings stay in the sans stack, weighted for
+ * hierarchy rather than switching to a serif. */
 h1,
 h2,
 h3 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
 }
 
 /*
@@ -155,6 +205,12 @@ h3 {
 gmp-place-autocomplete {
   display: block;
   width: 100%;
+  /* Border on the host itself, not a wrapper — the shadow-DOM input has
+     its own rounded, filled box, so a wrapper border gets covered at the
+     corners. One box = no clipping, and no `overflow:hidden` that would
+     cut off the predictions dropdown. */
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
   --gmpx-color-surface: var(--card);
   --gmpx-color-on-surface: var(--foreground);
   --gmpx-color-on-surface-variant: var(--muted-foreground);
