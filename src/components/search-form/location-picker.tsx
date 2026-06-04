@@ -19,6 +19,7 @@
 import { Cancel01Icon, Location01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation } from "@tanstack/react-query";
+import { LONDON_AREA_PRESETS, presetToSearchLocation } from "../../lib/london-areas";
 import type { SearchLocation } from "../../lib/search-location";
 import { resolveAreaOutcodes } from "../../server/functions/searches";
 import { PlaceAutocomplete } from "./place-autocomplete";
@@ -129,16 +130,64 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
           ) : null}
         </div>
       ) : (
-        <PlaceAutocomplete
-          onSelect={(loc) => {
-            handlePick(loc).catch(() => {
-              // handlePick already swallows resolver errors internally;
-              // this guards the floating-promise lint rule.
-            });
-          }}
-          placeholder="Postcode, area, or town…"
-        />
+        <div className="space-y-2">
+          <PlaceAutocomplete
+            onSelect={(loc) => {
+              handlePick(loc).catch(() => {
+                // handlePick already swallows resolver errors internally;
+                // this guards the floating-promise lint rule.
+              });
+            }}
+            placeholder="Postcode, area, or town…"
+          />
+          <LondonAreaPresets
+            onPick={(loc) => {
+              handlePick(loc).catch(() => {
+                // see above — resolver errors are swallowed inside handlePick.
+              });
+            }}
+          />
+        </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Quick-pick row for the colloquial London regions Google can't supply
+ * (see `london-areas.ts`). Each chip builds the same area-typed
+ * SearchLocation a real Google pick would, so selecting one drops into
+ * the identical outcode fan-out + trim flow.
+ */
+function LondonAreaPresets({
+  onPick,
+}: {
+  onPick: (loc: SearchLocation) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
+        Or pick a region
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {LONDON_AREA_PRESETS.map((preset) => (
+          <button
+            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-[12px] text-navy"
+            key={preset.id}
+            onClick={() => onPick(presetToSearchLocation(preset))}
+            type="button"
+          >
+            <HugeiconsIcon
+              aria-hidden
+              className="shrink-0 text-slate"
+              icon={Location01Icon}
+              size={12}
+              strokeWidth={1.8}
+            />
+            {preset.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
