@@ -5,6 +5,7 @@ import * as doppler from "@pulumiverse/doppler";
 
 const config = new pulumi.Config();
 const accountId = config.require("accountId");
+const zoneId = config.require("zoneId");
 
 const projectName = "gaff";
 const domain = "gaff.timothygithinji.com";
@@ -167,6 +168,37 @@ const accessApp = new cloudflare.ZeroTrustAccessApplication(
     policies: [{ id: accessPolicy.id }],
   }
 );
+
+// ---------------------------------------------------------------------------
+// Image Transformations (formerly "Image Resizing").
+//
+// Turns on the zone-level transform feature the Worker relies on for
+// render-time photo downscaling: `src/server.ts` re-fetches R2-served photos
+// through `cf.image` when a `?w=` param is present (see src/lib/photo-size.ts).
+// Cloudflare only honours `cf.image` when this setting is on — otherwise it
+// silently serves the original, so heroes go back to upscaling at full width.
+//
+// "on" resizes images served from THIS zone (our R2 bucket via the Worker),
+// which covers every cached photo. Switch to "open" only if you also need to
+// resize remote portal fallback URLs (uncached photos) — that lets any origin
+// be resized through the zone, so keep it "on" unless that case bites.
+//
+// Transformations is available on Free and Paid plans (a monthly free
+// allowance of unique transformations, billed beyond it) — no plan upgrade
+// needed. The provisioning CLOUDFLARE_API_TOKEN must carry "Zone > Zone
+// Settings > Edit" on this zone, or `pulumi up` (run by deploy.yml on every
+// push to main) 403s here and fails the deploy.
+// ---------------------------------------------------------------------------
+const imageResizing = new cloudflare.ZoneSetting(
+  `${projectName}-image-resizing`,
+  {
+    zoneId,
+    settingId: "image_resizing",
+    value: "on",
+  }
+);
+
+export const imageResizingStatus = imageResizing.value;
 
 export const accessAppId = accessApp.id;
 export const accessAppAud = accessApp.aud;

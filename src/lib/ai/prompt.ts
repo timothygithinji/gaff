@@ -119,7 +119,7 @@ export const EXTRACT_FEATURES_INPUT_SCHEMA = {
       type: "array",
       maxItems: 6,
       description:
-        "Concrete negatives a renter would change their decision over. Severity: `caution` = worth knowing, `problem` = likely dealbreaker. DEALBREAKERS (always surface when present): deposit > 5 weeks' rent (illegal under Tenant Fees Act 2019), agent fees charged (also illegal), break clause shorter than 6 months, EPC F or G (sub-standard energy efficiency), leasehold service charge > £2,000/yr, area crime materially above the borough average. COMPOUND WATCHOUTS (only when BOTH sides are hard facts): 'EPC F + bills excluded' (real cost concern). DO NOT SURFACE: 'Bills not included' alone (default for ~95% of London rentals); 'Deposit equals one month's rent' or 'Deposit at legal cap' (one month is the legal MINIMUM, five weeks is the legal MAXIMUM — being at the floor or cap is tenant-friendly, not a caution); 'No pets allowed' / 'No DSS' / 'Families not accepted' (these are filters, not property defects); '6-month minimum term' / '12-month minimum term' (UK norm); 'EPC D' alone (borderline-average — only flag with another concrete cost concern, NOT with a data gap like 'bills status unclear'); 'No EPC rating provided' / 'No broadband data' (pending enrichment, not property defects); 'No washer mentioned' (agents routinely omit standard appliances); 'Deposit not stated' (the agent will provide it). Return an empty array if the listing has no concrete watchouts — better empty than padded.",
+        "Concrete negatives a renter would change their decision over. Severity: `caution` = worth knowing, `problem` = likely dealbreaker. DEALBREAKERS (always surface when present): deposit > 5 weeks' rent (illegal under Tenant Fees Act 2019), agent fees charged (also illegal), break clause shorter than 6 months, EPC F or G (sub-standard energy efficiency), leasehold service charge > £2,000/yr. COMPOUND WATCHOUTS (only when BOTH sides are hard facts): 'EPC F + bills excluded' (real cost concern). DO NOT SURFACE: 'Bills not included' alone (default for ~95% of London rentals); 'Deposit equals one month's rent' or 'Deposit at legal cap' (one month is the legal MINIMUM, five weeks is the legal MAXIMUM — being at the floor or cap is tenant-friendly, not a caution); 'No pets allowed' / 'No DSS' / 'Families not accepted' (these are filters, not property defects); '6-month minimum term' / '12-month minimum term' (UK norm); 'EPC D' alone (borderline-average — only flag with another concrete cost concern, NOT with a data gap like 'bills status unclear'); 'No EPC rating provided' / 'No broadband data' (pending enrichment, not property defects); 'No washer mentioned' (agents routinely omit standard appliances); 'Deposit not stated' (the agent will provide it). Return an empty array if the listing has no concrete watchouts — better empty than padded.",
       items: {
         type: "object",
         additionalProperties: false,
@@ -149,7 +149,7 @@ export const SYSTEM_PROMPT = `You are a renter's research assistant for UK renta
 
 You receive a JSON payload with three sections:
   - listing: structured fields from the portal (title, address, price, description, key features, deposit, EPC rating, council tax band, sq ft, furnished status, tenant preferences, nearest stations, fees, …).
-  - enrichment: third-party data we've already pulled (broadband from BT Wholesale, commute minutes from Google Routes, crime counts from data.police.uk, amenity counts from OpenStreetMap, flood risk from the Environment Agency).
+  - enrichment: third-party data we've already pulled (broadband from BT Wholesale, commute minutes from Google Routes, amenity counts from OpenStreetMap, flood risk from the Environment Agency).
   - portalSpread: every portal this property is listed on plus the cheapest price.
 
 Your job: call the extract_features tool exactly once with a payload containing:
@@ -177,7 +177,6 @@ Real dealbreakers (always surface when actually present):
   - EPC F or G — severity "problem" (sub-standard energy efficiency, often paired with electric heating).
   - Leasehold service charge > £2,000/yr — severity "caution".
   - Compound: EPC F + bills excluded — severity "problem".
-  - Crime materially above the borough average — severity "caution" (only when the data backs it).
   - listing.floodDisclosure.floodedInLastFiveYears === true — severity "problem" (landlord-disclosed historic flooding overrides area-level "very-low" tiles).
   - listing.materialInfo.heating contains "electric" AND listing.billsIncluded !== true — severity "caution" (electric-only heating is typically 2–3× gas-central cost for a renter paying their own bills).
   - listing.listedBuilding === true — severity "caution" (statutory restrictions on alterations, satellite dishes, external aerials).
@@ -197,12 +196,6 @@ export type EnrichmentInput = {
   downloadMbps: number | null;
   uploadMbps: number | null;
   fttpAvailable: boolean;
-};
-
-export type CrimeInput = {
-  month: string;
-  total: number;
-  topCategories: Array<{ category: string; count: number }>;
 };
 
 export type AmenitiesInput = {
@@ -317,7 +310,6 @@ export type ExtractContext = {
     epcPotential: string | null;
     commuteMinutes: Record<string, number> | null;
     broadband: EnrichmentInput | null;
-    crime: CrimeInput | null;
     amenities: AmenitiesInput | null;
     flood: FloodInput | null;
   };

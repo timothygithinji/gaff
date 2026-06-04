@@ -15,8 +15,8 @@
  * `highlights` and `watchouts` default to []. Once each listing
  * re-enriches under v2.0.0 the new arrays populate.
  *
- * The "Public records" section now sources broadband, crime, amenities,
- * and flood from the typed `enrichments.broadband / crime / amenities /
+ * The "Public records" section now sources broadband, amenities,
+ * and flood from the typed `enrichments.broadband / amenities /
  * flood` JSONB columns written by the sibling cluster enrichment tasks.
  * The legacy "AI broadband string" fallback is gone — if the cluster
  * task hasn't run yet, the row renders as "Pending".
@@ -52,11 +52,13 @@ import {
   bandAmountPence,
   normaliseBand,
 } from "../../lib/council-tax";
-import {
-  type CrimeComparison,
-  compareCrimeToBaseline,
-} from "../../lib/crime-baseline";
 import { env as parsedEnv } from "../../lib/env";
+import {
+  type ResolvedEpc,
+  parseEnrichmentEpc,
+  pickPortalEpcRating,
+  resolveEpc,
+} from "../../lib/epc";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { resolvePhotoUrl } from "./photo-url";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
@@ -104,22 +106,11 @@ export type ListingDetailPhoto = {
   position: number;
 };
 
-export type ListingDetailEpc = {
-  rating: string;
-  potential?: string;
-  expiresOn?: string;
-  /**
-   * How the rating was derived. "exact" = matched this building's
-   * certificate; "estimate" = the typical rating for the property's full
-   * postcode (the listing didn't expose a house number to match on). The
-   * UI labels the latter as an approximation.
-   */
-  source?: "exact" | "estimate";
-  /** Estimate only: the spread of ratings across the postcode, e.g. C…E. */
-  range?: { min: string; max: string };
-  /** Estimate only: how many certificates the typical rating drew from. */
-  sampleSize?: number;
-};
+/**
+ * The EPC value shape is owned by `src/lib/epc.ts` (shared with the
+ * review card so both surfaces resolve the band identically).
+ */
+export type ListingDetailEpc = ResolvedEpc;
 
 /**
  * Re-exported convenience aliases for the consumer side; the
@@ -255,18 +246,50 @@ export type ListingDetailStationRoute = {
   name: string;
   walkMinutes: number | null;
   transitMinutes: number | null;
+  /** Straight-line distance from the listing, in miles (from Rightmove). */
+  distanceMiles?: number | null;
 };
 
-export type ListingDetailCrime = {
-  month: string;
-  total: number;
-  topCategory: { category: string; count: number } | null;
+export type ListingDetailTransitKind = "tube" | "rail" | "tram" | "bus";
+
+export type ListingDetailPlaceCategory =
+  | "transport"
+  | "park"
+  | "shop"
+  | "gp"
+  | "restaurant";
+
+export type ListingDetailTransitMode =
+  | "tube"
+  | "overground"
+  | "elizabeth-line"
+  | "dlr"
+  | "tram"
+  | "national-rail";
+
+/**
+ * One place within ~1 mile of the cluster, from the
+ * `enrich-nearby-transit` Google Places sweep. Carries coordinates so
+ * the detail map can plot it and draw an on-demand walk/transit route to
+ * it when the user taps its chip. Distinct from
+ * {@link ListingDetailStationRoute} (Rightmove-only, nearest few, with
+ * precomputed minutes) — this is the full 1-mile picture, all portals,
+ * across transport / parks / shops / GPs / restaurants.
+ */
+export type ListingDetailNearbyTransit = {
+  name: string;
+  category: ListingDetailPlaceCategory;
+  /** Transit sub-type (transport only); null otherwise. */
+  kind: ListingDetailTransitKind | null;
   /**
-   * Comparison to an area-appropriate baseline so the raw total reads
-   * as "X% above/below {London,England} average" instead of a bare
-   * number. `null` only when the baseline lookup degenerates (defensive).
+   * TfL modes serving a station (line roundels) — e.g. ["tube"] or
+   * ["national-rail","overground"]. Absent for buses / non-stations / and
+   * stations outside TfL coverage.
    */
-  comparison: CrimeComparison | null;
+  modes?: ListingDetailTransitMode[];
+  lat: number;
+  lng: number;
+  distanceMiles: number;
 };
 
 export type ListingDetailAmenities = {
@@ -280,7 +303,6 @@ export type ListingDetailFlood = {
 
 export type ListingDetailPublicRecords = {
   broadband?: ListingDetailBroadband;
-  crime?: ListingDetailCrime;
   amenities?: ListingDetailAmenities;
   flood?: ListingDetailFlood;
 };
@@ -290,6 +312,8 @@ export type ListingDetailPartnerSwipe = {
   userId: string;
   name: string;
   outcome: "keep" | "skip" | "shortlist" | null;
+  /** ISO timestamp of their swipe, or null if they haven't swiped. */
+  swipedAt: string | null;
 };
 
 export type ListingDetailPayload = {
@@ -311,6 +335,14 @@ export type ListingDetailPayload = {
    * when `enrich-station-routes` hasn't run yet.
    */
   stationRoutes?: ListingDetailStationRoute[];
+  /**
+   * Every public-transport stop within ~1 mile of the cluster (tube /
+   * rail / tram / bus), with coordinates, from the Google Places sweep.
+   * Drives the interactive "Where it sits" map — independent of the
+   * search's commute criteria. Omitted until `enrich-nearby-transit`
+   * has run.
+   */
+  nearbyTransit?: ListingDetailNearbyTransit[];
   publicRecords?: ListingDetailPublicRecords;
   /**
    * Material Information + flood/listed-building disclosures, when the
@@ -325,9 +357,13 @@ export type ListingDetailPayload = {
   agentExtras?: ListingDetailAgentExtras;
   fineprint: ListingDetailFineprint;
   mySwipe?: "keep" | "skip" | "shortlist";
+  /** ISO timestamp of the current user's swipe, or null if not yet swiped. */
+  mySwipeAt: string | null;
   partnerSwipes: ListingDetailPartnerSwipe[];
   searchId: string;
   googleMapsApiKey: string;
+  /** logo.dev publishable token for brand logos on nearby chips; undefined when unset. */
+  logoToken?: string;
 };
 
 // -----------------------------------------------------------------------------
@@ -388,37 +424,24 @@ function readFloorplanUrl(rawJson: unknown): string | null {
   return typeof url === "string" && url.length > 0 ? url : null;
 }
 
-function asEpc(value: unknown): ListingDetailEpc | undefined {
-  if (!value || typeof value !== "object") {
-    return;
+/**
+ * The listing's council tax band, scanning the whole cluster headline-
+ * first. The cheapest headline often lacks a band (OpenRent never
+ * publishes one) while a Zoopla/Rightmove sibling in the same cluster
+ * does — so we fall through to siblings rather than show "band unknown"
+ * when the figure is sitting one row over.
+ */
+function pickCouncilTaxBand(
+  clusterListings: (typeof listings.$inferSelect)[]
+): string | null {
+  for (const l of clusterListings) {
+    const d = readDetail(l.rawJson);
+    const band = d?.councilTaxBand ?? l.councilTaxBand ?? null;
+    if (band) {
+      return band;
+    }
   }
-  const obj = value as {
-    currentRating?: unknown;
-    potentialRating?: unknown;
-    expiresOn?: unknown;
-    source?: unknown;
-    range?: unknown;
-    sampleSize?: unknown;
-  };
-  if (typeof obj.currentRating !== "string") {
-    return;
-  }
-  const range =
-    obj.range &&
-    typeof obj.range === "object" &&
-    typeof (obj.range as { min?: unknown }).min === "string" &&
-    typeof (obj.range as { max?: unknown }).max === "string"
-      ? (obj.range as { min: string; max: string })
-      : undefined;
-  return {
-    rating: obj.currentRating,
-    potential:
-      typeof obj.potentialRating === "string" ? obj.potentialRating : undefined,
-    expiresOn: typeof obj.expiresOn === "string" ? obj.expiresOn : undefined,
-    source: obj.source === "estimate" || obj.source === "exact" ? obj.source : undefined,
-    ...(range ? { range } : {}),
-    ...(typeof obj.sampleSize === "number" ? { sampleSize: obj.sampleSize } : {}),
-  };
+  return null;
 }
 
 function asCommuteMinutes(value: unknown): Record<string, number> | undefined {
@@ -466,6 +489,115 @@ function asStationRoutes(
   return out.length > 0 ? out : undefined;
 }
 
+const TRANSIT_KINDS = new Set(["tube", "rail", "tram", "bus"]);
+const PLACE_CATEGORIES = new Set([
+  "transport",
+  "park",
+  "shop",
+  "gp",
+  "restaurant",
+]);
+const TRANSIT_MODES = new Set([
+  "tube",
+  "overground",
+  "elizabeth-line",
+  "dlr",
+  "tram",
+  "national-rail",
+]);
+
+function asTransitModes(
+  value: unknown
+): ListingDetailTransitMode[] | undefined {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const out = value.filter(
+    (m): m is ListingDetailTransitMode =>
+      typeof m === "string" && TRANSIT_MODES.has(m)
+  );
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Validate + coerce the `enrichments.nearbyTransit` JSONB blob into the
+ * wire type. Drops entries missing a name, a recognised category, or
+ * finite coordinates; `kind` is kept only for the transport category.
+ * Returns undefined when nothing usable survives so the payload omits the
+ * key (and the map falls back to the marker-only view).
+ */
+function asNearbyTransit(
+  value: unknown
+): ListingDetailNearbyTransit[] | undefined {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const out: ListingDetailNearbyTransit[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const r = entry as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    const category = typeof r.category === "string" ? r.category : "";
+    const kind = typeof r.kind === "string" ? r.kind : "";
+    const lat = typeof r.lat === "number" ? r.lat : Number.NaN;
+    const lng = typeof r.lng === "number" ? r.lng : Number.NaN;
+    if (
+      !name ||
+      !PLACE_CATEGORIES.has(category) ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      continue;
+    }
+    const distance =
+      typeof r.distanceMiles === "number" && Number.isFinite(r.distanceMiles)
+        ? r.distanceMiles
+        : 0;
+    const modes = asTransitModes(r.modes);
+    out.push({
+      name,
+      category: category as ListingDetailPlaceCategory,
+      kind: TRANSIT_KINDS.has(kind) ? (kind as ListingDetailTransitKind) : null,
+      ...(modes ? { modes } : {}),
+      lat,
+      lng,
+      distanceMiles: distance,
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Fallback station routes from the listing's raw `nearestStations` (always
+ * present on Rightmove), used when `enrich-station-routes` hasn't populated
+ * the computed walk/transit times yet. Carries names only (walk/transit
+ * `null`) — enough for the map to draw a walking route to the nearest
+ * station and for the commute strip to list them — sorted nearest-first.
+ */
+function stationRoutesFromNearest(
+  stations: NearestStation[]
+): ListingDetailStationRoute[] | undefined {
+  const named = stations.filter((s) => typeof s.name === "string" && s.name);
+  if (named.length === 0) {
+    return;
+  }
+  return [...named]
+    .sort(
+      (a, b) =>
+        (a.distanceMiles ?? Number.POSITIVE_INFINITY) -
+        (b.distanceMiles ?? Number.POSITIVE_INFINITY)
+    )
+    .slice(0, 3)
+    .map((s) => ({
+      name: s.name,
+      walkMinutes: null,
+      transitMinutes: null,
+      distanceMiles: typeof s.distanceMiles === "number" ? s.distanceMiles : null,
+    }));
+}
+
 function asBroadband(value: unknown): ListingDetailBroadband | undefined {
   if (!value || typeof value !== "object") {
     return;
@@ -481,33 +613,6 @@ function asBroadband(value: unknown): ListingDetailBroadband | undefined {
     downloadMbps: typeof b.downloadMbps === "number" ? b.downloadMbps : null,
     uploadMbps: typeof b.uploadMbps === "number" ? b.uploadMbps : null,
     fttpAvailable: b.fttpAvailable === true,
-  };
-}
-
-function asCrime(value: unknown): ListingDetailCrime | undefined {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  const c = value as Record<string, unknown>;
-  const month = typeof c.month === "string" ? c.month : null;
-  const total = typeof c.total === "number" ? c.total : null;
-  if (!(month && total !== null)) {
-    return;
-  }
-  const byCategory =
-    c.byCategory && typeof c.byCategory === "object"
-      ? (c.byCategory as Record<string, number>)
-      : {};
-  const top = Object.entries(byCategory)
-    .filter(([, n]) => typeof n === "number")
-    .sort(([, a], [, b]) => b - a)[0];
-  return {
-    month,
-    total,
-    topCategory: top ? { category: top[0], count: top[1] } : null,
-    // Filled in at the call site where the listing's postcode is in
-    // scope. Kept null here so `asCrime` stays a pure shape mapper.
-    comparison: null,
   };
 }
 
@@ -591,11 +696,11 @@ function buildCouncilTax(
 
 function buildFineprint(
   headline: typeof listings.$inferSelect,
-  councilTax: CouncilTaxContext | null
+  councilTax: CouncilTaxContext | null,
+  councilTaxBand: string | null
 ): ListingDetailFineprint {
   const d = readDetail(headline.rawJson);
   const agent = readAgent(headline.rawJson);
-  const councilTaxBand = d?.councilTaxBand ?? headline.councilTaxBand ?? null;
   return {
     deposit: d?.deposit ?? null,
     feesText: d?.feesText ?? null,
@@ -824,23 +929,17 @@ export const getListingDetail = createServerFn({ method: "GET" })
       : [];
     const summary =
       typeof features?.summary === "string" ? features.summary : null;
-    const epc = asEpc(enrichment?.epc);
+    // Prefer the building's own EPC band as published on the listing over
+    // the postcode-level estimate the enrichment task derives — see
+    // `resolveEpc`. Scans every listing in the cluster for the letter.
+    const epc = resolveEpc(
+      pickPortalEpcRating(sortedListings),
+      parseEnrichmentEpc(enrichment?.epc)
+    );
     const commuteMinutes = asCommuteMinutes(enrichment?.commuteMinutes);
     const stationRoutes = asStationRoutes(enrichment?.stationRoutes);
+    const nearbyTransit = asNearbyTransit(enrichment?.nearbyTransit);
     const broadband = asBroadband(enrichment?.broadband);
-    // Crime + area-baseline comparison: lets "398 in 1mi" render as
-    // "12% below London avg" so the raw count actually informs a
-    // comparison instead of just looking scary.
-    const rawCrime = asCrime(enrichment?.crime);
-    const crime = rawCrime
-      ? {
-          ...rawCrime,
-          comparison: compareCrimeToBaseline(
-            rawCrime.total,
-            headlineListing.postcode ?? cluster.postcode
-          ),
-        }
-      : undefined;
     const amenities = asAmenities(enrichment?.amenities);
     const flood = asFlood(enrichment?.flood);
 
@@ -849,6 +948,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       .select({
         userId: swipes.userId,
         outcome: swipes.outcome,
+        createdAt: swipes.createdAt,
       })
       .from(swipes)
       .where(
@@ -858,6 +958,9 @@ export const getListingDetail = createServerFn({ method: "GET" })
         )
       );
     const swipeByUser = new Map(swipeRows.map((s) => [s.userId, s.outcome]));
+    const swipeAtByUser = new Map(
+      swipeRows.map((s) => [s.userId, s.createdAt])
+    );
 
     const memberRows = await db
       .select({
@@ -876,21 +979,18 @@ export const getListingDetail = createServerFn({ method: "GET" })
         userId: m.userId,
         name: m.name,
         outcome: swipeByUser.get(m.userId) ?? null,
+        swipedAt: swipeAtByUser.get(m.userId)?.toISOString() ?? null,
       }));
 
     const mySwipe = swipeByUser.get(currentUserId) ?? undefined;
+    const mySwipeAt = swipeAtByUser.get(currentUserId)?.toISOString() ?? null;
 
-    // Step 8: public records — broadband / crime / amenities / flood
-    // from the typed enrichment columns. The legacy postcodes.io
-    // crime-area lookup is gone — data.police.uk via `enrich-crime.ts`
-    // gives us actual counts.
+    // Step 8: public records — broadband / amenities / flood from the
+    // typed enrichment columns.
     const publicRecords: ListingDetailPublicRecords | undefined = (() => {
       const out: ListingDetailPublicRecords = {};
       if (broadband) {
         out.broadband = broadband;
-      }
-      if (crime) {
-        out.crime = crime;
       }
       if (amenities) {
         out.amenities = amenities;
@@ -919,9 +1019,32 @@ export const getListingDetail = createServerFn({ method: "GET" })
       councilTaxContext = rateRows[0] ?? null;
     }
 
-    const fineprint = buildFineprint(headlineListing, councilTaxContext);
+    const fineprint = buildFineprint(
+      headlineListing,
+      councilTaxContext,
+      pickCouncilTaxBand(sortedListings)
+    );
     const propertyFacts = buildPropertyFacts(headlineListing);
     const agentExtras = buildAgentExtras(headlineListing);
+    // Prefer the enriched walk/transit routes; fall back to the raw nearest
+    // stations so the map + commute strip still work before (or if)
+    // `enrich-station-routes` populates the computed times. Either way, merge
+    // the straight-line distance (from raw `nearestStations`) onto each route
+    // so the chips can show "0.1 mi" even on the enriched path.
+    const stationDistanceByName = new Map(
+      fineprint.nearestStations
+        .filter((s) => typeof s.name === "string" && s.name)
+        .map((s) => [
+          s.name,
+          typeof s.distanceMiles === "number" ? s.distanceMiles : null,
+        ])
+    );
+    const resolvedStationRoutes = (
+      stationRoutes ?? stationRoutesFromNearest(fineprint.nearestStations)
+    )?.map((r) => ({
+      ...r,
+      distanceMiles: r.distanceMiles ?? stationDistanceByName.get(r.name) ?? null,
+    }));
 
     return {
       cluster: {
@@ -953,15 +1076,22 @@ export const getListingDetail = createServerFn({ method: "GET" })
       watchouts,
       ...(epc ? { epc } : {}),
       ...(commuteMinutes ? { commuteMinutes } : {}),
-      ...(stationRoutes ? { stationRoutes } : {}),
+      ...(resolvedStationRoutes
+        ? { stationRoutes: resolvedStationRoutes }
+        : {}),
+      ...(nearbyTransit ? { nearbyTransit } : {}),
       ...(publicRecords ? { publicRecords } : {}),
       ...(propertyFacts ? { propertyFacts } : {}),
       ...(agentExtras ? { agentExtras } : {}),
       fineprint,
       ...(mySwipe ? { mySwipe } : {}),
+      mySwipeAt,
       partnerSwipes,
       searchId: headlineListing.searchId,
       googleMapsApiKey: parsedEnv().GOOGLE_MAPS_API_KEY,
+      ...(parsedEnv().LOGODEV_TOKEN
+        ? { logoToken: parsedEnv().LOGODEV_TOKEN }
+        : {}),
     };
   });
 

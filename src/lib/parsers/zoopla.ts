@@ -32,7 +32,13 @@ import type {
   TenantPreferences,
 } from "./types";
 
-const ZOOPLA_IMG_BASE = "https://lid.zoocdn.com/645/430";
+// lid.zoocdn.com is an on-the-fly resize proxy: the `{w}/{h}` path segment is
+// the requested render size, BUT only an allowlist of sizes resolves — sizes
+// outside it 404. The largest that resolves is 1600/1200 (returns ~1600×1080
+// at the source aspect); 1280, 1440, 1920, 2048 all 404. We pull at this max
+// so the Worker's render-time resize (see src/lib/photo-size.ts) has the
+// sharpest source to scale down from. Bump only if Zoopla widens the allowlist.
+const ZOOPLA_IMG_BASE = "https://lid.zoocdn.com/1600/1200";
 const ZOOPLA_PRICE_NUM_RE = /£?\s*([\d,]+)/;
 const ZOOPLA_RSC_REF_RE = /^\$[A-Za-z0-9]+$/;
 const COMMA_RE = /,/g;

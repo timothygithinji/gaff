@@ -66,6 +66,29 @@ export default createServerEntry({
     // branch these paths fall through to SSR and 404, so any listing whose
     // photos were cached (r2Key set) shows broken images.
     if (PHOTO_PATH_RE.test(url.pathname)) {
+      // Render-time downscale. `sizedPhoto()` (src/lib/photo-size.ts) appends
+      // `?w=` for the width a component renders at. Re-fetch the un-sized
+      // object through Cloudflare's image transform so the edge serves a
+      // right-sized, format-negotiated (webp/avif) variant from the single
+      // max-res R2 source — that's how a full-width hero stays sharp without
+      // upscaling. The subrequest re-enters this Worker WITHOUT `?w`, which
+      // serves the raw bytes below; `cf.image` then resizes that response.
+      // If Transformations aren't enabled on the zone (or in local workerd),
+      // `cf.image` is ignored and the original is served, so this is safe.
+      const widthParam = Number(url.searchParams.get("w"));
+      if (Number.isInteger(widthParam) && widthParam > 0 && widthParam <= 4096) {
+        const originUrl = new URL(url);
+        originUrl.search = "";
+        return fetch(new Request(originUrl, { headers: request.headers }), {
+          cf: {
+            image: {
+              width: widthParam,
+              fit: "scale-down",
+              quality: 82,
+            },
+          },
+        });
+      }
       const key = decodeURIComponent(url.pathname.slice(1));
       const object = await (env as unknown as Env).BUCKET.get(key);
       if (object) {

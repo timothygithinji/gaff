@@ -24,12 +24,15 @@
  *
  *   - `createSearch`  → INSERT + `createSchedule(externalId = search.id)`
  *   - `updateSearch`  → UPDATE + reconcile schedule by externalId
- *   - `archiveSearch` → flip `active=false` + `deactivateSchedule`
+ *   - `archiveSearch` → flip `active=false` + `deactivateSchedule` (pause)
+ *   - `deleteSearch`  → stamp `deleted_at` + `deactivateSchedule`
  *
- * Hard deletes are intentionally not supported — archiving (pausing the
- * schedule and flipping `active=false`) is the only destructive option
- * exposed to the user. Listings, runs, and swipes all hang off
- * `search_id`, so deleting a row would orphan that history.
+ * Hard deletes are intentionally not supported — listings, runs, and
+ * swipes all hang off `search_id`, so a real DELETE would cascade that
+ * history away. Instead `deleteSearch` is a soft delete: it stamps
+ * `deleted_at` so the row drops out of every read path while the history
+ * stays intact and the delete is recoverable. Pause (`archiveSearch`) is
+ * the lighter option — a paused search still lists; a deleted one doesn't.
  *
  * `cron: null` is the explicit "Off" sentinel — write the row with
  * `active=false` and skip schedule creation entirely.
@@ -42,7 +45,7 @@
 import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
 import { auth, tasks } from "@trigger.dev/sdk";
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../../db";
@@ -112,8 +115,12 @@ async function findHouseholdSearch(
   householdId: string
 ) {
   const row = await db.query.searches.findFirst({
-    where: (s, { eq: eqOp, and: andOp }) =>
-      andOp(eqOp(s.id, searchId), eqOp(s.householdId, householdId)),
+    where: (s, { eq: eqOp, and: andOp, isNull: isNullOp }) =>
+      andOp(
+        eqOp(s.id, searchId),
+        eqOp(s.householdId, householdId),
+        isNullOp(s.deletedAt)
+      ),
   });
   if (!row) {
     throw new Error("not_found");
@@ -274,7 +281,12 @@ export const listSearches = createServerFn({ method: "GET" }).handler(
     const rows = await db
       .select()
       .from(searches)
-      .where(eq(searches.householdId, householdId))
+      .where(
+        and(
+          eq(searches.householdId, householdId),
+          isNull(searches.deletedAt)
+        )
+      )
       .orderBy(desc(searches.createdAt));
     return rows;
   }
@@ -630,6 +642,36 @@ export const archiveSearch = createServerFn({ method: "POST" })
   });
 
 /**
+ * Soft-delete a search. Stamps `deleted_at` so the row drops out of
+ * every household-scoped read path (`findHouseholdSearch`, `listSearches`,
+ * `getSearchesPortfolio`), and deactivates its Trigger.dev schedule so no
+ * more scrapes fire. Unlike pause (`archiveSearch`), a deleted search is
+ * hidden everywhere — but the row plus its listings / runs / swipes are
+ * preserved, so the delete stays recoverable (clear `deleted_at` to undo)
+ * and no match history is destroyed. Idempotent: deleting an already-
+ * deleted search throws `not_found` via `findHouseholdSearch`.
+ */
+export const deleteSearch = createServerFn({ method: "POST" })
+  .inputValidator(idSchema)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const householdId = await requireHouseholdId();
+    const db = getDb();
+    await findHouseholdSearch(db, data.id, householdId);
+    await db
+      .update(searches)
+      .set({ active: false, deletedAt: new Date() })
+      .where(
+        and(eq(searches.id, data.id), eq(searches.householdId, householdId))
+      );
+
+    const schedule = await findScheduleByExternalId(data.id);
+    if (schedule?.active) {
+      await deactivateSchedule({ data: { id: schedule.id } });
+    }
+    return { ok: true };
+  });
+
+/**
  * Trigger an on-demand scrape for a single search. Bypasses the
  * Trigger.dev schedule and fans out directly to `scrape-portal` per
  * selected portal — same fan-out shape the scheduled `scrape-search`
@@ -728,7 +770,9 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
     const searchRows = await db
       .select()
       .from(searches)
-      .where(eq(searches.householdId, householdId));
+      .where(
+        and(eq(searches.householdId, householdId), isNull(searches.deletedAt))
+      );
     const totalSearches = searchRows.length;
     const activeSearches = searchRows.filter((s) => s.active).length;
     const searchIds = searchRows.map((s) => s.id);

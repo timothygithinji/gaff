@@ -36,9 +36,9 @@ import { enrichAmenitiesTask } from "./enrich-amenities";
 import { enrichBroadbandTask } from "./enrich-broadband";
 import { enrichCommuteTask } from "./enrich-commute";
 import { enrichCouncilTaxTask } from "./enrich-council-tax";
-import { enrichCrimeTask } from "./enrich-crime";
 import { enrichEpcTask } from "./enrich-epc";
 import { enrichFloodTask } from "./enrich-flood";
+import { enrichNearbyTransitTask } from "./enrich-nearby-transit";
 import { enrichStationRoutesTask } from "./enrich-station-routes";
 import { scrapeQueue } from "./queues";
 import { scrapeDetailTask } from "./scrape-detail";
@@ -97,12 +97,12 @@ export const clusterTask = task({
     await Promise.all([
       enrichEpcTask.batchTrigger(payloads),
       enrichCommuteTask.batchTrigger(payloads),
-      enrichCrimeTask.batchTrigger(payloads),
       enrichAmenitiesTask.batchTrigger(payloads),
       enrichFloodTask.batchTrigger(payloads),
       enrichBroadbandTask.batchTrigger(payloads),
       enrichCouncilTaxTask.batchTrigger(payloads),
       enrichStationRoutesTask.batchTrigger(payloads),
+      enrichNearbyTransitTask.batchTrigger(payloads),
     ]);
   },
 

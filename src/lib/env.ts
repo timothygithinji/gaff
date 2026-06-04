@@ -64,7 +64,22 @@ const envSchema = z.object({
   EPC_OPENDATA_TOKEN: z
     .string()
     .min(1, "EPC_OPENDATA_TOKEN must be the raw 'email:token' value"),
+  // Browser-facing Maps key — handed to the client (Maps JS, Places
+  // Autocomplete, client Directions). Referrer-restricted in GCP.
   GOOGLE_MAPS_API_KEY: z.string().min(1),
+  // Server-side Maps key for the enrichment tasks (Places New + Routes),
+  // which run off-browser and so can't satisfy a referrer restriction.
+  // OPTIONAL: callers fall back to GOOGLE_MAPS_API_KEY when unset, so a
+  // worker without it staged degrades rather than throwing. Must NOT be
+  // referrer-restricted (None / IP), and never shipped to the client.
+  GOOGLE_MAPS_SERVER_KEY: z.string().min(1).optional(),
+  // TfL Unified API key — OPTIONAL (anonymous works at low volume), only
+  // lifts the rate limit for the StopPoint line-roundel lookups.
+  TFL_APP_KEY: z.string().min(1).optional(),
+  // logo.dev publishable token (pk_…) — OPTIONAL. Client-safe; handed to
+  // the browser to render brand logos on the nearby-places chips. Without
+  // it those chips just show a category dot.
+  LOGODEV_TOKEN: z.string().min(1).optional(),
 
   // Trigger.dev
   TRIGGER_SECRET_KEY: z.string().min(1),
@@ -150,4 +165,14 @@ export function env(): TextEnv {
     cached = parseEnv();
   }
   return cached;
+}
+
+/**
+ * The Maps API key for server-side calls (enrichment tasks, backfill):
+ * the dedicated, non-referrer-restricted server key when present, else
+ * the browser key (which only works behind the localhost Referer hack).
+ */
+export function mapsServerKey(): string {
+  const e = env();
+  return e.GOOGLE_MAPS_SERVER_KEY ?? e.GOOGLE_MAPS_API_KEY;
 }

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getBroadband } from "../../src/lib/broadband";
+import {
+  type CoveragePercents,
+  coverageToBroadband,
+  normalisePostcodeKey,
+  outcodeOf,
+} from "../../src/lib/broadband";
 import { getFloodRisk } from "../../src/lib/flood-risk";
 import { getAmenityCounts } from "../../src/lib/overpass";
-import { getCrimeAggregate } from "../../src/lib/police-uk";
-
-const POLICE_503_RE = /data\.police\.uk 503/;
 
 function jsonResponse(body: unknown, init: ResponseInit = { status: 200 }) {
   return new Response(JSON.stringify(body), {
@@ -20,44 +22,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe("getCrimeAggregate", () => {
-  it("aggregates crimes by category and reports the month", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        { category: "anti-social-behaviour", month: "2026-03" },
-        { category: "anti-social-behaviour", month: "2026-03" },
-        { category: "burglary", month: "2026-03" },
-      ])
-    );
-    const result = await getCrimeAggregate({ lat: 51.6, lng: -0.13 });
-    expect(result).toEqual({
-      month: "2026-03",
-      total: 3,
-      byCategory: { "anti-social-behaviour": 2, burglary: 1 },
-    });
-  });
-
-  it("returns null on 404 (no data for the area)", async () => {
-    fetchMock.mockResolvedValueOnce(new Response("", { status: 404 }));
-    const result = await getCrimeAggregate({ lat: 51.6, lng: -0.13 });
-    expect(result).toBeNull();
-  });
-
-  it("returns null on empty array", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse([]));
-    expect(await getCrimeAggregate({ lat: 51.6, lng: -0.13 })).toBeNull();
-  });
-
-  it("throws on non-2xx/404", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response("boom", { status: 503, statusText: "Service Unavailable" })
-    );
-    await expect(getCrimeAggregate({ lat: 51.6, lng: -0.13 })).rejects.toThrow(
-      POLICE_503_RE
-    );
-  });
 });
 
 describe("getAmenityCounts (stubbed)", () => {
@@ -91,22 +55,83 @@ describe("getFloodRisk (stubbed)", () => {
   });
 });
 
-describe("getBroadband (stubbed)", () => {
-  it("returns a null-filled result (no upstream source wired)", async () => {
-    const result = await getBroadband({
-      zyteApiKey: "k",
-      postcode: "N11 1AA",
+describe("normalisePostcodeKey", () => {
+  it("treats a full unit postcode as a postcode key (spaces removed)", () => {
+    expect(normalisePostcodeKey("n11 1aa")).toEqual({
+      key: "N111AA",
+      level: "postcode",
     });
+  });
+
+  it("treats a bare outcode as an outcode key", () => {
+    expect(normalisePostcodeKey("SE1")).toEqual({
+      key: "SE1",
+      level: "outcode",
+    });
+  });
+
+  it("returns null for unparseable input", () => {
+    expect(normalisePostcodeKey("not a postcode")).toBeNull();
+  });
+
+  it("derives the outcode from a unit postcode", () => {
+    expect(outcodeOf("SE19HA")).toBe("SE1");
+    expect(outcodeOf("N111AA")).toBe("N11");
+    expect(outcodeOf("SE1")).toBeNull();
+  });
+});
+
+describe("coverageToBroadband", () => {
+  const base: CoveragePercents = {
+    sfbbPct: null,
+    ufbb100Pct: null,
+    ufbb300Pct: null,
+    gigabitPct: null,
+    ngaPct: null,
+  };
+
+  it("maps a gigabit-capable majority to FTTP + fttpAvailable", () => {
+    const result = coverageToBroadband(
+      { ...base, sfbbPct: 100, ufbb300Pct: 99, gigabitPct: 98 },
+      "ofcom-cn-2025-07"
+    );
     expect(result).toEqual({
+      technology: "FTTP",
+      downloadMbps: 1000,
+      uploadMbps: null,
+      fttpAvailable: true,
+      source: "ofcom-cn-2025-07",
+      asOf: "2025-07",
+    });
+  });
+
+  it("maps superfast-but-not-gigabit to FTTC without fttpAvailable", () => {
+    const result = coverageToBroadband({
+      ...base,
+      sfbbPct: 100,
+      ufbb100Pct: 20,
+      gigabitPct: 10,
+    });
+    expect(result.technology).toBe("FTTC");
+    expect(result.downloadMbps).toBe(80);
+    expect(result.fttpAvailable).toBe(false);
+  });
+
+  it("maps a sub-superfast majority to ADSL", () => {
+    const result = coverageToBroadband({ ...base, sfbbPct: 10 });
+    expect(result.technology).toBe("ADSL");
+    expect(result.downloadMbps).toBe(24);
+    expect(result.fttpAvailable).toBe(false);
+  });
+
+  it("returns a null-filled result when no coverage figures exist", () => {
+    expect(coverageToBroadband(base)).toEqual({
       technology: null,
       downloadMbps: null,
       uploadMbps: null,
       fttpAvailable: false,
+      source: null,
+      asOf: null,
     });
-  });
-
-  it("never makes a network call while stubbed", async () => {
-    await getBroadband({ zyteApiKey: "k", postcode: "N11 1AA" });
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
