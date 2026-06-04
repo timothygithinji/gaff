@@ -33,7 +33,7 @@ export function TextField({
   return (
     <label className="flex flex-col gap-1.5">
       <span className="flex items-center justify-between">
-        <span className='text-[#1f3a5f] text-[11px] uppercase leading-[14px] tracking-[0.1em]'>
+        <span className='text-[11px] text-slate uppercase leading-[14px] tracking-[0.1em]'>
           {label}
         </span>
         {trailing}

@@ -49,7 +49,7 @@ function badgeColour(portal: string): string {
   if (portal === "zoopla") {
     return "bg-slate-2";
   }
-  return "bg-navy";
+  return "bg-primary";
 }
 
 function formatPrice(monthly: number | null): string {

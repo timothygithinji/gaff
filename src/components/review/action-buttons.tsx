@@ -87,7 +87,7 @@ export function ActionButtons({
       <button
         aria-busy={pendingAction === "shortlist" || undefined}
         aria-label="Shortlist"
-        className="flex h-14 flex-1 items-center justify-center gap-2 rounded-[32px] bg-navy font-medium text-[13px] text-white tracking-[0.04em] transition-opacity hover:opacity-95 disabled:opacity-50"
+        className="flex h-14 flex-1 items-center justify-center gap-2 rounded-[32px] bg-primary font-medium text-[13px] text-white tracking-[0.04em] transition-opacity hover:opacity-95 disabled:opacity-50"
         disabled={disabled}
         onClick={onShortlist}
         type="button"

@@ -88,7 +88,7 @@ export function BottomNav() {
           <Link
             className={cn(
               "relative flex flex-col items-center justify-center gap-1 py-2.5 transition-colors",
-              active ? "text-primary" : "text-muted-foreground"
+              active ? "text-foreground" : "text-muted-foreground"
             )}
             key={tab.to}
             to={tab.to}
