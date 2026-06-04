@@ -700,7 +700,6 @@ function WhatStandsOutCard({ signals }: { signals: DesktopReviewSignal[] }) {
           {Array.from({ length: WHAT_STANDS_OUT_SLOTS }).map((_, i) => {
             const item = items[i];
             if (!item) {
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length filler slots have no stable id.
               return <li className="h-5" key={`slot-${i}`} />;
             }
             return (
