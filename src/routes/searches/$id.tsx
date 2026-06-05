@@ -37,8 +37,10 @@ import { listSchedules } from "../../server/functions/schedules";
 import {
   type SearchRow,
   archiveSearch,
+  backfillSearchNow,
   deleteSearch,
   getSearch,
+  runSearchNow,
   updateSearch,
 } from "../../server/functions/searches";
 
@@ -240,7 +242,52 @@ function EditSearchPage() {
     },
   });
 
+  const scrape = useMutation({
+    mutationFn: () => runSearchNow({ data: { id: params.id } }),
+    onError: (e: Error) => {
+      setError(
+        e.message === "no_portals_selected"
+          ? "Select at least one portal before scraping."
+          : (e.message ?? "Couldn't start scrape")
+      );
+    },
+  });
+
+  const backfill = useMutation({
+    mutationFn: () => backfillSearchNow({ data: { id: params.id } }),
+    onError: (e: Error) => {
+      setError(
+        e.message === "no_portals_selected"
+          ? "Select at least one portal before backfilling."
+          : (e.message ?? "Couldn't start backfill")
+      );
+    },
+  });
+
   const pending = update.isPending || archive.isPending || remove.isPending;
+
+  const scrapeAction = {
+    label: scrape.isSuccess ? "Scrape started" : "Scrape now",
+    disabled: pending || scrape.isPending || !search.active,
+    onClick: () => scrape.mutate(),
+    pending: scrape.isPending,
+    pendingLabel: "Starting…",
+  };
+
+  const backfillAction = {
+    label: backfill.isSuccess ? "Backfill started" : "Backfill now",
+    disabled: pending || backfill.isPending || !search.active,
+    onClick: () => {
+      const ok = window.confirm(
+        `Backfill "${search.name}"? This does a one-off full-depth scrape across every portal — slower and more costly than the daily run. It catches up the whole current inventory.`
+      );
+      if (ok) {
+        backfill.mutate();
+      }
+    },
+    pending: backfill.isPending,
+    pendingLabel: "Starting…",
+  };
 
   const pauseAction = {
     label: search.active ? "Pause search" : "Paused",
@@ -276,6 +323,7 @@ function EditSearchPage() {
         </div>
       )}
       <DesktopSearchCreate
+        backfillAction={backfillAction}
         deleteAction={deleteAction}
         initial={initial}
         mode="edit"
@@ -283,6 +331,7 @@ function EditSearchPage() {
         onSubmit={(v) => update.mutate(v)}
         pauseAction={pauseAction}
         pending={pending}
+        scrapeAction={scrapeAction}
       />
       <div className="lg:hidden">
         <SearchForm
@@ -293,6 +342,28 @@ function EditSearchPage() {
           pending={pending}
         />
         <div className="mx-auto flex max-w-md justify-end gap-2 border-border border-t bg-card px-5 py-3 sm:max-w-2xl">
+          <Button
+            disabled={scrapeAction.disabled}
+            loading={scrape.isPending}
+            loadingText="Starting…"
+            onClick={scrapeAction.onClick}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {scrapeAction.label}
+          </Button>
+          <Button
+            disabled={backfillAction.disabled}
+            loading={backfill.isPending}
+            loadingText="Starting…"
+            onClick={backfillAction.onClick}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {backfillAction.label}
+          </Button>
           <Button
             disabled={deleteAction.disabled}
             loading={remove.isPending}
