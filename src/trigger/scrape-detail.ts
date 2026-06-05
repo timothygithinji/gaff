@@ -34,7 +34,7 @@
  */
 
 import { logger, task } from "@trigger.dev/sdk";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
@@ -93,6 +93,38 @@ function fillIfMissing<K extends keyof typeof schema.listings.$inferInsert>(
   if (existing == null && value != null) {
     patch[key] = value;
   }
+}
+
+/**
+ * Promote a listing's coords onto its cluster when the cluster has none
+ * yet. Clusters are created from search-tier listings (no coordinates)
+ * BEFORE this detail scrape lands the real lat/lng, so a fresh cluster is
+ * born with NULL coords — and every lat/lng-gated enricher (amenities,
+ * nearby-transit, station-routes, council-tax) reads the
+ * *cluster's* coords and silently no-ops without them. A cluster is one
+ * building, so any located listing locates it; the `IS NULL` guard makes
+ * this idempotent and never clobbers an already-located cluster.
+ * `enrich-geo-sweep` is the backstop for anything this misses.
+ */
+async function locateClusterFromListing(
+  db: ReturnType<typeof getDb>,
+  listing: typeof schema.listings.$inferSelect,
+  patch: Partial<typeof schema.listings.$inferInsert>
+): Promise<void> {
+  const lat = patch.lat ?? listing.lat;
+  const lng = patch.lng ?? listing.lng;
+  if (!listing.clusterId || lat == null || lng == null) {
+    return;
+  }
+  await db
+    .update(schema.propertyClusters)
+    .set({ lat, lng })
+    .where(
+      and(
+        eq(schema.propertyClusters.id, listing.clusterId),
+        isNull(schema.propertyClusters.lat)
+      )
+    );
 }
 
 function buildListingPatch(
@@ -328,6 +360,9 @@ export const scrapeDetailTask = task({
         .set(patch)
         .where(eq(schema.listings.id, listingId));
     }
+
+    // Locate the cluster from this listing's coords (see helper).
+    await locateClusterFromListing(db, listing, patch);
 
     // Photo INSERT. Schema has no (listing_id, url) unique index, so we
     // pre-fetch the URLs already known for this listing and skip those.
