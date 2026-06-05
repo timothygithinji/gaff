@@ -238,6 +238,15 @@ export const scrapeDetailTask = task({
     if (!listing) {
       throw new Error(`scrape-detail: listing ${listingId} not found`);
     }
+    // Manually-added listings (added by URL) have no search, and their
+    // detail is already captured at add-time; `scrape_runs.search_id` is
+    // NOT NULL so there's nothing to attribute a run to here. Skip.
+    if (!listing.searchId) {
+      logger.warn("scrape-detail: listing has no searchId; skipping", {
+        listingId,
+      });
+      return { runId: ctx.run.id, listingId, photoCount: 0, costUsd: 0 };
+    }
     const portal = listing.portal as Portal;
 
     // INSERT the scrape_runs row up front, keyed on ctx.run.id so the

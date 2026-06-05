@@ -315,7 +315,10 @@ export const mergeClusters = createServerFn({ method: "POST" })
         .where(inArray(listings.clusterId, involved));
       for (const id of involved) {
         const ok = involvedListings.some(
-          (l) => l.clusterId === id && hhSearchIds.has(l.searchId)
+          (l) =>
+            l.clusterId === id &&
+            l.searchId != null &&
+            hhSearchIds.has(l.searchId)
         );
         if (!ok) {
           throw new Error("cluster_not_in_household");

@@ -43,6 +43,7 @@ import type {
 import { queryKeys } from "../lib/query-keys";
 import {
   type PipelineColumns,
+  addListingByUrl,
   listPipeline,
   setPipelineStatus,
 } from "../server/functions/pipeline";
@@ -211,6 +212,8 @@ function ShortlistPage() {
 
   const [activeTab, setActiveTab] = useState<string>(PIPELINE_TAB_ID);
   const [sort, setSort] = useState<SortKey>("cheapest");
+  const [addUrlValue, setAddUrlValue] = useState("");
+  const [addUrlError, setAddUrlError] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<{
     clusterId: string;
     to: PipelineStatus;
@@ -242,6 +245,45 @@ function ShortlistPage() {
       qc.invalidateQueries({ queryKey: queryKeys.shortlistPipeline() });
     },
   });
+
+  // Add a listing to the pipeline by pasting its URL. Lands in
+  // Shortlisted; dedupes against listings we already have.
+  const addUrlMutation = useMutation({
+    mutationFn: (url: string) => addListingByUrl({ data: { url } }),
+    onSuccess: () => {
+      setAddUrlError(null);
+      setAddUrlValue("");
+      setActiveTab(PIPELINE_TAB_ID);
+      qc.invalidateQueries({ queryKey: queryKeys.shortlistPipeline() });
+    },
+    onError: (e: Error) => {
+      setAddUrlError(
+        e.message === "invalid_listing_url"
+          ? "That's not a Rightmove, Zoopla or OpenRent listing URL."
+          : (e.message ?? "Couldn't add that listing.")
+      );
+    },
+  });
+
+  const addByUrl = (
+    <AddByUrlForm
+      error={addUrlError}
+      onChange={(v) => {
+        setAddUrlValue(v);
+        if (addUrlError) {
+          setAddUrlError(null);
+        }
+      }}
+      onSubmit={() => {
+        const url = addUrlValue.trim();
+        if (url) {
+          addUrlMutation.mutate(url);
+        }
+      }}
+      pending={addUrlMutation.isPending}
+      value={addUrlValue}
+    />
+  );
 
   // Non-pipeline tabs (Yours / Per-member) keep the legacy list view.
   const visibleMatches = useMemo<MutualMatch[]>(() => {
@@ -278,19 +320,22 @@ function ShortlistPage() {
   );
 
   const pipelineKanban = (
-    <PipelineKanban
-      columns={columns}
-      disabled={moveMutation.isPending}
-      onArchive={(clusterId, reason) =>
-        moveMutation.mutate({
-          clusterId,
-          to: "archived",
-          archivedReason: reason,
-        })
-      }
-      onMove={(clusterId, to) => moveMutation.mutate({ clusterId, to })}
-      onOpenCluster={openCluster}
-    />
+    <div className="flex flex-col gap-4">
+      <div className="px-1">{addByUrl}</div>
+      <PipelineKanban
+        columns={columns}
+        disabled={moveMutation.isPending}
+        onArchive={(clusterId, reason) =>
+          moveMutation.mutate({
+            clusterId,
+            to: "archived",
+            archivedReason: reason,
+          })
+        }
+        onMove={(clusterId, to) => moveMutation.mutate({ clusterId, to })}
+        onOpenCluster={openCluster}
+      />
+    </div>
   );
 
   return (
@@ -343,6 +388,8 @@ function ShortlistPage() {
           />
         ) : null}
 
+        {isPipeline ? <div className="px-4 pb-3">{addByUrl}</div> : null}
+
         {isPipeline ? (
           <PipelineMobile
             columns={columns}
@@ -384,6 +431,54 @@ function ShortlistPage() {
         <BottomNav />
       </div>
     </>
+  );
+}
+
+/**
+ * "Add by URL" bar above the pipeline. Paste a Rightmove/Zoopla/OpenRent
+ * listing URL → scrapes it and drops it straight into Shortlisted.
+ */
+function AddByUrlForm({
+  value,
+  error,
+  pending,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  error: string | null;
+  pending: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input
+          aria-label="Listing URL"
+          className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          inputMode="url"
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Paste a Rightmove / Zoopla / OpenRent listing URL…"
+          type="url"
+          value={value}
+        />
+        <button
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 font-medium text-[#eef1f4] text-sm disabled:opacity-50"
+          disabled={pending || value.trim().length === 0}
+          type="submit"
+        >
+          {pending ? "Adding…" : "Add to pipeline"}
+        </button>
+      </form>
+      {error ? <p className="text-[12px] text-destructive">{error}</p> : null}
+    </div>
   );
 }
 

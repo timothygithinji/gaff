@@ -905,7 +905,7 @@ async function filterCandidatesByTargets(
     );
   const searchesByCluster = new Map<string, Set<string>>();
   for (const r of memberRows) {
-    if (!r.clusterId) {
+    if (!(r.clusterId && r.searchId)) {
       continue;
     }
     const set = searchesByCluster.get(r.clusterId) ?? new Set<string>();
@@ -1154,7 +1154,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       )
     );
     const inBandListings = clusterListings.filter((l) => {
-      const band = bandBySearchId.get(l.searchId);
+      const band = l.searchId ? bandBySearchId.get(l.searchId) : undefined;
       if (!band) {
         return true;
       }
@@ -1301,7 +1301,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       councilTaxBand: headline.councilTaxBand ?? null,
       epcFloorAreaSqFt,
       leftToday: clusterIds.length,
-      searchId: headline.searchId,
+      searchId: headline.searchId ?? "",
       searchPill,
       firstSeenLabel: relativeFromNow(
         asDate(headline.publishedAt) ?? asDate(headline.firstSeenAt) ?? new Date()
@@ -1476,7 +1476,7 @@ async function hydrateQueueItems(
       );
       return {
         clusterId,
-        searchId: g.headline.searchId,
+        searchId: g.headline.searchId ?? "",
         headlineListingId: g.headline.id,
         title: g.headline.title,
         addressRaw: g.headline.addressRaw,
