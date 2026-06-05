@@ -31,7 +31,34 @@ export type ZyteFetchInput = {
   httpResponseBody?: boolean;
   /** Render the URL in a real browser. Required for JS-heavy portals. */
   browserHtml?: boolean;
+  /**
+   * Invoked before each backoff sleep when a retryable response (429/503/520)
+   * comes back, so callers can log the wait. Optional — the retry is
+   * transparent either way.
+   */
+  onRetry?: (info: { status: number; attempt: number; waitMs: number }) => void;
 };
+
+/**
+ * Zyte rate-limits by requests-per-MINUTE (not concurrency) and, when
+ * exceeded, returns HTTP 429 with no `Retry-After` header; its guidance is to
+ * retry with exponential backoff + jitter. 503 (overload) and 520 (transient
+ * ban) are likewise temporary. We retry these in-process so a brief burst
+ * waits it out instead of failing the task. The backoff ceiling is kept low
+ * enough that the worst-case total wait fits inside `scrape-detail`'s 120s
+ * `maxDuration`.
+ */
+const ZYTE_RETRYABLE_STATUS = new Set([429, 503, 520]);
+const ZYTE_MAX_ATTEMPTS = 5;
+
+function zyteBackoffMs(attempt: number): number {
+  // 3s, 6s, 12s, 24s capped at 30s, plus up to 1s jitter to de-sync callers.
+  const base = Math.min(3000 * 2 ** (attempt - 1), 30_000);
+  return base + Math.floor(Math.random() * 1000);
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export type ZyteFetchResult = {
   html: string;
@@ -95,21 +122,40 @@ export async function zyteFetch(
     body.httpResponseHeaders = true;
   }
 
-  const res = await fetch(ZYTE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: basicAuth(input.apiKey),
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response | undefined;
+  for (let attempt = 1; attempt <= ZYTE_MAX_ATTEMPTS; attempt++) {
+    res = await fetch(ZYTE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: basicAuth(input.apiKey),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
+    if (res.ok) {
+      break;
+    }
+
+    // Retryable rate-limit / overload / transient-ban: back off and retry.
+    // Anything else (400/401/422/…) is permanent — fail immediately.
+    if (ZYTE_RETRYABLE_STATUS.has(res.status) && attempt < ZYTE_MAX_ATTEMPTS) {
+      const waitMs = zyteBackoffMs(attempt);
+      input.onRetry?.({ status: res.status, attempt, waitMs });
+      await sleep(waitMs);
+      continue;
+    }
+
     const errBody = await res.text();
     throw new Error(
       `Zyte ${res.status} ${res.statusText}: ${errBody.slice(0, 400)}`
     );
+  }
+
+  // Unreachable in practice (the loop returns or throws), but narrows the type.
+  if (!res) {
+    throw new Error("Zyte: request loop produced no response");
   }
 
   const data = (await res.json()) as ZyteApiResponse;

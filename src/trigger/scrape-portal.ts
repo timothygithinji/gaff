@@ -899,6 +899,13 @@ export const scrapePortalTask = task({
         url,
         geolocation: "GB",
         browserHtml: true,
+        onRetry: ({ status, attempt, waitMs }) =>
+          logger.warn("scrape-portal: Zyte rate-limited, backing off", {
+            url,
+            status,
+            attempt,
+            waitMs,
+          }),
       });
       totalCost += res.cost ?? portalCostFallback;
       if (storeScope) {

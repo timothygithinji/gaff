@@ -40,7 +40,7 @@ import {
   normaliseTravelMode,
 } from "../lib/google-routes";
 import { upsertEnrichmentForListings } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichCommutePayload = {
   clusterId: string;
@@ -169,7 +169,7 @@ async function loadCommuteContext(
 
 export const enrichCommuteTask = task({
   id: "enrich-commute",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 120,
 
   run: async (payload: EnrichCommutePayload): Promise<EnrichCommuteOutput> => {

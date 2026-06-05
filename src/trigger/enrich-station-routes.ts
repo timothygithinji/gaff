@@ -45,7 +45,7 @@ import {
   nextWeekdayAt,
 } from "../lib/google-routes";
 import { upsertEnrichmentForListings } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichStationRoutesPayload = {
   clusterId: string;
@@ -202,7 +202,7 @@ async function loadStationContext(
 
 export const enrichStationRoutesTask = task({
   id: "enrich-station-routes",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 120,
 
   run: async (

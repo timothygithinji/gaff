@@ -38,7 +38,7 @@ import { eq, ilike } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { cachePhotosTask } from "./cache-photos";
-import { scrapeQueue } from "./queues";
+import { photoQueue } from "./queues";
 
 /**
  * Largest size lid.zoocdn.com's resize proxy serves (kept in step with
@@ -91,7 +91,7 @@ const BATCH_CHUNK = 100;
 
 export const backfillPhotoResTask = task({
   id: "backfill-photo-res",
-  queue: scrapeQueue,
+  queue: photoQueue,
   maxDuration: 600,
 
   run: async (

@@ -13,7 +13,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { getDb } from "../../db";
 import { getAmenityCounts } from "../lib/overpass";
 import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichAmenitiesPayload = {
   clusterId: string;
@@ -27,7 +27,7 @@ export type EnrichAmenitiesOutput = {
 
 export const enrichAmenitiesTask = task({
   id: "enrich-amenities",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 60,
 
   run: async (

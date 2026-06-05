@@ -29,7 +29,7 @@ import * as schema from "../../db/schema";
 import { env, mapsServerKey } from "../lib/env";
 import { type NearbyPlace, gatherNearbyPlaces } from "../lib/nearby-places";
 import { parseNumeric, upsertEnrichmentForListings } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichNearbyTransitPayload = {
   clusterId: string;
@@ -79,7 +79,7 @@ async function loadContext(
 
 export const enrichNearbyTransitTask = task({
   id: "enrich-nearby-transit",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 120,
 
   run: async (

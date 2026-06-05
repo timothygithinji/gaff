@@ -21,10 +21,11 @@
  * reachable from here. The S3-compatible HTTP API is the path that works
  * from both sides; the Worker can also fall back to it if needed.
  *
- * Concurrency: this task lives on `scrapeQueue` (concurrencyLimit 5), and
- * within a single run we download photos sequentially. That bounds total
- * outbound bandwidth to ~5 photos in flight across the whole fleet,
- * which keeps us comfortably under any portal CDN's per-IP rate limit.
+ * Concurrency: this task lives on `photoQueue` (its own queue, separate from
+ * the Zyte-bound scrape tasks so a backfill's image caching doesn't starve
+ * behind page scrapes), and within a single run we download photos
+ * sequentially. That keeps total photos-in-flight modest across the fleet,
+ * comfortably under any portal CDN's per-IP rate limit.
  */
 
 import { logger, task } from "@trigger.dev/sdk";
@@ -33,7 +34,7 @@ import { nanoid } from "nanoid";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { env } from "../lib/env";
-import { scrapeQueue } from "./queues";
+import { photoQueue } from "./queues";
 
 export type CachePhotosPayload = {
   listingId: string;
@@ -227,7 +228,7 @@ async function hmacHex(key: Uint8Array, data: string): Promise<string> {
 
 export const cachePhotosTask = task({
   id: "cache-photos",
-  queue: scrapeQueue,
+  queue: photoQueue,
   maxDuration: 300,
 
   run: async (payload: CachePhotosPayload): Promise<CachePhotosOutput> => {

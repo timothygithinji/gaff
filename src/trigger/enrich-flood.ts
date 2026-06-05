@@ -14,7 +14,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { getDb } from "../../db";
 import { getFloodRisk } from "../lib/flood-risk";
 import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichFloodPayload = {
   clusterId: string;
@@ -28,7 +28,7 @@ export type EnrichFloodOutput = {
 
 export const enrichFloodTask = task({
   id: "enrich-flood",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 60,
 
   run: async (payload: EnrichFloodPayload): Promise<EnrichFloodOutput> => {

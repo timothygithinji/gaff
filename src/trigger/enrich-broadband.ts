@@ -19,7 +19,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { getDb } from "../../db";
 import { getBroadbandForPostcode } from "../lib/broadband";
 import { upsertEnrichmentForCluster } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichBroadbandPayload = {
   clusterId: string;
@@ -33,7 +33,7 @@ export type EnrichBroadbandOutput = {
 
 export const enrichBroadbandTask = task({
   id: "enrich-broadband",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 60,
 
   run: async (

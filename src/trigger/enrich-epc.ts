@@ -40,7 +40,7 @@ import {
 import { env } from "../lib/env";
 import { reverseGeocodePostcode } from "../lib/geocode";
 import { parseNumeric, upsertEnrichmentForCluster } from "./enrich-helpers";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichEpcPayload = {
   clusterId: string;
@@ -317,7 +317,7 @@ async function searchEpcCerts(
 
 export const enrichEpcTask = task({
   id: "enrich-epc",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 60,
 
   run: async (payload: EnrichEpcPayload): Promise<EnrichEpcOutput> => {

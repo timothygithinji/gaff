@@ -67,7 +67,7 @@ import type {
 } from "../lib/ai/prompt";
 import { env } from "../lib/env";
 import type { ListingDetail } from "../lib/parsers/types";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichAiPayload = {
   listingId: string;
@@ -227,7 +227,7 @@ function buildPortalSpread(
 
 export const enrichAiTask = task({
   id: "enrich-ai",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 120,
 
   onFailure: async ({

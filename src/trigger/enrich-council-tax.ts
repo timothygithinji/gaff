@@ -29,7 +29,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { resolveBillingAuthority } from "../lib/council-tax";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 
 export type EnrichCouncilTaxPayload = {
   clusterId: string;
@@ -42,7 +42,7 @@ export type EnrichCouncilTaxOutput = {
 
 export const enrichCouncilTaxTask = task({
   id: "enrich-council-tax",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 60,
 
   run: async (

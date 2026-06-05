@@ -40,7 +40,7 @@ import { enrichEpcTask } from "./enrich-epc";
 import { enrichFloodTask } from "./enrich-flood";
 import { enrichNearbyTransitTask } from "./enrich-nearby-transit";
 import { enrichStationRoutesTask } from "./enrich-station-routes";
-import { scrapeQueue } from "./queues";
+import { enrichQueue } from "./queues";
 import { scrapeDetailTask } from "./scrape-detail";
 
 export type ClusterPayload = {
@@ -68,7 +68,7 @@ export type ClusterOutput = {
 
 export const clusterTask = task({
   id: "cluster",
-  queue: scrapeQueue,
+  queue: enrichQueue,
   maxDuration: 300,
 
   /**
@@ -177,7 +177,7 @@ export const clusterTask = task({
     // clustered listing. batchTrigger (NOT batchTriggerAndWait) so the
     // cluster task doesn't block on detail-scrape duration — clustering
     // is cheap, detail-scrape involves another Zyte round trip per
-    // listing and routes through the scrapeQueue's concurrency cap.
+    // listing and routes through the enrichQueue's concurrency cap.
     if (detailListingIds.length > 0) {
       await scrapeDetailTask.batchTrigger(
         detailListingIds.map((listingId) => ({

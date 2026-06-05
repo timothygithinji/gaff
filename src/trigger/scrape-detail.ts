@@ -173,8 +173,9 @@ export const scrapeDetailTask = task({
 
   /**
    * onSuccess fires after the run body returns. We use it to fire-and-forget
-   * the photo-cache task — same pattern as scrape-portal → cluster (the
-   * child runs on the same `scrapeQueue` so its concurrency is bounded).
+   * the photo-cache task — same pattern as scrape-portal → cluster. The child
+   * runs on `photoQueue`, so caching throughput is independent of the Zyte
+   * scrape cap.
    *
    * Splitting this off from the run body matters because cache-photos can
    * fail (R2 creds missing, photo URL 404s) WITHOUT failing the detail
@@ -189,10 +190,9 @@ export const scrapeDetailTask = task({
     }
     // PR 6 wiring: fire-and-forget the AI enrichment now that
     // `listings.rawJson` is populated with the rich ListingDetail. The
-    // enrich-ai task runs on the same scrapeQueue (concurrencyLimit 5),
-    // which doubles as a bound on Anthropic spend rate without an extra
-    // queue declaration. EPC enrichment fires from cluster.onSuccess
-    // instead — it's per-cluster, not per-listing.
+    // enrich-ai task runs on `enrichQueue` (concurrencyLimit 15), which
+    // doubles as a bound on Anthropic spend rate. EPC enrichment fires from
+    // cluster.onSuccess instead — it's per-cluster, not per-listing.
     await enrichAiTask.batchTrigger([
       { payload: { listingId: output.listingId } },
     ]);
@@ -285,6 +285,13 @@ export const scrapeDetailTask = task({
       geolocation: "GB",
       browserHtml: useBrowser ? true : undefined,
       httpResponseBody: useBrowser ? undefined : true,
+      onRetry: ({ status, attempt, waitMs }) =>
+        logger.warn("scrape-detail: Zyte rate-limited, backing off", {
+          url: listing.url,
+          status,
+          attempt,
+          waitMs,
+        }),
     });
     const cost = res.cost ?? portalCostFallback;
 
