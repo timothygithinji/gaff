@@ -178,7 +178,7 @@ const imageResizePolicy = new cloudflare.ZeroTrustAccessPolicy(
   {
     accountId,
     name: "Image resize service token",
-    decision: "nonIdentity",
+    decision: "non_identity",
     includes: [
       {
         serviceToken: { tokenId: imageResizeToken.id },
