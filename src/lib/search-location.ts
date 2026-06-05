@@ -95,14 +95,24 @@ export type SearchLocation = {
   lng: number;
   bounds: LocationBounds;
   /**
-   * Postcode outcodes (e.g. `["N1", "N4", "NW1"]`) that the area covers.
-   * Populated at save time by `findCoveringOutcodes` for non-postcode
-   * locations; left absent for `postal_code` locations (the `name` IS
-   * the outcode). Exposed to the form so the user can deselect outcodes
-   * before saving; the user's edits flow back into `portalRefs` via a
-   * re-stamp.
+   * The *active* postcode outcodes (e.g. `["N1", "N4", "NW1"]`) — the
+   * subset the user has kept switched on. This is what actually gets
+   * scraped: `stampPortalRefs` resolves one portal ref per entry here.
+   * Populated for non-postcode locations; left absent for `postal_code`
+   * locations (the `name` IS the outcode).
    */
   coveringOutcodes?: string[];
+  /**
+   * The *full* set the area resolved to, before any toggling — the
+   * superset of {@link coveringOutcodes}. Kept so the form can render
+   * switched-off outcodes as re-enableable chips (toggle, not destroy):
+   * an outcode the user turns off leaves `coveringOutcodes` but stays in
+   * `allOutcodes`, so it can be switched back on without re-resolving.
+   * Closest-to-centre first, same order as `coveringOutcodes`. Absent for
+   * `postal_code` locations and for rows written before this field
+   * existed (readers fall back to `coveringOutcodes`).
+   */
+  allOutcodes?: string[];
   portalRefs: SearchLocationPortalRefs;
 };
 
@@ -176,6 +186,7 @@ export const searchLocationSchema = z.object({
   lng: z.number().finite(),
   bounds: boundsSchema,
   coveringOutcodes: z.array(outcodeSchema).max(500).optional(),
+  allOutcodes: z.array(outcodeSchema).max(500).optional(),
   portalRefs: portalRefsSchema,
 });
 
