@@ -209,10 +209,15 @@ const accessApp = new cloudflare.ZeroTrustAccessApplication(
 // Cloudflare only honours `cf.image` when this setting is on — otherwise it
 // silently serves the original, so heroes go back to upscaling at full width.
 //
-// "on" resizes images served from THIS zone (our R2 bucket via the Worker),
-// which covers every cached photo. Switch to "open" only if you also need to
-// resize remote portal fallback URLs (uncached photos) — that lets any origin
-// be resized through the zone, so keep it "on" unless that case bites.
+// Mode is "open", NOT "on", because the Worker resizes photos from their
+// PRESIGNED R2 URL (`<account>.r2.cloudflarestorage.com`), not from this zone.
+// The `/clusters/*` path is behind Cloudflare Access, and the resizer fetches
+// its source without forwarding auth headers — so resizing the in-zone path
+// gets the Access login page and fails `9412 (non-image)`. Sourcing from R2's
+// (off-zone) S3 host with query-string auth sidesteps Access, but "on" only
+// resizes same-zone sources — "open" is required to resize the R2 host. In
+// practice only our Worker constructs `cf.image` requests, so "open" isn't an
+// exploitable open proxy. See src/lib/r2-presign.ts + src/server.ts.
 //
 // Transformations is available on Free and Paid plans (a monthly free
 // allowance of unique transformations, billed beyond it) — no plan upgrade
@@ -225,7 +230,7 @@ const imageResizing = new cloudflare.ZoneSetting(
   {
     zoneId,
     settingId: "image_resizing",
-    value: "on",
+    value: "open",
   }
 );
 

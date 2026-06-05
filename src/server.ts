@@ -8,6 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, listingPhotos } from "../db";
 import { createAuth } from "./lib/auth";
 import { parseEnv } from "./lib/env";
+import { presignR2GetUrl } from "./lib/r2-presign";
 
 import type { TextEnv } from "./lib/env";
 
@@ -32,6 +33,29 @@ export type Env = TextEnv & {
  * `src/router.tsx` and injected at build time.
  */
 const startFetch = createStartHandler(defaultStreamHandler);
+
+/**
+ * Presign the R2 GET URL `cf.image` resizes from, or null when this Worker has
+ * no R2 credentials staged (then the caller serves full-size from the binding
+ * instead of failing). The Trigger workers write R2 over the same creds; they
+ * land on the Worker's `process.env` via the Doppler → secrets sync.
+ */
+function presignResizeSource(key: string): Promise<string> | null {
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  const bucket = process.env.R2_BUCKET;
+  if (!(accountId && accessKeyId && secretAccessKey && bucket)) {
+    return null;
+  }
+  return presignR2GetUrl({
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    bucket,
+    key,
+  });
+}
 
 /**
  * Listing-photo object paths. `cache-photos.ts` stores R2 objects under
@@ -75,36 +99,31 @@ export default createServerEntry({
       // serves the raw bytes below; `cf.image` then resizes that response.
       // If Transformations aren't enabled on the zone (or in local workerd),
       // `cf.image` is ignored and the original is served, so this is safe.
+      const key = decodeURIComponent(url.pathname.slice(1));
       const widthParam = Number(url.searchParams.get("w"));
       if (Number.isInteger(widthParam) && widthParam > 0 && widthParam <= 4096) {
-        const originUrl = new URL(url);
-        originUrl.search = "";
-        // This `cf.image` re-fetch loops back through the edge, where
-        // Cloudflare Access guards the zone. Without auth Access returns the
-        // login page and the resizer 415s, so sign the subrequest with the
-        // image-resize service token (provisioned in infra/cloudflare). The
-        // `/clusters/*` path stays gated to humans + this token — never
-        // public. When the token isn't staged we send the request unsigned
-        // (degrades to the old behaviour rather than throwing).
-        const headers = new Headers(request.headers);
-        const accessClientId = process.env.CLOUDFLARE_ACCESS_SERVICE_CLIENT_ID;
-        const accessClientSecret =
-          process.env.CLOUDFLARE_ACCESS_SERVICE_CLIENT_SECRET;
-        if (accessClientId && accessClientSecret) {
-          headers.set("CF-Access-Client-Id", accessClientId);
-          headers.set("CF-Access-Client-Secret", accessClientSecret);
-        }
-        return fetch(new Request(originUrl, { headers }), {
-          cf: {
-            image: {
-              width: widthParam,
-              fit: "scale-down",
-              quality: 82,
+        // Resize from the object's PRESIGNED R2 URL rather than re-fetching
+        // our own `/clusters/*` path. That path is behind Cloudflare Access,
+        // and `cf.image` fetches the source without forwarding auth headers —
+        // so it would get the Access login page and fail with `9412 (origin
+        // returned a non-image)`. R2's S3 host isn't behind Access and the
+        // presigned URL carries auth in the query string, which the resizer
+        // preserves. `/clusters/*` stays gated; only the resize source is R2.
+        const presignedUrl = await presignResizeSource(key);
+        if (presignedUrl) {
+          return fetch(presignedUrl, {
+            cf: {
+              image: {
+                width: widthParam,
+                fit: "scale-down",
+                quality: 82,
+              },
             },
-          },
-        });
+          });
+        }
+        // No R2 creds staged on this Worker → fall through and serve the
+        // full-size bytes from the binding rather than failing.
       }
-      const key = decodeURIComponent(url.pathname.slice(1));
       const object = await (env as unknown as Env).BUCKET.get(key);
       if (object) {
         const headers = new Headers();

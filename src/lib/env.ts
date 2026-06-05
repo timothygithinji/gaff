@@ -102,11 +102,11 @@ const envSchema = z.object({
 
   // R2 (Cloudflare object storage) — OPTIONAL.
   //
-  // The Worker runtime never reads these — it talks to R2 through its
-  // `BUCKET` binding (see src/server.ts). They exist only for code paths
-  // running *outside* workerd that need to write to R2 over the
-  // S3-compatible HTTP API — currently `src/trigger/cache-photos.ts` on
-  // Trigger.dev's serverless workers, which don't get Worker bindings.
+  // Used by `src/trigger/cache-photos.ts` (on Trigger.dev workers, which have
+  // no Worker bindings) to WRITE over the S3 HTTP API, AND now by the Worker
+  // itself (src/server.ts) to PRESIGN a GET URL for `cf.image` to resize from
+  // — reads still go through the `BUCKET` binding, only the resize source is
+  // presigned. Both land here via the Doppler → secrets sync.
   //
   // Left optional on purpose: until they're populated in Doppler the
   // cache-photos task short-circuits (photos stay un-cached and the UI
