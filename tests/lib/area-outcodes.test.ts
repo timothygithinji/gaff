@@ -9,7 +9,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { findCoveringOutcodes } from "../../src/lib/area-outcodes";
+import {
+  findCoveringOutcodes,
+  isGeographicOutcode,
+} from "../../src/lib/area-outcodes";
 import type { LocationBounds } from "../../src/lib/search-location";
 
 /** Tiny Google Places-like viewport covering inner North London. */
@@ -119,9 +122,12 @@ describe("findCoveringOutcodes", () => {
   });
 
   it("flags truncated=true when the response is at the 100-cap", async () => {
-    // Synthesize 100 outcodes all inside the rectangle.
+    // Synthesize 100 outcodes all inside the rectangle. Use two-letter
+    // areas with ≤2-digit districts so each is a valid geographic-shaped
+    // outcode (single-letter `X99`-style codes would trip the 3-digit /
+    // non-geographic filter).
     const stuffed = Array.from({ length: 100 }, (_, i) => ({
-      outcode: `X${i + 1}`,
+      outcode: `${i < 50 ? "QA" : "QB"}${(i % 50) + 1}`,
       latitude: 51.55,
       longitude: -0.11,
     }));
@@ -149,5 +155,67 @@ describe("findCoveringOutcodes", () => {
     );
 
     expect(outcodes).toEqual(["N1", "NW1"]);
+  });
+});
+
+describe("isGeographicOutcode", () => {
+  it("keeps ordinary London geographic outcodes", () => {
+    for (const oc of [
+      "N1",
+      "N22",
+      "NW3",
+      "NW11",
+      "E1",
+      "SE28",
+      "SW20",
+      "W14",
+      "EC4",
+      "WC2",
+    ]) {
+      expect(isGeographicOutcode(oc), oc).toBe(true);
+    }
+  });
+
+  it("keeps geographic letter-suffixed central London outcodes", () => {
+    // These end in a letter but are real neighbourhoods — must NOT be
+    // confused with the PO-box suffix codes.
+    for (const oc of ["N1C", "E1W", "EC1A", "WC1X", "W1B", "SW1P", "SW1A"]) {
+      expect(isGeographicOutcode(oc), oc).toBe(true);
+    }
+  });
+
+  it("rejects the codes Gemini flagged", () => {
+    for (const oc of ["N81", "NW26", "N1P"]) {
+      expect(isGeographicOutcode(oc), oc).toBe(false);
+    }
+  });
+
+  it("rejects London numeric-overflow large-user codes", () => {
+    for (const oc of ["E77", "E98", "EC50", "SW95"]) {
+      expect(isGeographicOutcode(oc), oc).toBe(false);
+    }
+  });
+
+  it("rejects the letter-suffixed PO-box / Admail codes", () => {
+    for (const oc of ["W1A", "NW1W", "SE1P", "EC1P", "EC2P", "EC3P", "EC4P"]) {
+      expect(isGeographicOutcode(oc), oc).toBe(false);
+    }
+  });
+
+  it("rejects entirely non-geographic areas and specials", () => {
+    for (const oc of ["BX1", "BX9", "BF1", "XX1", "GIR", "XM4", "SA99"]) {
+      expect(isGeographicOutcode(oc), oc).toBe(false);
+    }
+  });
+
+  it("is case- and whitespace-insensitive", () => {
+    expect(isGeographicOutcode(" n1 ")).toBe(true);
+    expect(isGeographicOutcode("n81")).toBe(false);
+  });
+
+  it("rejects malformed strings", () => {
+    for (const oc of ["", "N", "LONDON", "123", "N1 1AA"]) {
+      expect(isGeographicOutcode(oc), oc).toBe(false);
+    }
   });
 });
