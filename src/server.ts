@@ -111,7 +111,25 @@ export default createServerEntry({
         // preserves. `/clusters/*` stays gated; only the resize source is R2.
         const presignedUrl = await presignResizeSource(key);
         if (presignedUrl) {
-          return fetch(presignedUrl, {
+          // Cache the transformed variant keyed on the (stable) request URL.
+          // Without this every load re-fetches R2 and re-runs the transform —
+          // `cf.image`'s own cache can't help because the presigned source URL
+          // changes each request. Keys are content-hashed, so immutable.
+          // `caches.default` is a Cloudflare extension absent from the DOM
+          // `CacheStorage` type; structurally type just what we use.
+          const cache = (
+            caches as unknown as {
+              default: {
+                match(req: Request): Promise<Response | undefined>;
+                put(req: Request, res: Response): Promise<void>;
+              };
+            }
+          ).default;
+          const hit = await cache.match(request);
+          if (hit) {
+            return hit;
+          }
+          const resized = await fetch(presignedUrl, {
             cf: {
               image: {
                 width: widthParam,
@@ -120,6 +138,15 @@ export default createServerEntry({
               },
             },
           });
+          const response = new Response(resized.body, resized);
+          response.headers.set(
+            "cache-control",
+            "public, max-age=31536000, immutable"
+          );
+          if (response.ok) {
+            await cache.put(request, response.clone());
+          }
+          return response;
         }
         // No R2 creds staged on this Worker → fall through and serve the
         // full-size bytes from the binding rather than failing.
