@@ -24,6 +24,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation } from "@tanstack/react-query";
 import { LONDON_AREA_PRESETS, presetToSearchLocation } from "../../lib/london-areas";
+import { outcodeAreaName } from "../../lib/outcode-areas";
 import type { SearchLocation } from "../../lib/search-location";
 import { resolveAreaOutcodes } from "../../server/functions/searches";
 import { PlaceAutocomplete } from "./place-autocomplete";
@@ -258,35 +259,14 @@ function AreaOutcodes({
         {chips.length === 1 ? "" : "s"} · tap to toggle
       </span>
       <div className="flex flex-wrap gap-1.5">
-        {chips.map((oc) => {
-          const on = activeSet.has(oc);
-          return (
-            <button
-              className={
-                on
-                  ? "inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-[12px] text-navy"
-                  : "inline-flex items-center gap-1.5 rounded-full border border-line border-dashed bg-transparent px-2.5 py-1.5 text-[12px] text-slate"
-              }
-              key={oc}
-              onClick={() => onToggle(oc)}
-              type="button"
-            >
-              <span className={on ? "" : "line-through decoration-slate/60"}>
-                {oc}
-              </span>
-              <HugeiconsIcon
-                aria-hidden
-                className="text-slate-2"
-                icon={on ? Cancel01Icon : PlusSignIcon}
-                size={11}
-                strokeWidth={2}
-              />
-              <span className="sr-only">
-                {on ? `Switch off ${oc}` : `Switch on ${oc}`}
-              </span>
-            </button>
-          );
-        })}
+        {chips.map((oc) => (
+          <OutcodeChip
+            key={oc}
+            on={activeSet.has(oc)}
+            onToggle={onToggle}
+            outcode={oc}
+          />
+        ))}
       </div>
       {allRemoved ? (
         <p className="text-[11px] text-copper">
@@ -295,6 +275,50 @@ function AreaOutcodes({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One covering-outcode toggle pill. Switched on → solid with a ×;
+ * switched off → dashed/struck with a +. Labelled with its colloquial
+ * area name (e.g. "NW3 · Hampstead") when we have one.
+ */
+function OutcodeChip({
+  outcode,
+  on,
+  onToggle,
+}: {
+  outcode: string;
+  on: boolean;
+  onToggle: (outcode: string) => void;
+}) {
+  const area = outcodeAreaName(outcode);
+  const label = area ? `${outcode} (${area})` : outcode;
+  return (
+    <button
+      className={
+        on
+          ? "inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-[12px] text-navy"
+          : "inline-flex items-center gap-1.5 rounded-full border border-line border-dashed bg-transparent px-2.5 py-1.5 text-[12px] text-slate"
+      }
+      onClick={() => onToggle(outcode)}
+      type="button"
+    >
+      <span className={on ? "" : "line-through decoration-slate/60"}>
+        {outcode}
+        {area ? <span className="text-slate"> · {area}</span> : null}
+      </span>
+      <HugeiconsIcon
+        aria-hidden
+        className="text-slate-2"
+        icon={on ? Cancel01Icon : PlusSignIcon}
+        size={11}
+        strokeWidth={2}
+      />
+      <span className="sr-only">
+        {on ? `Switch off ${label}` : `Switch on ${label}`}
+      </span>
+    </button>
   );
 }
 
