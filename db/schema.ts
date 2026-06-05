@@ -371,12 +371,18 @@ export const listings = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    searchId: text("search_id")
-      .notNull()
-      .references(() => searches.id, {
-        onDelete: "cascade",
-        onUpdate: "cascade",
-      }),
+    /**
+     * The search this listing was scraped for. NULL for listings added
+     * manually by pasting a URL (see `addListingByUrl`) — those belong to
+     * no search, live only in the household's shortlist pipeline, and are
+     * naturally excluded from the swipe/review feed (it inner-joins
+     * searches). Every scraped row sets it; the FK still cascades on
+     * search delete.
+     */
+    searchId: text("search_id").references(() => searches.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     url: text("url").notNull(),
     title: text("title").notNull(),
     addressRaw: text("address_raw").notNull(),

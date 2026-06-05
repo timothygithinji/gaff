@@ -1087,7 +1087,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       ...(mySwipe ? { mySwipe } : {}),
       mySwipeAt,
       partnerSwipes,
-      searchId: headlineListing.searchId,
+      searchId: headlineListing.searchId ?? "",
       googleMapsApiKey: parsedEnv().GOOGLE_MAPS_API_KEY,
       ...(parsedEnv().LOGODEV_TOKEN
         ? { logoToken: parsedEnv().LOGODEV_TOKEN }

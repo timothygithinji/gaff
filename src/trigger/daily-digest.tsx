@@ -145,7 +145,9 @@ async function newClustersForHousehold(
   );
 
   // New arrivals since the watermark, in the household's active searches.
-  const rows = await db
+  // `inArray(searchId, …)` already excludes manually-added rows (searchId
+  // NULL); the filter below narrows the type to match `NewListingRow`.
+  const rawRows = await db
     .select({
       id: listings.id,
       clusterId: listings.clusterId,
@@ -168,6 +170,9 @@ async function newClustersForHousehold(
       )
     )
     .orderBy(desc(listings.firstSeenAt));
+  const rows: NewListingRow[] = rawRows.filter(
+    (r): r is NewListingRow => r.searchId !== null
+  );
 
   const headByCluster = pickHeadlines(rows, bandBySearch);
   if (headByCluster.size === 0) {

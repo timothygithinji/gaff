@@ -1,3 +1,4 @@
+import { createServerFn } from "@tanstack/react-start";
 /**
  * Shortlist pipeline server functions.
  *
@@ -14,23 +15,37 @@
  * Writes go through `setPipelineStatus`; the first transition out of
  * Shortlisted creates the row, subsequent transitions update it.
  */
-import { createServerFn } from "@tanstack/react-start";
+import { tasks } from "@trigger.dev/sdk";
 import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import {
   type ShortlistPipeline,
+  listingPhotos,
+  listings,
   shortlistPipeline,
   user,
   vMutualMatches,
 } from "../../../db/schema";
+import {
+  findOrCreateCluster,
+  linkListingToCluster,
+} from "../../lib/cluster/match";
+import { parseListingUrl } from "../../lib/listing-url";
+import {
+  parseOpenrentDetail,
+  parseRightmoveDetail,
+  parseZooplaDetail,
+} from "../../lib/parsers";
+import type { ListingDetail, Portal } from "../../lib/parsers/types";
 import {
   PIPELINE_ARCHIVED_REASONS,
   PIPELINE_STATUSES,
   type PipelineArchivedReason,
   type PipelineStatus,
 } from "../../lib/pipeline-status";
+import { zyteFetch } from "../../lib/zyte";
 import type { MutualMatch } from "./shortlist";
 import {
   hydrateClusterSummary,
@@ -279,4 +294,199 @@ export const setPipelineStatus = createServerFn({ method: "POST" })
       });
 
     return { ok: true };
+  });
+
+// -----------------------------------------------------------------------------
+// Add by URL
+// -----------------------------------------------------------------------------
+
+function parsePortalDetail(portal: Portal, html: string): ListingDetail {
+  if (portal === "rightmove") {
+    return parseRightmoveDetail(html);
+  }
+  if (portal === "zoopla") {
+    return parseZooplaDetail(html);
+  }
+  return parseOpenrentDetail(html);
+}
+
+/** Cluster enrichment fan-out, fired by string ID so the Worker bundle
+ * doesn't pull in the Trigger task modules. Mirrors `cluster.ts` onSuccess.
+ * Best-effort — the pipeline card already exists by the time these run. */
+async function fireClusterEnrichment(clusterId: string): Promise<void> {
+  const payload = { clusterId };
+  await Promise.all([
+    tasks.trigger("enrich-epc", payload),
+    tasks.trigger("enrich-commute", payload),
+    tasks.trigger("enrich-amenities", payload),
+    tasks.trigger("enrich-flood", payload),
+    tasks.trigger("enrich-broadband", payload),
+    tasks.trigger("enrich-council-tax", payload),
+    tasks.trigger("enrich-station-routes", payload),
+    tasks.trigger("enrich-nearby-transit", payload),
+  ]);
+}
+
+const addByUrlSchema = z.object({
+  url: z.string().trim().min(1).max(2000),
+});
+
+export type AddListingByUrlResult = {
+  clusterId: string;
+  /** True when the listing already existed (no scrape was needed). */
+  deduped: boolean;
+};
+
+/**
+ * Add a property to the household's pipeline from a pasted listing URL.
+ *
+ *   1. Parse the URL → portal + listing ID (rejects non-listing URLs).
+ *   2. If we already have that listing, reuse its cluster (no scrape) —
+ *      "if it's not found in search" is the only path that fetches.
+ *   3. Otherwise scrape the detail page (synchronously, via Zyte),
+ *      create the listing (searchId NULL — it belongs to no search),
+ *      cluster it (dedupes by address), and store its photos.
+ *   4. Insert a `shortlisted` pipeline row (idempotent).
+ *   5. Fire enrichment for a newly-created cluster + AI/photo-cache for a
+ *      newly-scraped listing, async.
+ *
+ * Lands the card in the Shortlisted column immediately, skipping the
+ * swipe/review feed (which only surfaces search-backed listings).
+ */
+export const addListingByUrl = createServerFn({ method: "POST" })
+  .inputValidator(addByUrlSchema)
+  .handler(async ({ data }): Promise<AddListingByUrlResult> => {
+    const { householdId, currentUserId } = await requireHouseholdScope();
+    const db = getDb();
+
+    const parsed = parseListingUrl(data.url);
+    if (!parsed) {
+      throw new Error("invalid_listing_url");
+    }
+    const { portal, portalListingId, canonicalUrl } = parsed;
+
+    const existing = await db
+      .select({
+        id: listings.id,
+        clusterId: listings.clusterId,
+        addressRaw: listings.addressRaw,
+        postcode: listings.postcode,
+        lat: listings.lat,
+        lng: listings.lng,
+      })
+      .from(listings)
+      .where(
+        and(
+          eq(listings.portal, portal),
+          eq(listings.portalListingId, portalListingId)
+        )
+      )
+      .limit(1);
+
+    let clusterId: string;
+    let newCluster = false;
+    let scrapedListingId: string | null = null;
+
+    const prior = existing[0];
+    if (prior) {
+      // Already in the system (from a search or a previous add): reuse its
+      // cluster, clustering it now if it never got linked.
+      if (prior.clusterId) {
+        clusterId = prior.clusterId;
+      } else {
+        const res = await findOrCreateCluster(db, prior);
+        clusterId = res.clusterId;
+        newCluster = res.created;
+        await linkListingToCluster(db, prior.id, clusterId);
+      }
+    } else {
+      const apiKey = process.env.ZYTE_API_KEY;
+      if (!apiKey) {
+        throw new Error("scrape_unavailable");
+      }
+      const res = await zyteFetch({ apiKey, url: canonicalUrl, browserHtml: true });
+      const detail = parsePortalDetail(portal, res.html);
+
+      const listingId = nanoid();
+      scrapedListingId = listingId;
+      const lat = detail.lat != null ? String(detail.lat) : null;
+      const lng = detail.lng != null ? String(detail.lng) : null;
+      await db.insert(listings).values({
+        id: listingId,
+        portal,
+        portalListingId,
+        searchId: null,
+        url: canonicalUrl,
+        title: detail.title,
+        addressRaw: detail.addressRaw,
+        postcode: detail.postcode ?? null,
+        bedrooms: detail.bedrooms ?? null,
+        bathrooms: detail.bathrooms ?? null,
+        priceMonthly: detail.priceMonthly ?? null,
+        propertyType: detail.propertyType ?? null,
+        lat,
+        lng,
+        sizeSqFt: detail.sizeSqFt ?? null,
+        councilTaxBand: detail.councilTaxBand ?? null,
+        petsAccepted: detail.tenantPreferences?.petsAccepted ?? null,
+        rawJson: detail as unknown as Record<string, unknown>,
+      });
+
+      const clusterRes = await findOrCreateCluster(db, {
+        addressRaw: detail.addressRaw,
+        postcode: detail.postcode ?? null,
+        lat,
+        lng,
+      });
+      clusterId = clusterRes.clusterId;
+      newCluster = clusterRes.created;
+      await linkListingToCluster(db, listingId, clusterId);
+
+      if (detail.photos.length > 0) {
+        await db.insert(listingPhotos).values(
+          detail.photos.map((url, position) => ({
+            id: nanoid(),
+            listingId,
+            url,
+            position,
+          }))
+        );
+      }
+    }
+
+    // Add to the pipeline (Shortlisted). Idempotent — re-adding a cluster
+    // already in the pipeline is a no-op and never demotes it.
+    const now = new Date();
+    await db
+      .insert(shortlistPipeline)
+      .values({
+        id: nanoid(),
+        householdId,
+        clusterId,
+        status: "shortlisted",
+        lastMovedAt: now,
+        lastMovedByUserId: currentUserId,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({
+        target: [shortlistPipeline.householdId, shortlistPipeline.clusterId],
+      });
+
+    // Best-effort enrichment — the card is already usable without it.
+    try {
+      if (newCluster) {
+        await fireClusterEnrichment(clusterId);
+      }
+      if (scrapedListingId) {
+        await Promise.all([
+          tasks.trigger("enrich-ai", { listingId: scrapedListingId }),
+          tasks.trigger("cache-photos", { listingId: scrapedListingId }),
+        ]);
+      }
+    } catch {
+      // Enrichment is downstream + retried by its own schedules; never
+      // fail the user's add because a trigger call hiccupped.
+    }
+
+    return { clusterId, deduped: prior !== undefined };
   });

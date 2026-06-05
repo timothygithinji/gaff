@@ -1,0 +1,1 @@
+ALTER TABLE "listings" ALTER COLUMN "search_id" DROP NOT NULL;
