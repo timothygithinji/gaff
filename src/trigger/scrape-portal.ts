@@ -232,11 +232,26 @@ function parseSearchPage(portal: "rightmove" | "zoopla", html: string): ListingS
  * goes deeper but is still bounded so one run can't run away — a huge
  * area may need the backfill re-run, which continues where it left off
  * (already-fetched IDs are now stored and skipped).
+ *
+ * The cap counts every detail page we FETCH, not just the ones that parse.
+ * Backfill deliberately reaches old IDs, many of which are dead listings
+ * that return an unparseable "listing gone" page — if those didn't consume
+ * the budget the loop would walk the entire candidate set and blow past
+ * `maxDuration`.
  */
 const OPENRENT_DETAIL_CAP: Record<ScrapeMode, number> = {
   incremental: 40,
   backfill: 200,
 };
+
+/**
+ * Wall-clock stop for the OpenRent detail loop. Each detail page is a full
+ * Zyte browser render (seconds each), so even under the fetch cap a slow or
+ * heavily-dead-listing backfill can approach the 600s `maxDuration`. We stop
+ * cleanly well short of it — backfill resumes where it left off next run
+ * (stored IDs are skipped), so an early stop loses no data.
+ */
+const OPENRENT_TIME_BUDGET_MS = 8 * 60 * 1000;
 
 /**
  * OpenRent ingest by ID-diff. OpenRent has no recency filter and a
@@ -275,8 +290,15 @@ async function scrapeOpenrentByIdDiff(deps: {
   const storedIds = new Set(storedRows.map((r) => r.pid));
   const processed = new Set<string>();
   let detailBudget = OPENRENT_DETAIL_CAP[mode];
+  const startedAt = Date.now();
+  let timedOut = false;
 
   for (const target of targets) {
+    // A previous outcode hit the wall-clock stop — its summaries were
+    // already ingested below, so just bail out of the remaining outcodes.
+    if (timedOut) {
+      break;
+    }
     const html = await fetchPage(target.makeUrl(0), scopeFor(target.label));
     const ids = parseOpenrentPropertyIds(html);
     // New = not already stored and not handled earlier this run (outcode
@@ -298,8 +320,24 @@ async function scrapeOpenrentByIdDiff(deps: {
         });
         break;
       }
+      // Stop well short of `maxDuration`. Backfill resumes next run, so the
+      // listings we haven't reached yet aren't lost — they're just deferred.
+      if (Date.now() - startedAt > OPENRENT_TIME_BUDGET_MS) {
+        logger.warn("scrape-portal: OpenRent time budget reached, stopping", {
+          searchId,
+          outcode: target.label,
+          mode,
+          elapsedMs: Date.now() - startedAt,
+        });
+        timedOut = true;
+        break;
+      }
       const key = String(id);
       processed.add(key);
+      // Every fetch attempt consumes the budget — a parse/fetch failure (a
+      // dead listing's "gone" page) is just as slow as a success, so it has
+      // to count or the cap never bounds the run.
+      detailBudget--;
       const detailUrl = `https://www.openrent.co.uk/${id}`;
       let detailHtml: string;
       try {
@@ -319,7 +357,6 @@ async function scrapeOpenrentByIdDiff(deps: {
           portalListingId: key,
           url: detailUrl,
         });
-        detailBudget--;
       } catch (err) {
         logger.warn("scrape-portal: OpenRent detail parse failed", {
           id,
@@ -327,6 +364,8 @@ async function scrapeOpenrentByIdDiff(deps: {
         });
       }
     }
+    // Ingest whatever this outcode collected — including a partial batch
+    // when we broke early on the time budget, so that work isn't wasted.
     await ingest(summaries, target.label, ids.length);
   }
 }
