@@ -1,6 +1,6 @@
 /**
  * "Public records" — the data grid showing EPC, broadband,
- * amenities, and flood risk.
+ * and amenities.
  *
  * v2: every row sources from a typed enrichment column. If an enrichment
  * hasn't run yet, the row renders as "Pending". Hidden entirely when
@@ -14,7 +14,6 @@
 import {
   FlashIcon,
   Location01Icon,
-  TsunamiIcon,
   Wifi01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -113,22 +112,6 @@ function amenitiesRow(
   };
 }
 
-function floodRow(flood: ListingDetailPublicRecords["flood"]): Row | null {
-  if (!flood) {
-    return null;
-  }
-  const headline = flood.riskLevel
-    .split("-")
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(" ");
-  return {
-    icon: TsunamiIcon,
-    label: "Flood risk",
-    headline,
-    sub: "Environment Agency",
-  };
-}
-
 const CATEGORY_LABELS: Record<string, string> = {
   cafe: "Cafés",
   restaurant: "Restaurants",
@@ -166,10 +149,6 @@ function subToneClass(tone: Row["subTone"]): string {
 
 export function PublicRecords({ epc, publicRecords }: Props) {
   const rows: Row[] = [epcRow(epc), broadbandRow(publicRecords?.broadband)];
-  const flood = floodRow(publicRecords?.flood);
-  if (flood) {
-    rows.push(flood);
-  }
   const amenities = amenitiesRow(publicRecords?.amenities);
   if (amenities) {
     rows.push(amenities);

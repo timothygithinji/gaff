@@ -1,8 +1,8 @@
 /**
  * Shared helpers for the per-cluster enrichment tasks.
  *
- * Every enrichment task (amenities, broadband, commute, epc,
- * flood) fetches its data once per cluster, then fans the result out
+ * Every enrichment task (amenities, broadband, commute, epc)
+ * fetches its data once per cluster, then fans the result out
  * onto each listing's `enrichments` row. That fan-out is identical
  * across tasks — only the column being written differs — so the upsert
  * lives here. The `numeric`-column coercion is shared for the same
@@ -16,7 +16,7 @@ import { PROMPT_VERSION } from "../lib/ai/config";
 
 type Db = ReturnType<typeof getDb>;
 
-/** A subset of `enrichments` columns to write — e.g. `{ flood }`. */
+/** A subset of `enrichments` columns to write — e.g. `{ amenities }`. */
 type EnrichmentPatch = Partial<typeof schema.enrichments.$inferInsert>;
 
 /**

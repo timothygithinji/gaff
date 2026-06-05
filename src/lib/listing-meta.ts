@@ -114,8 +114,7 @@ export function deriveListingMetaBadges(opts: {
   /**
    * Landlord's personal historic-flooding disclosure (Rightmove). Only
    * `floodedInLastFiveYears === true` produces a badge — the field is
-   * a self-declared yes/no, distinct from the area-level Environment
-   * Agency tile in `enrichments.flood`.
+   * a self-declared yes/no for THIS property.
    */
   floodDisclosure?: {
     floodedInLastFiveYears?: boolean | null;

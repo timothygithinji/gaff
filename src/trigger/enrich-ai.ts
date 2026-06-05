@@ -11,13 +11,13 @@
  *   - The cluster's other listings on different portals (for cross-portal
  *     price spread context).
  *   - Any existing geo enrichments on the headline listing's enrichment
- *     row (EPC, commute, broadband, amenities, flood) so the model
+ *     row (EPC, commute, broadband, amenities) so the model
  *     can reason about commute time, fibre availability, etc. instead
  *     of guessing them from the description.
  *
  * The geo enrichments are written by sibling cluster tasks
  * (`enrich-epc.ts`, `enrich-commute.ts`, `enrich-broadband.ts`,
- * `enrich-amenities.ts`, `enrich-flood.ts`). They
+ * `enrich-amenities.ts`). They
  * key on `(listing_id, prompt_version)` so we look them up under the
  * v2 prompt version; if v2 is fresh and no row exists yet, we fall back
  * to whatever exists at any version (best-effort — geo data is geo data
@@ -60,7 +60,6 @@ import type {
   AmenitiesInput,
   EnrichmentInput,
   ExtractContext,
-  FloodInput,
   PortalSpreadRow,
   PromptNearestStation,
   PromptTenantPreferences,
@@ -116,15 +115,6 @@ function toAmenitiesInput(
     return null;
   }
   return { withinMeters: raw.withinMeters, counts: raw.counts };
-}
-
-function toFloodInput(
-  raw: typeof schema.enrichments.$inferSelect.flood
-): FloodInput | null {
-  if (!raw) {
-    return null;
-  }
-  return { riskLevel: raw.riskLevel };
 }
 
 function toNearestStations(value: unknown): PromptNearestStation[] {
@@ -416,7 +406,6 @@ export const enrichAiTask = task({
         commuteMinutes: toCommuteMinutes(geo?.commuteMinutes ?? null),
         broadband: toBroadbandInput(geo?.broadband ?? null),
         amenities: toAmenitiesInput(geo?.amenities ?? null),
-        flood: toFloodInput(geo?.flood ?? null),
       },
       portalSpread: buildPortalSpread(clusterListings),
     };

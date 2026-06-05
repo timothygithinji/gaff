@@ -319,7 +319,6 @@ async function fireClusterEnrichment(clusterId: string): Promise<void> {
     tasks.trigger("enrich-epc", payload),
     tasks.trigger("enrich-commute", payload),
     tasks.trigger("enrich-amenities", payload),
-    tasks.trigger("enrich-flood", payload),
     tasks.trigger("enrich-broadband", payload),
     tasks.trigger("enrich-council-tax", payload),
     tasks.trigger("enrich-station-routes", payload),

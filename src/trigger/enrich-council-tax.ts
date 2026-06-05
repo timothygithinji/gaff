@@ -18,7 +18,7 @@
  * land on an exact billing authority. Most clusters only carry an
  * outcode, which can't pin one, so we lean on lat/lng where present.
  *
- * Fan-out: dispatched alongside enrich-epc / enrich-flood / … from
+ * Fan-out: dispatched alongside enrich-epc / enrich-amenities / … from
  * `clusterTask.onSuccess`. No-ops when the cluster has no usable
  * location or the location doesn't resolve (e.g. non-England, where we
  * hold no rates anyway).

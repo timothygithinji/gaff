@@ -5,15 +5,7 @@ import {
   normalisePostcodeKey,
   outcodeOf,
 } from "../../src/lib/broadband";
-import { getFloodRisk } from "../../src/lib/flood-risk";
 import { getAmenityCounts } from "../../src/lib/overpass";
-
-function jsonResponse(body: unknown, init: ResponseInit = { status: 200 }) {
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
-  });
-}
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
@@ -39,18 +31,6 @@ describe("getAmenityCounts (stubbed)", () => {
 
   it("never makes a network call while stubbed", async () => {
     await getAmenityCounts({ lat: 51.6, lng: -0.13 });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
-
-describe("getFloodRisk (stubbed)", () => {
-  it("always returns 'unknown' (EA endpoint is down; stubbed)", async () => {
-    const result = await getFloodRisk({ lat: 51.6, lng: -0.13 });
-    expect(result.riskLevel).toBe("unknown");
-  });
-
-  it("never makes a network call while stubbed", async () => {
-    await getFloodRisk({ lat: 51.6, lng: -0.13 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -70,7 +70,6 @@ const emptyContext: ExtractContext = {
       fttpAvailable: true,
     },
     amenities: { withinMeters: 800, counts: { cafe: 8, supermarket: 3 } },
-    flood: { riskLevel: "very-low" },
   },
   portalSpread: [
     { portal: "rightmove", priceMonthly: 2500, deltaFromCheapest: 0 },

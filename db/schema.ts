@@ -527,13 +527,6 @@ export const enrichments = pgTable(
       asOf?: string | null;
     }>(),
     /**
-     * Environment Agency flood risk for the cluster's location.
-     * Values mirror the EA's "Risk of Flooding from Rivers and Sea" bands.
-     */
-    flood: jsonb("flood").$type<{
-      riskLevel: "very-low" | "low" | "medium" | "high" | "unknown";
-    }>(),
-    /**
      * Counts of OpenStreetMap amenities within `withinMeters` of the
      * cluster. Categories are fixed at write-time so the UI can render
      * a stable grid; consult `src/lib/amenities.ts` for the live list.

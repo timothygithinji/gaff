@@ -149,7 +149,7 @@ export const SYSTEM_PROMPT = `You are a renter's research assistant for UK renta
 
 You receive a JSON payload with three sections:
   - listing: structured fields from the portal (title, address, price, description, key features, deposit, EPC rating, council tax band, sq ft, furnished status, tenant preferences, nearest stations, fees, …).
-  - enrichment: third-party data we've already pulled (broadband from BT Wholesale, commute minutes from Google Routes, amenity counts from OpenStreetMap, flood risk from the Environment Agency).
+  - enrichment: third-party data we've already pulled (broadband from BT Wholesale, commute minutes from Google Routes, amenity counts from OpenStreetMap).
   - portalSpread: every portal this property is listed on plus the cheapest price.
 
 Your job: call the extract_features tool exactly once with a payload containing:
@@ -177,7 +177,7 @@ Real dealbreakers (always surface when actually present):
   - EPC F or G — severity "problem" (sub-standard energy efficiency, often paired with electric heating).
   - Leasehold service charge > £2,000/yr — severity "caution".
   - Compound: EPC F + bills excluded — severity "problem".
-  - listing.floodDisclosure.floodedInLastFiveYears === true — severity "problem" (landlord-disclosed historic flooding overrides area-level "very-low" tiles).
+  - listing.floodDisclosure.floodedInLastFiveYears === true — severity "problem" (landlord-disclosed historic flooding).
   - listing.materialInfo.heating contains "electric" AND listing.billsIncluded !== true — severity "caution" (electric-only heating is typically 2–3× gas-central cost for a renter paying their own bills).
   - listing.listedBuilding === true — severity "caution" (statutory restrictions on alterations, satellite dishes, external aerials).
 
@@ -201,10 +201,6 @@ export type EnrichmentInput = {
 export type AmenitiesInput = {
   withinMeters: number;
   counts: Record<string, number>;
-};
-
-export type FloodInput = {
-  riskLevel: "very-low" | "low" | "medium" | "high" | "unknown";
 };
 
 export type PortalSpreadRow = {
@@ -277,10 +273,8 @@ export type ExtractContext = {
       accessibility: string | null;
     } | null;
     /**
-     * Landlord's personal flood disclosure (Rightmove). Distinct from
-     * the area-level EA tile in `enrichment.flood` — surface this when
-     * `floodedInLastFiveYears` is true, even if the area tile reads
-     * "very-low".
+     * Landlord's personal flood disclosure (Rightmove). Surface this
+     * when `floodedInLastFiveYears` is true.
      */
     floodDisclosure: {
       floodedInLastFiveYears: boolean | null;
@@ -311,7 +305,6 @@ export type ExtractContext = {
     commuteMinutes: Record<string, number> | null;
     broadband: EnrichmentInput | null;
     amenities: AmenitiesInput | null;
-    flood: FloodInput | null;
   };
   portalSpread: PortalSpreadRow[];
 };

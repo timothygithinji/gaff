@@ -23,7 +23,7 @@ export const scrapeQueue = queue({
 });
 
 /**
- * `enrich` — `cluster` plus the per-cluster geo enrichers (EPC, flood,
+ * `enrich` — `cluster` plus the per-cluster geo enrichers (EPC,
  * amenities, …). These hit Neon and gov/OSM APIs, never Zyte, so they
  * don't belong behind the scrape cap. AI enrichment is deliberately NOT
  * on this queue — see `aiQueue`.

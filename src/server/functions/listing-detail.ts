@@ -15,9 +15,9 @@
  * `highlights` and `watchouts` default to []. Once each listing
  * re-enriches under v2.0.0 the new arrays populate.
  *
- * The "Public records" section now sources broadband, amenities,
- * and flood from the typed `enrichments.broadband / amenities /
- * flood` JSONB columns written by the sibling cluster enrichment tasks.
+ * The "Public records" section now sources broadband and amenities
+ * from the typed `enrichments.broadband / amenities` JSONB columns
+ * written by the sibling cluster enrichment tasks.
  * The legacy "AI broadband string" fallback is gone — if the cluster
  * task hasn't run yet, the row renders as "Pending".
  *
@@ -61,6 +61,7 @@ import {
 } from "../../lib/epc";
 import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { resolvePhotoUrl } from "./photo-url";
+import { type PropertyKind, classifyPropertyKind } from "./review";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
 
 // -----------------------------------------------------------------------------
@@ -86,6 +87,8 @@ export type ListingDetailHeadline = {
   bedrooms: number | null;
   bathrooms: number | null;
   propertyType: string | null;
+  /** Coarse kind (flat/house/studio/share/other) for the title chip. */
+  propertyKind: PropertyKind;
   postcode: string | null;
   firstSeenAt: string;
 };
@@ -297,14 +300,9 @@ export type ListingDetailAmenities = {
   counts: Record<string, number>;
 };
 
-export type ListingDetailFlood = {
-  riskLevel: "very-low" | "low" | "medium" | "high" | "unknown";
-};
-
 export type ListingDetailPublicRecords = {
   broadband?: ListingDetailBroadband;
   amenities?: ListingDetailAmenities;
-  flood?: ListingDetailFlood;
 };
 
 export type ListingDetailPartnerSwipe = {
@@ -636,24 +634,6 @@ function asAmenities(value: unknown): ListingDetailAmenities | undefined {
   return { withinMeters, counts };
 }
 
-function asFlood(value: unknown): ListingDetailFlood | undefined {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  const f = value as Record<string, unknown>;
-  const rl = f.riskLevel;
-  if (
-    rl === "very-low" ||
-    rl === "low" ||
-    rl === "medium" ||
-    rl === "high" ||
-    rl === "unknown"
-  ) {
-    return { riskLevel: rl };
-  }
-  return;
-}
-
 /**
  * The cluster's seeded council tax rate, when one is on file. Band D is
  * in pence; we turn it into a whole-pounds estimate for the listing's
@@ -941,7 +921,6 @@ export const getListingDetail = createServerFn({ method: "GET" })
     const nearbyTransit = asNearbyTransit(enrichment?.nearbyTransit);
     const broadband = asBroadband(enrichment?.broadband);
     const amenities = asAmenities(enrichment?.amenities);
-    const flood = asFlood(enrichment?.flood);
 
     // Step 7: swipe state for every household member.
     const swipeRows = await db
@@ -985,8 +964,8 @@ export const getListingDetail = createServerFn({ method: "GET" })
     const mySwipe = swipeByUser.get(currentUserId) ?? undefined;
     const mySwipeAt = swipeAtByUser.get(currentUserId)?.toISOString() ?? null;
 
-    // Step 8: public records — broadband / amenities / flood from the
-    // typed enrichment columns.
+    // Step 8: public records — broadband / amenities from the typed
+    // enrichment columns.
     const publicRecords: ListingDetailPublicRecords | undefined = (() => {
       const out: ListingDetailPublicRecords = {};
       if (broadband) {
@@ -994,9 +973,6 @@ export const getListingDetail = createServerFn({ method: "GET" })
       }
       if (amenities) {
         out.amenities = amenities;
-      }
-      if (flood) {
-        out.flood = flood;
       }
       return Object.keys(out).length > 0 ? out : undefined;
     })();
@@ -1064,6 +1040,10 @@ export const getListingDetail = createServerFn({ method: "GET" })
         bedrooms: headlineListing.bedrooms,
         bathrooms: headlineListing.bathrooms,
         propertyType: headlineListing.propertyType,
+        propertyKind: classifyPropertyKind(
+          headlineListing.propertyType,
+          headlineListing.title
+        ),
         postcode: headlineListing.postcode,
         firstSeenAt: headlineListing.firstSeenAt.toISOString(),
       },

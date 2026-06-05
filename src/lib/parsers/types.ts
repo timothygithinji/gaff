@@ -125,9 +125,8 @@ export interface ListingDetail extends ListingSummary {
 
   /**
    * Landlord-disclosed historic flooding info (Rightmove
-   * `features.risks.*`). Distinct from area-level Environment Agency
-   * tiles which live in `enrichments.flood` — these are the agent's
-   * personal answers to RM's statutory questions for THIS property.
+   * `features.risks.*`) — the agent's personal answers to RM's
+   * statutory questions for THIS property.
    */
   floodDisclosure?: {
     floodedInLastFiveYears?: boolean;

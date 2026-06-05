@@ -17,7 +17,7 @@
  *   6. "What we see" — floorplan analysis.
  *   7. "What's in the small print" — AI-extracted issues.
  *   8. "Where it sits" — map + commute card.
- *   9. "Public records" — EPC / broadband / flood / amenities.
+ *   9. "Public records" — EPC / broadband / amenities.
  *  10. Sticky bottom CTA bar.
  *
  * No bottom-nav on this screen — the sticky CTA + back button replace

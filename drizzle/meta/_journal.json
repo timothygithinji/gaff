@@ -162,6 +162,13 @@
       "when": 1780670162593,
       "tag": "0022_silent_rattler",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780699976894,
+      "tag": "0023_romantic_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }
