@@ -79,7 +79,22 @@ export default createServerEntry({
       if (Number.isInteger(widthParam) && widthParam > 0 && widthParam <= 4096) {
         const originUrl = new URL(url);
         originUrl.search = "";
-        return fetch(new Request(originUrl, { headers: request.headers }), {
+        // This `cf.image` re-fetch loops back through the edge, where
+        // Cloudflare Access guards the zone. Without auth Access returns the
+        // login page and the resizer 415s, so sign the subrequest with the
+        // image-resize service token (provisioned in infra/cloudflare). The
+        // `/clusters/*` path stays gated to humans + this token — never
+        // public. When the token isn't staged we send the request unsigned
+        // (degrades to the old behaviour rather than throwing).
+        const headers = new Headers(request.headers);
+        const accessClientId = process.env.CLOUDFLARE_ACCESS_SERVICE_CLIENT_ID;
+        const accessClientSecret =
+          process.env.CLOUDFLARE_ACCESS_SERVICE_CLIENT_SECRET;
+        if (accessClientId && accessClientSecret) {
+          headers.set("CF-Access-Client-Id", accessClientId);
+          headers.set("CF-Access-Client-Secret", accessClientSecret);
+        }
+        return fetch(new Request(originUrl, { headers }), {
           cf: {
             image: {
               width: widthParam,

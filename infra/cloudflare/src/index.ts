@@ -156,6 +156,37 @@ const accessPolicy = new cloudflare.ZeroTrustAccessPolicy(
   }
 );
 
+// Service token so the Worker can authenticate its OWN image-resize
+// subrequest past Access. `/clusters/*` stays fully gated to humans — but the
+// Worker's render-time downscale (`src/server.ts`, `cf.image` on `?w=`) has to
+// re-fetch the image through the edge, and without a token Access answers that
+// machine call with the login page, which `cf.image` rejects as 415. The token
+// lets only that one same-zone call through; the path is never made public.
+const imageResizeToken = new cloudflare.ZeroTrustAccessServiceToken(
+  `${projectName}-image-resize-token`,
+  {
+    accountId,
+    name: `${projectName}-image-resize`,
+  }
+);
+
+// `nonIdentity`: a request carrying this service token is allowed without an
+// interactive login. Browser requests (no token) don't match its include and
+// fall through to the email policy above, so humans still have to sign in.
+const imageResizePolicy = new cloudflare.ZeroTrustAccessPolicy(
+  `${projectName}-access-policy-image-resize`,
+  {
+    accountId,
+    name: "Image resize service token",
+    decision: "nonIdentity",
+    includes: [
+      {
+        serviceToken: { tokenId: imageResizeToken.id },
+      },
+    ],
+  }
+);
+
 const accessApp = new cloudflare.ZeroTrustAccessApplication(
   `${projectName}-access-app`,
   {
@@ -165,7 +196,7 @@ const accessApp = new cloudflare.ZeroTrustAccessApplication(
     type: "self_hosted",
     sessionDuration: "24h",
     autoRedirectToIdentity: false,
-    policies: [{ id: accessPolicy.id }],
+    policies: [{ id: accessPolicy.id }, { id: imageResizePolicy.id }],
   }
 );
 
@@ -203,6 +234,7 @@ export const imageResizingStatus = imageResizing.value;
 export const accessAppId = accessApp.id;
 export const accessAppAud = accessApp.aud;
 export const accessPolicyId = accessPolicy.id;
+export const imageResizeTokenClientId = imageResizeToken.clientId;
 
 export const kvNamespaceId = kv.id;
 export const kvNamespaceTitle = kv.title;
@@ -247,6 +279,11 @@ const dopplerSecrets: Record<string, pulumi.Input<string>> = {
   R2_BUCKET: bucket.name,
   R2_ACCESS_KEY_ID: r2AccessKeyId,
   R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
+  // Read only by the Cloudflare Worker (src/server.ts) to sign its image
+  // resize subrequest past Access. The Trigger workers ignore them (not in
+  // trigger.config.ts's sync lists).
+  CLOUDFLARE_ACCESS_SERVICE_CLIENT_ID: imageResizeToken.clientId,
+  CLOUDFLARE_ACCESS_SERVICE_CLIENT_SECRET: imageResizeToken.clientSecret,
 };
 
 for (const [name, value] of Object.entries(dopplerSecrets)) {
