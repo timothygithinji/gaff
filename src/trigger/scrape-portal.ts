@@ -971,7 +971,30 @@ export const scrapePortalTask = task({
             url,
             page === 0 ? scopeFor(target.label) : null
           );
-          const parsed = parseSearchPage(portal, html);
+          let parsed: ListingSummary[];
+          try {
+            parsed = parseSearchPage(portal, html);
+          } catch (err) {
+            // A page without the portal's JSON island past page 0 means we
+            // walked off the end of the result set (or hit a soft block
+            // mid-backfill). Keep the summaries already collected and stop
+            // paginating instead of failing the whole run — otherwise a
+            // backfill that reached page 2 throws away pages 0/1 too. Page 0
+            // failing is a genuine block: rethrow so the task retries.
+            if (page === 0) {
+              throw err;
+            }
+            logger.warn(
+              "scrape-portal: unparseable page, stopping pagination",
+              {
+                portal,
+                outcode: target.label,
+                page,
+                error: err instanceof Error ? err.message : String(err),
+              }
+            );
+            break;
+          }
           let added = 0;
           for (const s of parsed) {
             if (!seen.has(s.portalListingId)) {

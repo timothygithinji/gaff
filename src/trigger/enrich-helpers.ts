@@ -8,6 +8,7 @@
  * lives here. The `numeric`-column coercion is shared for the same
  * reason.
  */
+import { logger } from "@trigger.dev/sdk";
 import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { getDb } from "../../db";
@@ -47,33 +48,50 @@ export async function upsertEnrichmentForListings(
 ): Promise<number> {
   let touched = 0;
   for (const listingId of listingIds) {
-    const inserted = await db
-      .insert(schema.enrichments)
-      .values({
-        id: nanoid(),
-        listingId,
-        promptVersion: PROMPT_VERSION,
-        features: {},
-        ...patch,
-      })
-      .onConflictDoNothing({
-        target: [
-          schema.enrichments.listingId,
-          schema.enrichments.promptVersion,
-        ],
-      })
-      .returning({ id: schema.enrichments.id });
+    try {
+      const inserted = await db
+        .insert(schema.enrichments)
+        .values({
+          id: nanoid(),
+          listingId,
+          promptVersion: PROMPT_VERSION,
+          features: {},
+          ...patch,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.enrichments.listingId,
+            schema.enrichments.promptVersion,
+          ],
+        })
+        .returning({ id: schema.enrichments.id });
 
-    if (inserted.length === 0) {
-      await db
-        .update(schema.enrichments)
-        .set(patch)
-        .where(
-          and(
-            eq(schema.enrichments.listingId, listingId),
-            eq(schema.enrichments.promptVersion, PROMPT_VERSION)
-          )
-        );
+      if (inserted.length === 0) {
+        await db
+          .update(schema.enrichments)
+          .set(patch)
+          .where(
+            and(
+              eq(schema.enrichments.listingId, listingId),
+              eq(schema.enrichments.promptVersion, PROMPT_VERSION)
+            )
+          );
+      }
+    } catch (err) {
+      // The neon-http driver rethrows as a generic `Failed query: <sql>`
+      // and strips the underlying error, so prod failures are a black box.
+      // Surface the real cause (rate-limit / timeout / Postgres error)
+      // before letting the task retry on it.
+      logger.error("enrich-helpers: enrichment write failed", {
+        listingId,
+        columns: Object.keys(patch),
+        cause:
+          (err as { cause?: unknown }).cause ??
+          (err as { sourceError?: unknown }).sourceError ??
+          null,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
     touched += 1;
   }

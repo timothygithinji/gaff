@@ -35,6 +35,16 @@ export const enrichBroadbandTask = task({
   id: "enrich-broadband",
   queue: scrapeQueue,
   maxDuration: 60,
+  // Writes to `enrichments` via neon-http. Transient Neon HTTP errors
+  // (rate-limit/timeout during a fan-out burst) need room to clear — the
+  // global 3×/1s default exhausts in ~6s, too tight to outlast a blip.
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 2000,
+    maxTimeoutInMs: 30_000,
+    factor: 2,
+    randomize: true,
+  },
 
   run: async (
     payload: EnrichBroadbandPayload

@@ -229,6 +229,16 @@ export const enrichAiTask = task({
   id: "enrich-ai",
   queue: scrapeQueue,
   maxDuration: 120,
+  // Reads/writes `enrichments` via neon-http. Transient Neon HTTP errors
+  // (rate-limit/timeout during a fan-out burst) need room to clear — the
+  // global 3×/1s default exhausts in ~6s, too tight to outlast a blip.
+  retry: {
+    maxAttempts: 5,
+    minTimeoutInMs: 2000,
+    maxTimeoutInMs: 30_000,
+    factor: 2,
+    randomize: true,
+  },
 
   onFailure: async ({
     error,
@@ -239,6 +249,16 @@ export const enrichAiTask = task({
   }) => {
     const db = getDb();
     const message = error instanceof Error ? error.message : String(error);
+    // neon-http masks DB failures as a generic `Failed query: <sql>` and
+    // strips the cause — surface it so prod failures aren't a black box.
+    logger.error("enrich-ai: run failed", {
+      runId: ctx.run.id,
+      cause:
+        (error as { cause?: unknown }).cause ??
+        (error as { sourceError?: unknown }).sourceError ??
+        null,
+      message,
+    });
     await db
       .update(schema.aiRuns)
       .set({

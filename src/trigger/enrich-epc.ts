@@ -304,12 +304,25 @@ async function searchEpcCerts(
     query: { postcode, size: 100 },
   });
   if (search.error) {
+    const status = search.response?.status;
     const message =
       typeof search.error === "object" &&
       search.error !== null &&
       "message" in search.error
         ? String((search.error as { message: unknown }).message)
         : JSON.stringify(search.error);
+    // Upstream outage — HTTP 5xx, or a network/parse failure that left no
+    // response status (the register sometimes serves an HTML "Error 500"
+    // page). Skip this round instead of failing the run: EPC enrichment
+    // re-runs on cadence and will pick the cluster up next time. Genuine
+    // 4xx (bad postcode, auth) still throws so real misconfig stays loud.
+    if (status === undefined || status >= 500) {
+      logger.warn("enrich-epc: EPC register unavailable, skipping", {
+        postcode,
+        status: status ?? null,
+      });
+      return [];
+    }
     throw new Error(`enrich-epc: EPC search failed: ${message}`);
   }
   return extractCertRows(search.data);
