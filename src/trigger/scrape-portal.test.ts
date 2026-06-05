@@ -10,8 +10,10 @@
 
 import { describe, expect, it } from "vitest";
 import type { ListingSummary } from "../lib/parsers/types";
+import type { SearchLocation } from "../lib/search-location";
 import {
   filterByBedroomRange,
+  filterByExcludeLocations,
   filterByExclusions,
   filterByPriceRange,
 } from "./scrape-portal";
@@ -162,5 +164,68 @@ describe("filterByExclusions", () => {
   it("is a no-op for an empty exclusion list", () => {
     const out = filterByExclusions(mixed, []);
     expect(out).toBe(mixed);
+  });
+});
+
+describe("filterByExcludeLocations", () => {
+  function pcListing(
+    portalListingId: string,
+    postcode: string | undefined
+  ): ListingSummary {
+    return { portalListingId, postcode } as ListingSummary;
+  }
+
+  /** Area include location: N1/N4/NW1 kept, N9 switched off. */
+  const northLondon: SearchLocation = {
+    placeId: "curated:north-london",
+    name: "North London",
+    formattedAddress: "North London, London, UK",
+    type: "colloquial_area",
+    lat: 51.58,
+    lng: -0.15,
+    bounds: { ne: { lat: 51.63, lng: -0.06 }, sw: { lat: 51.53, lng: -0.25 } },
+    coveringOutcodes: ["N1", "N4", "NW1"],
+    allOutcodes: ["N1", "N4", "NW1", "N9"],
+    portalRefs: {},
+  };
+
+  const rows: ListingSummary[] = [
+    pcListing("keep-n1", "N1 7AA"),
+    pcListing("drop-n9", "N9 0AB"), // switched-off outcode (OpenRent spill)
+    pcListing("keep-nw1", "NW1 4RY"),
+    pcListing("keep-unknown", undefined), // no postcode → kept
+  ];
+
+  it("drops listings in a switched-off (deselected) outcode", () => {
+    const out = filterByExcludeLocations(rows, [], northLondon);
+    expect(ids(out)).toEqual(["keep-n1", "keep-nw1", "keep-unknown"]);
+  });
+
+  it("still applies explicit postal_code excludes alongside deselected ones", () => {
+    const excludes: SearchLocation[] = [
+      {
+        placeId: "",
+        name: "NW1",
+        formattedAddress: "NW1",
+        type: "postal_code",
+        lat: 51.53,
+        lng: -0.14,
+        bounds: null,
+        portalRefs: {},
+      },
+    ];
+    const out = filterByExcludeLocations(rows, excludes, northLondon);
+    // NW1 excluded by the user, N9 dropped as deselected.
+    expect(ids(out)).toEqual(["keep-n1", "keep-unknown"]);
+  });
+
+  it("is a no-op when nothing is excluded or deselected", () => {
+    const allOn: SearchLocation = {
+      ...northLondon,
+      coveringOutcodes: ["N1", "N4", "NW1", "N9"],
+      allOutcodes: ["N1", "N4", "NW1", "N9"],
+    };
+    const out = filterByExcludeLocations(rows, [], allOn);
+    expect(out).toBe(rows);
   });
 });

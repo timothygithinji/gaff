@@ -54,6 +54,7 @@ import { findScheduleByExternalId } from "../lib/schedule-lookup";
 import {
   type SearchLocation,
   asPortalRefArray,
+  deselectedOutcodes,
 } from "../lib/search-location";
 import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { clusterTask } from "./cluster";
@@ -222,18 +223,24 @@ function pointInBounds(
  * via the postcode-prefix path; if such an exclude isn't postal_code
  * typed there's nothing we can match on, so we skip it.
  */
-function filterByExcludeLocations(
+export function filterByExcludeLocations(
   summaries: ListingSummary[],
-  excludes: readonly SearchLocation[]
+  excludes: readonly SearchLocation[],
+  include: SearchLocation
 ): ListingSummary[] {
-  if (excludes.length === 0) {
+  // Outcodes the user switched off on the include area count as excludes:
+  // OpenRent's radius search pulls listings from them even though we never
+  // query them directly (see `deselectedOutcodes`).
+  const deselected = deselectedOutcodes(include);
+  if (excludes.length === 0 && deselected.length === 0) {
     return summaries;
   }
-  const excludeOutcodes = new Set(
-    excludes
+  const excludeOutcodes = new Set([
+    ...excludes
       .filter((e) => e.type === "postal_code")
-      .map((e) => e.name.trim().toUpperCase())
-  );
+      .map((e) => e.name.trim().toUpperCase()),
+    ...deselected,
+  ]);
   const boundsList = excludes
     .filter((e) => e.type !== "postal_code" && e.bounds !== null)
     .map((e) => e.bounds as NonNullable<SearchLocation["bounds"]>);
@@ -747,7 +754,8 @@ export const scrapePortalTask = task({
       const parsed = parsePortalHtml(portal, res.html);
       const locationFiltered = filterByExcludeLocations(
         parsed,
-        search.excludeLocations
+        search.excludeLocations,
+        search.location
       );
       // Re-check price/beds/exclusions server-side — the portal filters
       // can't be trusted (see `filterByPriceRange`). Without these,
