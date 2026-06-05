@@ -1,10 +1,15 @@
 /**
- * Single source of truth for the AI model + budget cap.
+ * Single source of truth for the AI model.
  *
- * Bumping the model or the cap is a deliberate code change; keeping
- * these in one tiny module means every consumer (the budget check, the
- * client wrapper, the ai_runs writer) imports from the same constant
- * and nothing drifts.
+ * Bumping the model is a deliberate code change; keeping it in one tiny
+ * module means every consumer (the client wrapper, the ai_runs writer)
+ * imports from the same constant and nothing drifts.
+ *
+ * There is intentionally no daily spend cap: enrichment is a one-shot
+ * Haiku call per listing (~$0.005) over a few hundred listings total, so
+ * a cap only ever served to silently drop listings into a permanent
+ * un-enriched state. `enrich-ai-sweep` re-fires any listing still
+ * missing its AI read instead.
  *
  * `PROMPT_VERSION` lives here too — it tags every `enrichments` row so
  * re-prompting at v1.1.0 leaves the v1.0.0 row untouched (the
@@ -13,7 +18,6 @@
 
 export const AI_BUDGET = {
   model: "claude-haiku-4-5" as const,
-  dailyUsd: 1.0,
 } as const;
 
 /**

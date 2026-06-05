@@ -25,26 +25,27 @@
  *
  * Flow:
  *
- *   1. Pre-flight `checkDailyBudget`. If at-or-over the $1/day cap,
- *      write a failure ai_runs row and return.
- *
- *   2. Load the listing + its raw JSON. If the row is missing or has
+ *   1. Load the listing + its raw JSON. If the row is missing or has
  *      no description, write a failure row (no grounding text → no point
  *      calling the model).
  *
- *   3. Gather context: cluster listings (for portal spread + cheapest)
+ *   2. Gather context: cluster listings (for portal spread + cheapest)
  *      and any existing enrichment row for geo data.
  *
- *   4. INSERT ai_runs row in `running` state. Keyed on `ctx.run.id` so
+ *   3. INSERT ai_runs row in `running` state. Keyed on `ctx.run.id` so
  *      onFailure can finalise it.
  *
- *   5. Call `extractFeatures`. Zod-validates the tool response.
+ *   4. Call `extractFeatures`. Zod-validates the tool response.
  *
- *   6. UPSERT enrichments row keyed on `(listing_id, prompt_version)`.
+ *   5. UPSERT enrichments row keyed on `(listing_id, prompt_version)`.
  *      Sets `features` + `aiRunId`. Existing geo fields stay untouched
  *      because we only set the columns we own here.
  *
- *   7. UPDATE ai_runs with status=success, cost, tokens, finished_at.
+ *   6. UPDATE ai_runs with status=success, cost, tokens, finished_at.
+ *
+ * There is no spend cap: a transient failure (rate limit, etc.) is
+ * retried by Trigger, and any listing still missing its read is re-fired
+ * by the `enrich-ai-sweep` schedule. Cost is ~$0.005/listing.
  */
 
 import { logger, task } from "@trigger.dev/sdk";
@@ -52,7 +53,6 @@ import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { checkDailyBudget } from "../lib/ai/budget";
 import { extractFeatures } from "../lib/ai/client";
 import { AI_BUDGET, PROMPT_VERSION } from "../lib/ai/config";
 import { computeFiveWeeksRent } from "../lib/ai/feature-filter";
@@ -67,7 +67,7 @@ import type {
 } from "../lib/ai/prompt";
 import { env } from "../lib/env";
 import type { ListingDetail } from "../lib/parsers/types";
-import { enrichQueue } from "./queues";
+import { aiQueue } from "./queues";
 
 export type EnrichAiPayload = {
   listingId: string;
@@ -227,8 +227,20 @@ function buildPortalSpread(
 
 export const enrichAiTask = task({
   id: "enrich-ai",
-  queue: enrichQueue,
+  queue: aiQueue,
   maxDuration: 120,
+  // Anthropic 429s (org input-tokens/min limit) can persist for a minute
+  // under a backlog drain. The project default (3 attempts, ≤10s timeout
+  // ≈ 17s total) gives up far too soon and strands the listing. Be
+  // patient: up to 8 attempts backing off to 90s rides out the window.
+  // Output is tiny (~230 tok) so retries are nearly free.
+  retry: {
+    maxAttempts: 8,
+    minTimeoutInMs: 10_000,
+    maxTimeoutInMs: 90_000,
+    factor: 2,
+    randomize: true,
+  },
 
   onFailure: async ({
     error,
@@ -255,34 +267,7 @@ export const enrichAiTask = task({
     const { listingId } = payload;
     const runId = ctx.run.id;
 
-    // STEP 1: pre-flight budget.
-    const budget = await checkDailyBudget(db);
-    if (!budget.ok) {
-      await db.insert(schema.aiRuns).values({
-        id: runId,
-        listingId,
-        promptVersion: PROMPT_VERSION,
-        model: AI_BUDGET.model,
-        status: "failure",
-        finishedAt: new Date(),
-        errorMessage: "daily_budget_exceeded",
-      });
-      logger.warn("enrich-ai: daily budget exceeded, skipping", {
-        listingId,
-        spent: budget.spent,
-        cap: budget.cap,
-      });
-      return {
-        listingId,
-        aiRunId: runId,
-        status: "skipped",
-        costUsd: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-      };
-    }
-
-    // STEP 2: load the listing + its raw_json.
+    // STEP 1: load the listing + its raw_json.
     const listing = await db.query.listings.findFirst({
       where: (l, { eq: eqOp }) => eqOp(l.id, listingId),
     });
@@ -330,7 +315,7 @@ export const enrichAiTask = task({
       };
     }
 
-    // STEP 3: gather context — sibling cluster listings + any existing
+    // STEP 2: gather context — sibling cluster listings + any existing
     // enrichment row for this listing (sourced for geo data).
     const clusterListings = listing.clusterId
       ? await db
@@ -436,7 +421,7 @@ export const enrichAiTask = task({
       portalSpread: buildPortalSpread(clusterListings),
     };
 
-    // STEP 4: INSERT ai_runs row in `running` state.
+    // STEP 3: INSERT ai_runs row in `running` state.
     //
     // `id` is the stable Trigger run id, so on a retried attempt this row
     // already exists — without onConflictDoNothing the re-insert hits a
@@ -453,7 +438,7 @@ export const enrichAiTask = task({
       })
       .onConflictDoNothing({ target: schema.aiRuns.id });
 
-    // STEP 5: call Anthropic.
+    // STEP 4: call Anthropic.
     const { ANTHROPIC_API_KEY } = env();
     logger.log("enrich-ai: calling Anthropic", {
       listingId,
@@ -466,7 +451,7 @@ export const enrichAiTask = task({
       apiKey: ANTHROPIC_API_KEY,
     });
 
-    // STEP 6: upsert enrichments. The row may already exist at this
+    // STEP 5: upsert enrichments. The row may already exist at this
     // prompt version if a sibling geo task wrote it first; in that case
     // we patch our two columns (features + aiRunId) and leave the geo
     // fields untouched.
@@ -491,7 +476,7 @@ export const enrichAiTask = task({
         },
       });
 
-    // STEP 7: finalise ai_runs as success.
+    // STEP 6: finalise ai_runs as success.
     await db
       .update(schema.aiRuns)
       .set({

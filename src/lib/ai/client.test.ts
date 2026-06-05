@@ -1,8 +1,7 @@
 /**
  * Cost math is the one piece of the Anthropic wrapper we can lock down
  * without making a live call — and it's the piece that, if wrong,
- * silently misreports spend in `ai_runs.cost_usd` and breaks the daily
- * budget guard. Pin it.
+ * silently misreports spend in `ai_runs.cost_usd`. Pin it.
  *
  * Rates (from src/lib/ai/config.ts):
  *   - Haiku 4.5 input:  $1.00 / Mtok

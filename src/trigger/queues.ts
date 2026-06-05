@@ -23,12 +23,29 @@ export const scrapeQueue = queue({
 });
 
 /**
- * `enrich` — `cluster` plus the per-cluster enrichers. These hit Neon and
- * gov/OSM APIs, never Zyte, so they don't belong behind the scrape cap.
+ * `enrich` — `cluster` plus the per-cluster geo enrichers (EPC, flood,
+ * amenities, …). These hit Neon and gov/OSM APIs, never Zyte, so they
+ * don't belong behind the scrape cap. AI enrichment is deliberately NOT
+ * on this queue — see `aiQueue`.
  */
 export const enrichQueue = queue({
   name: "enrich",
   concurrencyLimit: 15,
+});
+
+/**
+ * `ai` — `enrich-ai` only. It's the one Anthropic-bound task, and
+ * Anthropic rate-limits the org by input-tokens-per-MINUTE (~50k), not by
+ * concurrency. Each call averages ~4k input tokens, so ~12 calls/min is
+ * the real ceiling. A low concurrency keeps the instantaneous burst small
+ * (≤3 × 4k = 12k) so the queue trickles rather than slamming the limit;
+ * `enrich-ai`'s own patient retry then rides out any 429 that still lands.
+ * Sharing `enrichQueue` (concurrency 15) used to fire 15 LLM calls at once
+ * — ~60k tokens instantly — and exhaust the default 3 retries on 429s.
+ */
+export const aiQueue = queue({
+  name: "ai",
+  concurrencyLimit: 3,
 });
 
 /**
