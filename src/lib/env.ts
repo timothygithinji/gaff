@@ -55,14 +55,6 @@ const envSchema = z.object({
   CLOUDFLARE_ACCESS_TEAM_DOMAIN: z
     .string()
     .url("CLOUDFLARE_ACCESS_TEAM_DOMAIN must be the full https:// team URL"),
-  // Cloudflare Access service token — used ONLY by the Worker to sign its
-  // own `cf.image` resize subrequest past Access, since `/clusters/*` stays
-  // gated (see src/server.ts). OPTIONAL: when absent the subrequest is
-  // unauthenticated (pre-fix behaviour — resized images 415), so a worker
-  // without it degrades rather than throwing. Provisioned by Pulumi
-  // (infra/cloudflare) into Doppler gaff/prd.
-  CLOUDFLARE_ACCESS_SERVICE_CLIENT_ID: z.string().min(1).optional(),
-  CLOUDFLARE_ACCESS_SERVICE_CLIENT_SECRET: z.string().min(1).optional(),
 
   // External APIs
   ZYTE_API_KEY: z.string().min(1),
