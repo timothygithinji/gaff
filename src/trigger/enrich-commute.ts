@@ -33,7 +33,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { mapsServerKey } from "../lib/env";
+import { mapsServerKey, mapsServerReferer } from "../lib/env";
 import {
   computeRoute,
   nextWeekdayAt,
@@ -200,6 +200,7 @@ export const enrichCommuteTask = task({
           origin: { lat: ctx.clusterLat, lng: ctx.clusterLng },
           destination: { lat: target.lat, lng: target.lng },
           travelMode: normaliseTravelMode(target.mode),
+          referer: mapsServerReferer(),
           arrivalTime,
         });
         commuteMinutes[target.label] = Math.round(result.durationSeconds / 60);

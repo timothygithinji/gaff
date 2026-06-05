@@ -27,6 +27,12 @@ const OPTIONAL_SECRETS = [
   "R2_BUCKET",
   // Read by the notification tasks (send-match-email, daily-digest).
   "RESEND_API_KEY",
+  // Server-side Google Maps key for the enrichers (nearby-transit,
+  // station-routes, commute). `GOOGLE_MAPS_API_KEY` is HTTP-referrer-
+  // restricted because it ships to the browser, so it 403s on server
+  // calls; `mapsServerKey()` prefers this unrestricted key. Without it
+  // synced here the worker never sees the Doppler value.
+  "GOOGLE_MAPS_SERVER_KEY",
 ] as const;
 
 // Map Trigger.dev environment slugs to Doppler config names.

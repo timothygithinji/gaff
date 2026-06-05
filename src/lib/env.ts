@@ -176,3 +176,16 @@ export function mapsServerKey(): string {
   const e = env();
   return e.GOOGLE_MAPS_SERVER_KEY ?? e.GOOGLE_MAPS_API_KEY;
 }
+
+/**
+ * Referer to present on server-side Google Maps calls. The browser
+ * `GOOGLE_MAPS_API_KEY` is HTTP-referrer-restricted to the app origin, so
+ * a worker call with no Referer 403s (`API_KEY_HTTP_REFERRER_BLOCKED`);
+ * sending the app origin satisfies the restriction. Harmless when a
+ * dedicated, unrestricted `GOOGLE_MAPS_SERVER_KEY` is configured (the key
+ * simply ignores it). Trailing slash matches Google's `domain/*` referrer
+ * patterns; `BETTER_AUTH_URL` is the app origin (no trailing slash).
+ */
+export function mapsServerReferer(): string {
+  return `${env().BETTER_AUTH_URL}/`;
+}

@@ -37,7 +37,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { mapsServerKey } from "../lib/env";
+import { mapsServerKey, mapsServerReferer } from "../lib/env";
 import {
   type LatLng,
   type Waypoint,
@@ -241,10 +241,15 @@ export const enrichStationRoutesTask = task({
     }
 
     if (routes.length === 0) {
-      logger.warn("enrich-station-routes: every station failed, nothing to write", {
-        clusterId,
-      });
-      return empty;
+      // Stations existed to compute (ctx.stations was non-empty) yet every
+      // Routes call returned nothing — that's an upstream failure (auth,
+      // quota, outage), not a property with no reachable stations. Throw
+      // so the run fails visibly and Trigger retries, rather than stamping
+      // an empty result and reporting success. A referrer-restricted
+      // GOOGLE_MAPS_API_KEY used server-side 403s every call this way.
+      throw new Error(
+        `enrich-station-routes: all ${ctx.stations.length} station route lookups failed for cluster ${clusterId} (likely a Google Routes API auth/quota error)`
+      );
     }
 
     const touched = await upsertEnrichmentForListings(db, ctx.listingIds, {
@@ -284,6 +289,7 @@ async function runMode(
       origin,
       destination,
       travelMode: mode,
+      referer: mapsServerReferer(),
       ...(arrivalTime ? { arrivalTime } : {}),
     });
     return Math.round(result.durationSeconds / 60);

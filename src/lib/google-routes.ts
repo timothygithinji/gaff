@@ -43,6 +43,12 @@ export type ComputeRouteInput = {
    * etc. with a 400).
    */
   arrivalTime?: Date;
+  /**
+   * Referer header for the request. Required when `apiKey` is the
+   * HTTP-referrer-restricted browser key (server calls 403 without it).
+   * See `mapsServerReferer()`.
+   */
+  referer?: string;
 };
 
 export type ComputeRouteResult = {
@@ -203,6 +209,7 @@ export async function computeRoute(
       "Content-Type": "application/json",
       "X-Goog-Api-Key": input.apiKey,
       "X-Goog-FieldMask": "routes.duration",
+      ...(input.referer ? { Referer: input.referer } : {}),
     },
     body: JSON.stringify(body),
   });

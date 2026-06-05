@@ -22,6 +22,11 @@ const GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 export interface ReverseGeocodeOptions {
   /** Custom fetch (tests / Workers). Defaults to global fetch. */
   fetch?: typeof fetch;
+  /**
+   * Referer header — required when the key is the HTTP-referrer-restricted
+   * browser key (server calls 403 without it). See `mapsServerReferer()`.
+   */
+  referer?: string;
 }
 
 /**
@@ -40,7 +45,12 @@ export async function reverseGeocodePostcode(
   }
   const fetchImpl = options.fetch ?? fetch;
   const url = `${POSTCODES_BASE_URL}/postcodes?lon=${lng}&lat=${lat}&limit=1`;
-  const res = await fetchImpl(url, { headers: { Accept: "application/json" } });
+  const res = await fetchImpl(url, {
+    headers: {
+      Accept: "application/json",
+      ...(options.referer ? { Referer: options.referer } : {}),
+    },
+  });
   if (!res.ok) {
     return null;
   }
@@ -137,7 +147,12 @@ export async function reverseGeocodeAddress(
   }
   const fetchImpl = options.fetch ?? fetch;
   const url = `${GOOGLE_GEOCODE_URL}?latlng=${lat},${lng}&key=${encodeURIComponent(apiKey)}&region=uk`;
-  const res = await fetchImpl(url, { headers: { Accept: "application/json" } });
+  const res = await fetchImpl(url, {
+    headers: {
+      Accept: "application/json",
+      ...(options.referer ? { Referer: options.referer } : {}),
+    },
+  });
   if (!res.ok) {
     return null;
   }

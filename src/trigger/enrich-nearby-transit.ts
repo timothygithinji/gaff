@@ -26,7 +26,7 @@ import { logger, task } from "@trigger.dev/sdk";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
-import { env, mapsServerKey } from "../lib/env";
+import { env, mapsServerKey, mapsServerReferer } from "../lib/env";
 import { type NearbyPlace, gatherNearbyPlaces } from "../lib/nearby-places";
 import { parseNumeric, upsertEnrichmentForListings } from "./enrich-helpers";
 import { enrichQueue } from "./queues";
@@ -97,19 +97,20 @@ export const enrichNearbyTransitTask = task({
       return empty;
     }
 
-    let places: NearbyPlace[];
-    try {
-      places = await gatherNearbyPlaces(
-        { lat: ctx.lat, lng: ctx.lng },
-        { googleKey: mapsServerKey(), tflAppKey: TFL_APP_KEY }
-      );
-    } catch (err) {
-      logger.warn("enrich-nearby-transit: Places sweep failed", {
-        clusterId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return empty;
-    }
+    // A thrown sweep means the upstream API failed (auth, quota, outage)
+    // — NOT "no places here". Let it propagate so the run fails visibly
+    // and Trigger retries, instead of silently stamping an empty result
+    // and reporting success. (This is exactly how a referrer-restricted
+    // GOOGLE_MAPS_API_KEY used server-side hid for so long: 403 →
+    // swallowed → green.) A genuinely empty area still returns [] below.
+    const places: NearbyPlace[] = await gatherNearbyPlaces(
+      { lat: ctx.lat, lng: ctx.lng },
+      {
+        googleKey: mapsServerKey(),
+        googleHeaders: { Referer: mapsServerReferer() },
+        tflAppKey: TFL_APP_KEY,
+      }
+    );
 
     if (places.length === 0) {
       logger.warn("enrich-nearby-transit: no places within radius", {
