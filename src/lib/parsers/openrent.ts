@@ -40,6 +40,36 @@ const EPC_RATING_RE = /^[A-G]$/;
 const COUNCIL_TAX_BAND_RE = /^[A-H]/;
 
 /**
+ * OpenRent embeds the COMPLETE set of matching property IDs in a single
+ * `var PROPERTYIDS = [123, 456, …];` global on the search page — every
+ * result, uncapped — even though only the first ~20 cards are rendered
+ * server-side. We read this to drive the ID-diff ingest (fetch a detail
+ * page only for IDs we haven't stored yet), since OpenRent has no recency
+ * filter and its on-page order isn't chronological.
+ */
+const PROPERTY_IDS_RE = /var\s+PROPERTYIDS\s*=\s*\[([\s\S]*?)\]/;
+
+/**
+ * Extract OpenRent's full `PROPERTYIDS` array from a search page, as
+ * numbers. Returns `[]` if the global is absent (layout change / blocked
+ * page) — callers treat that as "no IDs found" rather than throwing.
+ */
+export function parseOpenrentPropertyIds(html: string): number[] {
+  const match = PROPERTY_IDS_RE.exec(html);
+  if (!match?.[1]) {
+    return [];
+  }
+  const ids: number[] = [];
+  for (const piece of match[1].split(",")) {
+    const n = Number.parseInt(piece.trim(), 10);
+    if (Number.isFinite(n) && n > 0) {
+      ids.push(n);
+    }
+  }
+  return ids;
+}
+
+/**
  * Parse an OpenRent search results page.
  *
  * Each listing card carries a `<div data-listing-id="...">` swiper, an

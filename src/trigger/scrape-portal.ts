@@ -39,14 +39,20 @@ import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { findCadenceByCron } from "../lib/cron-presets";
 import {
-  parseOpenrentSearch,
+  parseOpenrentDetail,
+  parseOpenrentPropertyIds,
   parseRightmoveSearch,
   parseZooplaSearch,
 } from "../lib/parsers";
 import type { ListingSummary, Portal } from "../lib/parsers/types";
 import {
+  RIGHTMOVE_MAX_PAGES,
+  RIGHTMOVE_RESULTS_PER_PAGE,
+  ZOOPLA_MAX_PAGES,
+  ZOOPLA_RESULTS_PER_PAGE,
   openrentSearchUrl,
   rightmoveSearchUrl,
+  zooplaAddedFromDays,
   zooplaSearchUrl,
 } from "../lib/portal-urls";
 import { storeRawHtml } from "../lib/raw-html";
@@ -60,9 +66,23 @@ import { PORTAL_COST_USD, zyteFetch } from "../lib/zyte";
 import { clusterTask } from "./cluster";
 import { scrapeQueue } from "./queues";
 
+/**
+ * Scrape mode:
+ *   - `incremental` (default): the daily/scheduled sweep — applies the
+ *     cadence recency window (Rightmove `maxDaysSinceAdded`, Zoopla
+ *     `added`) and caps OpenRent to the newest unseen IDs, then paginates
+ *     within that small window. Cheap, runs every cadence tick.
+ *   - `backfill`: the on-demand "Backfill now" run — drops the recency
+ *     window and paginates to each portal's hard cap, and ingests every
+ *     unseen OpenRent ID. Expensive; run deliberately.
+ */
+export type ScrapeMode = "incremental" | "backfill";
+
 export type ScrapePortalPayload = {
   searchId: string;
   portal: Portal;
+  /** Defaults to `incremental` when omitted. */
+  mode?: ScrapeMode;
 };
 
 export type ScrapePortalOutput = {
@@ -93,18 +113,34 @@ type SearchFilters = {
 };
 
 /**
- * Build every portal-specific search URL we need to scrape for this
- * portal. Returns one URL for postal_code locations (the historical
- * single-ref path) and N URLs for area locations (one per covering
- * outcode). Empty array means the portal has no usable refs — the
- * caller logs and skips the scrape.
+ * One per-outcode scrape target. `makeUrl(page)` builds the URL for a
+ * given page — `page` is a 0-based page index that each portal maps to
+ * its own scheme (Rightmove `index = page * 24`, Zoopla `pn = page + 1`,
+ * OpenRent ignores it: the single search page already lists every ID).
+ * `recencyWindowDays` is the cadence window the URL was built with
+ * (undefined in backfill mode) — surfaced for logging only.
  */
-function buildSearchUrls(
+type ScrapeTarget = {
+  label: string;
+  makeUrl: (page: number) => string;
+};
+
+/**
+ * Build the per-outcode scrape targets for this portal. One target for
+ * postal_code locations (the historical single-ref path) and N for area
+ * locations (one per covering outcode). Empty array means the portal has
+ * no usable refs — the caller logs and skips the scrape.
+ *
+ * `windowDays` is the recency cap (cadence-derived) applied to the URL —
+ * Rightmove `maxDaysSinceAdded`, Zoopla `added`. `undefined` (backfill)
+ * omits the filter so pagination reaches the portal's full depth.
+ */
+function buildSearchTargets(
   portal: Portal,
   location: SearchLocation,
   search: SearchFilters,
-  maxDaysSinceAdded: number | undefined
-): Array<{ url: string; label: string }> {
+  windowDays: number | undefined
+): ScrapeTarget[] {
   const filters = {
     minBedrooms: search.minBedrooms,
     maxBedrooms: search.maxBedrooms,
@@ -116,25 +152,30 @@ function buildSearchUrls(
   if (portal === "rightmove") {
     const refs = asPortalRefArray(location.portalRefs.rightmove);
     return refs.map((ref) => ({
-      url: rightmoveSearchUrl({
-        locationIdentifier: ref.locationIdentifier,
-        ...filters,
-        maxDaysSinceAdded,
-      }),
       label: extractOutcodeLabel(ref.locationIdentifier) ?? location.name,
+      makeUrl: (page: number) =>
+        rightmoveSearchUrl({
+          locationIdentifier: ref.locationIdentifier,
+          ...filters,
+          maxDaysSinceAdded: windowDays,
+          index: page * RIGHTMOVE_RESULTS_PER_PAGE,
+        }),
     }));
   }
   if (portal === "zoopla") {
     const refs = asPortalRefArray(location.portalRefs.zoopla);
+    const added = zooplaAddedFromDays(windowDays);
     return refs.map((ref) => ({
-      url: zooplaSearchUrl({ q: ref.q, ...filters }),
       label: ref.q,
+      makeUrl: (page: number) =>
+        zooplaSearchUrl({ q: ref.q, ...filters, pn: page + 1, added }),
     }));
   }
   const refs = asPortalRefArray(location.portalRefs.openrent);
   return refs.map((ref) => ({
-    url: openrentSearchUrl({ term: ref.term, ...filters }),
     label: ref.term,
+    // OpenRent ignores `page` — the single search page embeds every ID.
+    makeUrl: () => openrentSearchUrl({ term: ref.term, ...filters }),
   }));
 }
 
@@ -173,14 +214,121 @@ function rawKeyScope(location: SearchLocation): string {
   return slug || location.placeId || "unknown";
 }
 
-function parsePortalHtml(portal: Portal, html: string): ListingSummary[] {
-  if (portal === "rightmove") {
-    return parseRightmoveSearch(html);
+/**
+ * Parse a Rightmove/Zoopla search-results page to summaries. OpenRent is
+ * NOT handled here — it uses the ID-diff path (`parseOpenrentPropertyIds`
+ * + per-ID detail fetch) rather than parsing search cards, because its
+ * page renders only ~20 cards and exposes the full set as `PROPERTYIDS`.
+ */
+function parseSearchPage(portal: "rightmove" | "zoopla", html: string): ListingSummary[] {
+  return portal === "rightmove"
+    ? parseRightmoveSearch(html)
+    : parseZooplaSearch(html);
+}
+
+/**
+ * Per-run cap on OpenRent detail fetches. Incremental stays cheap and
+ * within `maxDuration` by only taking the newest unseen IDs; backfill
+ * goes deeper but is still bounded so one run can't run away — a huge
+ * area may need the backfill re-run, which continues where it left off
+ * (already-fetched IDs are now stored and skipped).
+ */
+const OPENRENT_DETAIL_CAP: Record<ScrapeMode, number> = {
+  incremental: 40,
+  backfill: 200,
+};
+
+/**
+ * OpenRent ingest by ID-diff. OpenRent has no recency filter and a
+ * non-chronological page order, so we can't window it like RM/ZP. Instead
+ * each outcode's search page embeds the COMPLETE set of matching IDs
+ * (`PROPERTYIDS`); we diff that against the IDs already stored for this
+ * search and fetch a DETAIL page only for genuinely new ones (newest
+ * first — IDs are ~monotonic), bounded by {@link OPENRENT_DETAIL_CAP}.
+ * Detail pages carry the title/address the summary needs (the search page
+ * only renders ~20 cards), so new rows are created complete.
+ */
+async function scrapeOpenrentByIdDiff(deps: {
+  db: ReturnType<typeof getDb>;
+  searchId: string;
+  mode: ScrapeMode;
+  targets: ScrapeTarget[];
+  fetchPage: (url: string, storeScope: string | null) => Promise<string>;
+  ingest: (
+    summaries: ListingSummary[],
+    label: string,
+    rawCount: number
+  ) => Promise<void>;
+  scopeFor: (label: string) => string;
+}): Promise<void> {
+  const { db, searchId, mode, targets, fetchPage, ingest, scopeFor } = deps;
+
+  const storedRows = await db
+    .select({ pid: schema.listings.portalListingId })
+    .from(schema.listings)
+    .where(
+      and(
+        eq(schema.listings.searchId, searchId),
+        eq(schema.listings.portal, "openrent")
+      )
+    );
+  const storedIds = new Set(storedRows.map((r) => r.pid));
+  const processed = new Set<string>();
+  let detailBudget = OPENRENT_DETAIL_CAP[mode];
+
+  for (const target of targets) {
+    const html = await fetchPage(target.makeUrl(0), scopeFor(target.label));
+    const ids = parseOpenrentPropertyIds(html);
+    // New = not already stored and not handled earlier this run (outcode
+    // radii overlap). Newest first.
+    const candidates = ids
+      .filter((id) => {
+        const key = String(id);
+        return !(storedIds.has(key) || processed.has(key));
+      })
+      .sort((a, b) => b - a);
+
+    const summaries: ListingSummary[] = [];
+    for (const id of candidates) {
+      if (detailBudget <= 0) {
+        logger.warn("scrape-portal: OpenRent detail budget exhausted", {
+          searchId,
+          outcode: target.label,
+          mode,
+        });
+        break;
+      }
+      const key = String(id);
+      processed.add(key);
+      const detailUrl = `https://www.openrent.co.uk/${id}`;
+      let detailHtml: string;
+      try {
+        detailHtml = await fetchPage(detailUrl, null);
+      } catch (err) {
+        logger.warn("scrape-portal: OpenRent detail fetch failed", {
+          id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+      try {
+        const detail = parseOpenrentDetail(detailHtml);
+        summaries.push({
+          ...detail,
+          portal: "openrent",
+          portalListingId: key,
+          url: detailUrl,
+        });
+        detailBudget--;
+      } catch (err) {
+        logger.warn("scrape-portal: OpenRent detail parse failed", {
+          id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    await ingest(summaries, target.label, ids.length);
   }
-  if (portal === "zoopla") {
-    return parseZooplaSearch(html);
-  }
-  return parseOpenrentSearch(html);
 }
 
 /**
@@ -648,8 +796,14 @@ export const scrapePortalTask = task({
       maxDaysSinceAdded = undefined;
     }
 
+    const mode: ScrapeMode = payload.mode ?? "incremental";
+    // Backfill drops the recency window so pagination reaches each portal's
+    // full depth; incremental keeps the cadence window so every run stays
+    // to roughly one page of genuinely new listings.
+    const windowDays = mode === "backfill" ? undefined : maxDaysSinceAdded;
+
     const location = search.location;
-    const urls = buildSearchUrls(
+    const targets = buildSearchTargets(
       portal,
       location,
       {
@@ -662,10 +816,10 @@ export const scrapePortalTask = task({
         // URL builders can format it numerically.
         radiusMiles: Number(search.radiusMiles),
       },
-      maxDaysSinceAdded
+      windowDays
     );
 
-    if (urls.length === 0) {
+    if (targets.length === 0) {
       // portalRefs missing — degenerate-backfill row or a save-time
       // resolver failure. Skip the portal cleanly; the run finishes
       // with zero listings and a clear warning, and the user can
@@ -684,20 +838,6 @@ export const scrapePortalTask = task({
       };
     }
 
-    // All three portals need the browser tier. Rightmove + Zoopla to get
-    // past CF and hydrate __NEXT_DATA__; OpenRent because its search
-    // filters (bedrooms_min, prices_*, acceptNonStudents, …) are applied
-    // CLIENT-SIDE in JS — a raw HTTP fetch returns the *unfiltered* default
-    // result set, so studios and 1-beds leak into a 2-bed search. Running
-    // a real browser lets OR's own JS apply the URL filters before we
-    // parse. (See `scripts/verify/audit-filter-leaks.ts` for the leak this
-    // closed.)
-    const useBrowser =
-      portal === "rightmove" || portal === "zoopla" || portal === "openrent";
-    // R2 archive base scope: kebabbed place name (e.g. "camden-town").
-    // Per-outcode iterations append the outcode label so each iteration
-    // gets a unique key — otherwise the storeRawHtml writes would
-    // overwrite each other within the same run.
     const baseScope = rawKeyScope(location);
 
     let totalCost = 0;
@@ -706,62 +846,59 @@ export const scrapePortalTask = task({
     const allTouchedPortalListingIds: string[] = [];
     let primaryRawKey: string | null = null;
 
-    // Sequential iteration: Zyte rate-limits aggressive parallelism and
-    // we'd rather one slow scrape than a whole search getting throttled.
-    // For a postal_code location this loop runs exactly once.
-    for (const { url, label } of urls) {
-      logger.log("scrape-portal: fetching", {
-        portal,
-        location: location.name,
-        outcode: label,
-        url,
-      });
-
+    // Fetch a URL on the browser tier. Rightmove + Zoopla need it to clear
+    // CF and hydrate __NEXT_DATA__; OpenRent because its filters apply
+    // CLIENT-SIDE in JS (a raw fetch returns the unfiltered set). Archives
+    // the HTML to R2 only when `storeScope` is set (page 0 / search page) —
+    // best-effort, failures don't propagate. Returns the HTML.
+    const fetchPage = async (
+      url: string,
+      storeScope: string | null
+    ): Promise<string> => {
       const res = await zyteFetch({
         apiKey: zyteKey,
         url,
         geolocation: "GB",
-        browserHtml: useBrowser ? true : undefined,
-        httpResponseBody: useBrowser ? undefined : true,
+        browserHtml: true,
       });
-
       totalCost += res.cost ?? portalCostFallback;
-
-      // Archive the raw HTML to R2 (best-effort). Failures don't
-      // propagate — the scrape succeeds either way; the run row just
-      // won't carry a raw_key.
-      const scope =
-        urls.length === 1 ? baseScope : `${baseScope}-${sanitiseScopeFragment(label)}`;
-      try {
-        const stored = await storeRawHtml({
-          portal,
-          scope,
-          runId,
-          html: res.html,
-        });
-        if (stored && !primaryRawKey) {
-          primaryRawKey = stored.key;
+      if (storeScope) {
+        try {
+          const stored = await storeRawHtml({
+            portal,
+            scope: storeScope,
+            runId,
+            html: res.html,
+          });
+          if (stored && !primaryRawKey) {
+            primaryRawKey = stored.key;
+          }
+        } catch (err) {
+          logger.warn("scrape-portal: raw-html upload failed", {
+            portal,
+            scope: storeScope,
+            runId,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
-      } catch (err) {
-        logger.warn("scrape-portal: raw-html upload failed", {
-          portal,
-          scope,
-          runId,
-          error: err instanceof Error ? err.message : String(err),
-        });
       }
+      return res.html;
+    };
 
-      const parsed = parsePortalHtml(portal, res.html);
+    // Run one outcode's summaries through the server-side re-filters
+    // (portal URL filters can't be trusted — OpenRent ignores them and RM
+    // /ZP day-windows still let edge cases through) and upsert. Updates the
+    // run accumulators.
+    const ingest = async (
+      summaries: ListingSummary[],
+      label: string,
+      rawCount: number
+    ): Promise<void> => {
       const locationFiltered = filterByExcludeLocations(
-        parsed,
+        summaries,
         search.excludeLocations,
         search.location
       );
-      // Re-check price/beds/exclusions server-side — the portal filters
-      // can't be trusted (see `filterByPriceRange`). Without these,
-      // out-of-band listings, 1-bed flats / studios, and
-      // `Room in a Shared X` listings (OpenRent has no URL switch for
-      // shares) leak into the search and the review queue.
       const priceFiltered = filterByPriceRange(
         locationFiltered,
         search.minPrice,
@@ -772,29 +909,85 @@ export const scrapePortalTask = task({
         search.minBedrooms,
         search.maxBedrooms
       );
-      const summaries = filterByExclusions(bedFiltered, search.exclusions);
-      const excludedByLocation = parsed.length - locationFiltered.length;
-      const excludedByPrice = locationFiltered.length - priceFiltered.length;
-      const excludedByBeds = priceFiltered.length - bedFiltered.length;
-      const excludedByExclusions = bedFiltered.length - summaries.length;
-
+      const kept = filterByExclusions(bedFiltered, search.exclusions);
       const { totalSeen, newCount, touchedPortalListingIds } =
-        await upsertListings(db, searchId, portal, summaries);
+        await upsertListings(db, searchId, portal, kept);
       totalListingsFound += totalSeen;
       totalNew += newCount;
       allTouchedPortalListingIds.push(...touchedPortalListingIds);
-
       logger.log("scrape-portal: outcode done", {
         portal,
         location: location.name,
         outcode: label,
-        listingsFound: totalSeen,
+        mode,
+        rawCount,
+        kept: kept.length,
+        totalSeen,
         newCount,
-        excludedByLocation,
-        excludedByPrice,
-        excludedByBeds,
-        excludedByExclusions,
       });
+    };
+
+    // R2 scope per outcode: bare place name when there's a single target,
+    // else suffixed with the outcode label so writes don't collide.
+    const scopeFor = (label: string) =>
+      targets.length === 1
+        ? baseScope
+        : `${baseScope}-${sanitiseScopeFragment(label)}`;
+
+    if (portal === "openrent") {
+      await scrapeOpenrentByIdDiff({
+        db,
+        searchId,
+        mode,
+        targets,
+        fetchPage,
+        ingest,
+        scopeFor,
+      });
+    } else {
+      // Rightmove / Zoopla: paginate newest-first, deduping across pages,
+      // until a page adds no new listings or is short (the last page), or
+      // we hit the portal's hard page cap. With the recency window applied
+      // (incremental) this is normally one page; backfill walks to the cap.
+      const perPage =
+        portal === "rightmove"
+          ? RIGHTMOVE_RESULTS_PER_PAGE
+          : ZOOPLA_RESULTS_PER_PAGE;
+      const maxPages =
+        portal === "rightmove" ? RIGHTMOVE_MAX_PAGES : ZOOPLA_MAX_PAGES;
+      // Sequential across outcodes: Zyte throttles aggressive parallelism.
+      for (const target of targets) {
+        const seen = new Set<string>();
+        const summaries: ListingSummary[] = [];
+        for (let page = 0; page < maxPages; page++) {
+          const url = target.makeUrl(page);
+          logger.log("scrape-portal: fetching", {
+            portal,
+            outcode: target.label,
+            page,
+            url,
+          });
+          const html = await fetchPage(
+            url,
+            page === 0 ? scopeFor(target.label) : null
+          );
+          const parsed = parseSearchPage(portal, html);
+          let added = 0;
+          for (const s of parsed) {
+            if (!seen.has(s.portalListingId)) {
+              seen.add(s.portalListingId);
+              summaries.push(s);
+              added++;
+            }
+          }
+          // Stop: empty page, all-duplicates (overlap past the end), or a
+          // short page (fewer than a full page → the last one).
+          if (parsed.length === 0 || added === 0 || parsed.length < perPage) {
+            break;
+          }
+        }
+        await ingest(summaries, target.label, summaries.length);
+      }
     }
 
     const rawKey = primaryRawKey;

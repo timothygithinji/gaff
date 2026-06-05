@@ -14,6 +14,10 @@
  * entry point.
  */
 
-export { parseOpenrentDetail, parseOpenrentSearch } from "./openrent";
+export {
+  parseOpenrentDetail,
+  parseOpenrentPropertyIds,
+  parseOpenrentSearch,
+} from "./openrent";
 export { parseRightmoveDetail, parseRightmoveSearch } from "./rightmove";
 export { parseZooplaDetail, parseZooplaSearch } from "./zoopla";
