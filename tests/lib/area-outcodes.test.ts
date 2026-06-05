@@ -142,6 +142,25 @@ describe("findCoveringOutcodes", () => {
     expect(truncated).toBe(true);
   });
 
+  it("keeps an outcode whose centroid sits a hair outside the box (margin)", async () => {
+    // Regression: preset bounds are rounded to the constituent outcodes'
+    // own centroids, so corner outcodes (e.g. N9, N21 for North London)
+    // land sub-metre outside the rounded rectangle. The margin must pull
+    // them back in. Here NE corner is exactly N7's centroid; N9 sits a few
+    // ten-thousandths of a degree past it.
+    const fetchStub = stubOutcodesFetch([
+      { outcode: "N7", latitude: 51.58, longitude: -0.06 }, // on NE corner
+      { outcode: "N9", latitude: 51.580004, longitude: -0.059996 }, // ~0.5m past
+    ]);
+
+    const { outcodes } = await findCoveringOutcodes(
+      { bounds: NORTH_LONDON_BOUNDS, ...NORTH_LONDON_CENTER },
+      { fetch: fetchStub }
+    );
+
+    expect(outcodes).toContain("N9");
+  });
+
   it("uppercases outcodes and dedupes any duplicates in the response", async () => {
     const fetchStub = stubOutcodesFetch([
       { outcode: "n1", latitude: 51.541, longitude: -0.103 },
