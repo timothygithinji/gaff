@@ -172,10 +172,12 @@ export async function findCoveringOutcodes(
   }
 
   const center = { lat: location.lat, lng: location.lng };
-  const radiusM = Math.max(
-    distanceMetres(center, bounds.ne),
-    distanceMetres(center, bounds.sw)
-  ) + (options.marginMetres ?? DEFAULT_MARGIN_METRES);
+  const margin = options.marginMetres ?? DEFAULT_MARGIN_METRES;
+  const radiusM =
+    Math.max(
+      distanceMetres(center, bounds.ne),
+      distanceMetres(center, bounds.sw)
+    ) + margin;
 
   const client = createPostcodesClient(
     options.fetch ? { fetch: options.fetch } : {}
@@ -196,7 +198,7 @@ export async function findCoveringOutcodes(
   return {
     outcodes: insideGeographicOutcodes(
       data.result as CentroidPick[],
-      bounds,
+      expandBounds(bounds, margin),
       center
     ),
     truncated: data.result.length >= POSTCODES_IO_OUTCODE_CAP,
@@ -252,6 +254,29 @@ function insideGeographicOutcodes(
 // -----------------------------------------------------------------------------
 // Geometry helpers
 // -----------------------------------------------------------------------------
+
+/**
+ * Grow a bounds rectangle outward by `marginMetres` on every side, so an
+ * outcode centroid sitting a hair outside the box still counts as inside.
+ * This matters because a preset's bounds are derived from (and rounded to
+ * 5 d.p. against) its constituent outcode centroids, so the extreme corner
+ * outcodes (e.g. N9, N21 for North London) land a sub-metre outside the
+ * rounded rectangle. Mirrors the margin already applied to the query
+ * radius — the rectangle test was the one place it was missing.
+ */
+function expandBounds(
+  bounds: NonNullable<LocationBounds>,
+  marginMetres: number
+): NonNullable<LocationBounds> {
+  const latMargin = (marginMetres / EARTH_RADIUS_M) * (180 / Math.PI);
+  const midLat = (bounds.ne.lat + bounds.sw.lat) / 2;
+  const lngMargin =
+    latMargin / Math.max(Math.cos((midLat * Math.PI) / 180), 1e-6);
+  return {
+    ne: { lat: bounds.ne.lat + latMargin, lng: bounds.ne.lng + lngMargin },
+    sw: { lat: bounds.sw.lat - latMargin, lng: bounds.sw.lng - lngMargin },
+  };
+}
 
 /** Great-circle distance in metres (haversine). */
 function distanceMetres(
