@@ -126,7 +126,19 @@ export type RightmoveSearchUrlParams = Omit<PortalSearchParams, "outcode"> & {
    * Omitted from the URL when `undefined`.
    */
   maxDaysSinceAdded?: number;
+  /**
+   * Pagination offset. Rightmove pages by `index` as a 0-based offset
+   * stepping by {@link RIGHTMOVE_RESULTS_PER_PAGE} (24). Defaults to 0
+   * (first page). The scrape loop walks index 0, 24, 48 … up to
+   * {@link RIGHTMOVE_MAX_PAGES}.
+   */
+  index?: number;
 };
+
+/** Rightmove returns 24 cards per `index` step. */
+export const RIGHTMOVE_RESULTS_PER_PAGE = 24;
+/** Rightmove caps search depth at 42 pages (~1,008 results). */
+export const RIGHTMOVE_MAX_PAGES = 42;
 
 export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
   const usp = new URLSearchParams();
@@ -134,7 +146,7 @@ export function rightmoveSearchUrl(params: RightmoveSearchUrlParams): string {
   usp.set("searchType", "RENT");
   usp.set("radius", params.radiusMiles.toFixed(2));
   usp.set("sortType", "6"); // newest listings first
-  usp.set("index", "0");
+  usp.set("index", String(params.index ?? 0));
   // Silent-win defaults — every Gaff search wants long-term lets only
   // and never wants already-let-agreed properties clogging the queue.
   usp.set("includeLetAgreed", "false");
@@ -194,7 +206,52 @@ export type ZooplaSearchUrlParams = PortalSearchParams & {
    * which Zoopla bounces to a disambiguation page).
    */
   q: string;
+  /**
+   * Pagination — Zoopla pages by `pn` (1-based). Defaults to 1. The
+   * scrape loop walks pn 1, 2, 3 … up to {@link ZOOPLA_MAX_PAGES}.
+   */
+  pn?: number;
+  /**
+   * Listing-age cap, Zoopla's `added` enum. Map from cadence days via
+   * {@link zooplaAddedFromDays}. Omitted from the URL when `undefined`
+   * ("Anytime"). Zoopla has no numeric day param — only this enum.
+   */
+  added?: ZooplaAdded;
 };
+
+/** Zoopla returns 25 cards per page. */
+export const ZOOPLA_RESULTS_PER_PAGE = 25;
+/** Zoopla caps search depth at 40 pages (~1,000 results). */
+export const ZOOPLA_MAX_PAGES = 40;
+
+/** Accepted values of Zoopla's `added` recency filter (rentals). */
+export type ZooplaAdded = "24_hours" | "3_days" | "7_days" | "14_days";
+
+/**
+ * Map a cadence "max days since added" to the nearest Zoopla `added`
+ * enum that is >= the window, so the recency filter never hides a
+ * listing the window should include. 1 → 24_hours, 2-3 → 3_days,
+ * 4-7 → 7_days, 8-14 → 14_days, larger/undefined → undefined (Anytime,
+ * used by backfill).
+ */
+export function zooplaAddedFromDays(days: number | undefined): ZooplaAdded | undefined {
+  if (days == null) {
+    return undefined;
+  }
+  if (days <= 1) {
+    return "24_hours";
+  }
+  if (days <= 3) {
+    return "3_days";
+  }
+  if (days <= 7) {
+    return "7_days";
+  }
+  if (days <= 14) {
+    return "14_days";
+  }
+  return undefined;
+}
 
 /**
  * Zoopla's free-text search route accepts any human-readable place
@@ -220,7 +277,10 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
   usp.set("price_frequency", "per_month");
   usp.set("results_sort", "newest_listings");
   usp.set("search_source", "to-rent");
-  usp.set("pn", "1");
+  usp.set("pn", String(params.pn ?? 1));
+  if (params.added) {
+    usp.set("added", params.added);
+  }
   // Silent-win default — never surface already-let-agreed listings.
   usp.set("include_let_agreed", "false");
   if (typeof params.minPrice === "number") {

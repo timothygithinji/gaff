@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   parseOpenrentDetail,
+  parseOpenrentPropertyIds,
   parseOpenrentSearch,
 } from "../../src/lib/parsers";
 
@@ -119,5 +120,28 @@ describe("parseOpenrentDetail", () => {
     expect(() =>
       parseOpenrentDetail("<html><body>nope</body></html>")
     ).toThrowError();
+  });
+});
+
+describe("parseOpenrentPropertyIds", () => {
+  it("extracts the full PROPERTYIDS array from the real search fixture", () => {
+    const ids = parseOpenrentPropertyIds(FIXTURE("openrent-search-2026-05.html"));
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.every((n) => Number.isInteger(n) && n > 0)).toBe(true);
+    // No duplicates expected from OpenRent's own array.
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("parses a literal global with whitespace/newlines", () => {
+    const html = `<script>var PROPERTYIDS = [
+      123, 456 ,789
+    ];</script>`;
+    expect(parseOpenrentPropertyIds(html)).toEqual([123, 456, 789]);
+  });
+
+  it("returns [] when the global is absent", () => {
+    expect(parseOpenrentPropertyIds("<html><body>no ids</body></html>")).toEqual(
+      []
+    );
   });
 });
