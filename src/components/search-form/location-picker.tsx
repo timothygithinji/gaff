@@ -16,7 +16,11 @@
  * empty pending server stamp).
  */
 
-import { Cancel01Icon, Location01Icon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  Location01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation } from "@tanstack/react-query";
 import { LONDON_AREA_PRESETS, presetToSearchLocation } from "../../lib/london-areas";
@@ -59,32 +63,55 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
       const result = await resolveOutcodes.mutateAsync({
         data: { lat: loc.lat, lng: loc.lng, bounds: loc.bounds },
       });
-      onChange({ ...loc, coveringOutcodes: result.outcodes });
+      // Active set + full set both start as everything resolved; toggling
+      // off later removes from `coveringOutcodes` but keeps `allOutcodes`.
+      onChange({
+        ...loc,
+        coveringOutcodes: result.outcodes,
+        allOutcodes: result.outcodes,
+      });
     } catch {
       // Network blip — empty list short-circuits the chip render and
       // the save-path resolver falls back to its single-ref behaviour.
-      onChange({ ...loc, coveringOutcodes: [] });
+      onChange({ ...loc, coveringOutcodes: [], allOutcodes: [] });
     }
   };
 
-  const removeOutcode = (oc: string) => {
-    if (!value?.coveringOutcodes) {
+  // Flip a single outcode on/off. The full resolved set lives in
+  // `allOutcodes` so a switched-off outcode stays visible and can be
+  // switched back on; `coveringOutcodes` (the scraped set) stays ordered
+  // as a filtered view of that superset.
+  const toggleOutcode = (oc: string) => {
+    if (!value) {
       return;
+    }
+    const all = value.allOutcodes ?? value.coveringOutcodes ?? [];
+    const active = new Set(value.coveringOutcodes ?? []);
+    if (active.has(oc)) {
+      active.delete(oc);
+    } else {
+      active.add(oc);
     }
     onChange({
       ...value,
-      coveringOutcodes: value.coveringOutcodes.filter((c) => c !== oc),
+      allOutcodes: all,
+      coveringOutcodes: all.filter((c) => active.has(c)),
     });
   };
 
   const isArea = value !== null && value.type !== "postal_code";
-  const chips = value?.coveringOutcodes ?? null;
+  const allOutcodes = value?.allOutcodes ?? value?.coveringOutcodes ?? null;
+  const activeOutcodes = value?.coveringOutcodes ?? [];
   const resolving = isArea && resolveOutcodes.isPending;
-  const allRemoved = isArea && chips !== null && chips.length === 0;
+  const allRemoved =
+    isArea &&
+    allOutcodes !== null &&
+    allOutcodes.length > 0 &&
+    activeOutcodes.length === 0;
 
   let chipCount = 0;
-  if (isArea && chips) {
-    chipCount = chips.length;
+  if (isArea && allOutcodes) {
+    chipCount = activeOutcodes.length;
   } else if (value) {
     chipCount = 1;
   }
@@ -122,10 +149,11 @@ export function SingleLocationPicker({ value, onChange }: SingleProps) {
           </div>
           {isArea ? (
             <AreaOutcodes
+              active={activeOutcodes}
               allRemoved={allRemoved}
-              chips={chips}
+              chips={allOutcodes}
               loading={resolving}
-              onRemove={removeOutcode}
+              onToggle={toggleOutcode}
             />
           ) : null}
         </div>
@@ -193,65 +221,79 @@ function LondonAreaPresets({
 }
 
 /**
- * Covering-outcodes chip list for area-typed picks. Each chip is a
- * removable pill — clicking the × drops it from the location's
- * `coveringOutcodes`, which `stampPortalRefs` then honours at save
- * time. Renders a single-row placeholder while the server function
- * resolves, and a warning row if the user has dropped every outcode
- * (the search would scrape nothing).
+ * Covering-outcodes chip list for area-typed picks. Renders the full
+ * resolved set (`chips`); each pill is a toggle — switched-on outcodes
+ * are solid with a ×, switched-off ones are muted with a +. Toggling
+ * never drops an outcode from the list, so a mistaken switch-off is one
+ * click to undo. `active` is what `stampPortalRefs` actually scrapes.
+ * Renders a placeholder while the server resolves, and a warning row if
+ * every outcode is switched off (the search would scrape nothing).
  */
 function AreaOutcodes({
   chips,
+  active,
   loading,
   allRemoved,
-  onRemove,
+  onToggle,
 }: {
   chips: readonly string[] | null;
+  active: readonly string[];
   loading: boolean;
   allRemoved: boolean;
-  onRemove: (outcode: string) => void;
+  onToggle: (outcode: string) => void;
 }) {
   if (loading) {
     return (
       <p className="text-[11px] text-slate">Resolving covering postcodes…</p>
     );
   }
-  if (allRemoved) {
-    return (
-      <p className="text-[11px] text-copper">
-        No postcodes selected — add some back or pick a different area to
-        scrape anything.
-      </p>
-    );
-  }
   if (!chips || chips.length === 0) {
     return null;
   }
+  const activeSet = new Set(active);
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[10px] text-slate uppercase tracking-[0.14em]">
-        Covers {chips.length} postcode{chips.length === 1 ? "" : "s"}
+        Covers {active.length} of {chips.length} postcode
+        {chips.length === 1 ? "" : "s"} · tap to toggle
       </span>
       <div className="flex flex-wrap gap-1.5">
-        {chips.map((oc) => (
-          <button
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-[12px] text-navy"
-            key={oc}
-            onClick={() => onRemove(oc)}
-            type="button"
-          >
-            <span>{oc}</span>
-            <HugeiconsIcon
-              aria-hidden
-              className="text-slate-2"
-              icon={Cancel01Icon}
-              size={11}
-              strokeWidth={2}
-            />
-            <span className="sr-only">Remove {oc}</span>
-          </button>
-        ))}
+        {chips.map((oc) => {
+          const on = activeSet.has(oc);
+          return (
+            <button
+              className={
+                on
+                  ? "inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-2.5 py-1.5 text-[12px] text-navy"
+                  : "inline-flex items-center gap-1.5 rounded-full border border-line border-dashed bg-transparent px-2.5 py-1.5 text-[12px] text-slate"
+              }
+              key={oc}
+              onClick={() => onToggle(oc)}
+              type="button"
+            >
+              <span className={on ? "" : "line-through decoration-slate/60"}>
+                {oc}
+              </span>
+              <HugeiconsIcon
+                aria-hidden
+                className="text-slate-2"
+                icon={on ? Cancel01Icon : PlusSignIcon}
+                size={11}
+                strokeWidth={2}
+              />
+              <span className="sr-only">
+                {on ? `Switch off ${oc}` : `Switch on ${oc}`}
+              </span>
+            </button>
+          );
+        })}
       </div>
+      {allRemoved ? (
+        <p className="text-[11px] text-copper">
+          All postcodes switched off — tap to switch some back on, or this
+          search will scrape nothing.
+        </p>
+      ) : null}
     </div>
   );
 }
