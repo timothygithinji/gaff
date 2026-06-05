@@ -207,3 +207,35 @@ export function asPortalRefArray<T>(
   }
   return Array.isArray(ref) ? ref : [ref];
 }
+
+/**
+ * Outcodes the user resolved for an area but switched OFF in the form —
+ * `allOutcodes` minus the active `coveringOutcodes`, upper-cased.
+ *
+ * These must be dropped at filter time, not just left unsearched.
+ * Per-outcode portals (Rightmove, Zoopla) never query a switched-off
+ * outcode, so nothing leaks. But OpenRent searches by a radius around each
+ * *kept* outcode (min 2 km — see `openrentSearchUrl`), so a listing in a
+ * switched-off neighbour still comes back and has to be filtered out by
+ * its outcode. Returns `[]` for postcode searches and for areas with
+ * nothing toggled off.
+ */
+export function deselectedOutcodes(location: SearchLocation): string[] {
+  const all = location.allOutcodes;
+  if (!all || all.length === 0) {
+    return [];
+  }
+  const active = new Set(
+    (location.coveringOutcodes ?? []).map((oc) => oc.trim().toUpperCase())
+  );
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const oc of all) {
+    const norm = oc.trim().toUpperCase();
+    if (!(active.has(norm) || seen.has(norm))) {
+      seen.add(norm);
+      result.push(norm);
+    }
+  }
+  return result;
+}
