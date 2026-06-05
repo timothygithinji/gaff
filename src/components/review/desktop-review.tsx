@@ -49,7 +49,9 @@ import {
 } from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
 import { useIsMobile } from "../../hooks/use-mobile";
+import { outcodeLocationLabel } from "../../lib/outcode-areas";
 import { sizedPhoto } from "../../lib/photo-size";
+import { propertyKindLabel } from "../../lib/property-kind";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { PortalLogo } from "../portal-logo";
@@ -60,7 +62,7 @@ import {
   QueueFilter,
   type QueueFilters,
   matchesQueueFilters,
-  queuePriceBounds,
+  queueFilterOptions,
 } from "./queue-filter";
 
 /* ---------------- Types ---------------- */
@@ -75,11 +77,22 @@ export type DesktopReviewQueueItem = {
   priceValue: number | null;
   outcode: string;
   beds: number | null;
-  baths: number | null;
+  bathrooms: number | null;
   /** Pre-formatted move-in chip, e.g. "Avail now" / "Avail 12 Jun"; null = unknown. */
   availability: string | null;
+  /** Days until move-in; 0 = now, null = unknown. Drives the move-in facet. */
+  availableInDays: number | null;
   /** Pre-formatted furnishing chip, e.g. "Furnished"; null = unknown. */
   furnished: string | null;
+  /** Coarse property kind ("flat" / "house" / "studio" / "share" / "other"). */
+  propertyKind: string | null;
+  councilTaxBand: string | null;
+  epcBand: string | null;
+  commuteMinutes: number | null;
+  /** Gigabit/FTTP available; null = unknown. */
+  fttp: boolean | null;
+  /** Distinct portals this cluster is listed on. */
+  portalCount: number;
   photo: string;
 };
 
@@ -256,7 +269,7 @@ function QueueRail({
     useState<QueueFilters>(EMPTY_QUEUE_FILTERS);
   const filters = filtersProp ?? localFilters;
   const setFilters = onFiltersChange ?? setLocalFilters;
-  const priceBounds = queuePriceBounds(items.map((i) => i.priceValue));
+  const options = queueFilterOptions(items);
   const visible = items.filter((item) => matchesQueueFilters(item, filters));
   const isFiltered = visible.length !== items.length;
 
@@ -268,11 +281,7 @@ function QueueRail({
             ? `Queue · ${visible.length} of ${remaining}`
             : `Queue · ${remaining} left`}
         </Eyebrow>
-        <QueueFilter
-          filters={filters}
-          onChange={setFilters}
-          priceBounds={priceBounds}
-        />
+        <QueueFilter filters={filters} onChange={setFilters} options={options} />
       </div>
       {/* Independent scroll: the rail keeps its header pinned while the
           queue itself scrolls, so a long queue never pushes the hero or
@@ -344,10 +353,16 @@ function QueueCard({
         <p className="truncate font-semibold text-[12px] text-navy leading-4">
           {item.title}
         </p>
-        <p className="text-[11px] text-slate leading-[14px]">
-          {item.price} · {item.outcode}
+        <p className="truncate text-[11px] text-slate leading-[14px]">
+          {[
+            item.price,
+            propertyKindLabel(item.propertyKind),
+            outcodeLocationLabel(item.outcode) ?? item.outcode,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
-        <QueueSpec baths={item.baths} beds={item.beds} />
+        <QueueSpec baths={item.bathrooms} beds={item.beds} />
         <QueueMeta availability={item.availability} furnished={item.furnished} />
       </div>
     </button>
@@ -806,21 +821,36 @@ function statToneClass(tone: DesktopReviewStatCell["tone"]): string {
   return "text-navy";
 }
 
+const NUMBERS_GRID_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+};
+
 function NumbersCard({ stats }: { stats: DesktopReviewStatCell[] }) {
+  // Square off the layout: 4 cells read as a tidy 2×2 (the card is only
+  // half the centre column, so 4-in-a-row would cramp), fewer sit in a
+  // single row. Avoids the old 3-up grid's lopsided 3 + 1 wrap.
+  const cols = stats.length === 4 ? 2 : Math.min(Math.max(stats.length, 1), 4);
   return (
     <article className="flex flex-1 flex-col rounded-[6px] border border-line bg-paper p-[18px]">
       <div className="pb-3">
         <Eyebrow>The numbers</Eyebrow>
       </div>
-      {/* 3-up grid that wraps to a second row as cells grow (transport ·
-          EPC · council tax · size). Left hairline on every cell
-          that isn't first in its row keeps the column rhythm. */}
-      <div className="grid flex-1 grid-cols-3 gap-x-3 gap-y-4">
+      {/* Left hairline on every cell that isn't first in its row keeps the
+          column rhythm. */}
+      <div
+        className={cn(
+          "grid flex-1 gap-x-3 gap-y-4",
+          NUMBERS_GRID_COLS[cols] ?? "grid-cols-2"
+        )}
+      >
         {stats.map((cell, i) => (
           <div
             className={cn(
               "flex flex-col gap-1",
-              i % 3 !== 0 && "border-mist border-l pl-3"
+              i % cols !== 0 && "border-mist border-l pl-3"
             )}
             key={cell.label}
           >
@@ -1179,9 +1209,16 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         priceValue: 2450,
         outcode: "NW3",
         beds: 2,
-        baths: 1,
+        bathrooms: 1,
         availability: "Avail now",
+        availableInDays: 0,
         furnished: "Furnished",
+        propertyKind: "house",
+        councilTaxBand: "D",
+        epcBand: "C",
+        commuteMinutes: 24,
+        fttp: true,
+        portalCount: 2,
         photo: PHOTO_HERO,
       },
       {
@@ -1191,9 +1228,16 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         priceValue: 2200,
         outcode: "NW1",
         beds: 1,
-        baths: 1,
+        bathrooms: 1,
         availability: "Avail 12 Jun",
+        availableInDays: 10,
         furnished: "Unfurnished",
+        propertyKind: "studio",
+        councilTaxBand: "C",
+        epcBand: "D",
+        commuteMinutes: 18,
+        fttp: false,
+        portalCount: 1,
         photo: PHOTO_BEDROOM,
       },
       {
@@ -1203,9 +1247,16 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         priceValue: 2300,
         outcode: "N6",
         beds: 2,
-        baths: 1,
+        bathrooms: 1,
         availability: "Avail now",
+        availableInDays: 0,
         furnished: "Part furnished",
+        propertyKind: "flat",
+        councilTaxBand: "D",
+        epcBand: "B",
+        commuteMinutes: 32,
+        fttp: true,
+        portalCount: 3,
         photo: PHOTO_COOKING,
       },
       {
@@ -1215,9 +1266,16 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         priceValue: 2550,
         outcode: "NW5",
         beds: 2,
-        baths: 2,
+        bathrooms: 2,
         availability: "Avail 1 Jul",
+        availableInDays: 28,
         furnished: "Furnished",
+        propertyKind: "flat",
+        councilTaxBand: "E",
+        epcBand: "C",
+        commuteMinutes: 40,
+        fttp: false,
+        portalCount: 1,
         photo: PHOTO_HOUSE,
       },
       {
@@ -1227,9 +1285,16 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         priceValue: 2650,
         outcode: "N19",
         beds: 2,
-        baths: 1,
+        bathrooms: 1,
         availability: "Avail now",
+        availableInDays: 0,
         furnished: "Unfurnished",
+        propertyKind: "house",
+        councilTaxBand: "E",
+        epcBand: "D",
+        commuteMinutes: 27,
+        fttp: true,
+        portalCount: 2,
         photo: PHOTO_BATH,
       },
       {
@@ -1239,9 +1304,16 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         priceValue: 2600,
         outcode: "NW3",
         beds: 3,
-        baths: 1,
+        bathrooms: 1,
         availability: "Avail 20 Jun",
+        availableInDays: 18,
         furnished: "Furnished",
+        propertyKind: "flat",
+        councilTaxBand: "F",
+        epcBand: "C",
+        commuteMinutes: 35,
+        fttp: false,
+        portalCount: 1,
         photo: PHOTO_BEDROOM,
       },
     ],

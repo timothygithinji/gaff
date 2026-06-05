@@ -210,3 +210,20 @@ export const OUTCODE_AREAS: Record<string, string> = {
 export function outcodeAreaName(outcode: string): string | null {
   return OUTCODE_AREAS[outcode.trim().toUpperCase()] ?? null;
 }
+
+/**
+ * A location label for a title/subtitle: the colloquial area name followed by
+ * the outcode ("NW3" → "Hampstead NW3"), or just the bare outcode when we
+ * don't recognise the area. Returns `null` for an empty/placeholder outcode
+ * (e.g. our "—" fallback) so callers can omit it.
+ */
+export function outcodeLocationLabel(
+  outcode: string | null | undefined
+): string | null {
+  const oc = outcode?.trim().toUpperCase();
+  if (!oc || oc === "—") {
+    return null;
+  }
+  const area = outcodeAreaName(oc);
+  return area ? `${area} ${oc}` : oc;
+}

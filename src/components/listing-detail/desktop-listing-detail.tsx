@@ -40,7 +40,9 @@ import {
   type ListingFromOrigin,
   resolveFromOrigin,
 } from "../../lib/listing-origin";
+import { outcodeLocationLabel } from "../../lib/outcode-areas";
 import { sizedPhoto } from "../../lib/photo-size";
+import { propertyKindLabel } from "../../lib/property-kind";
 import { cn } from "../../lib/utils";
 import type {
   ListingDetailHighlight,
@@ -292,6 +294,9 @@ function HeroGallery({ data }: { data: ListingDetailPayload }) {
 
 /* ---------------- Main column ---------------- */
 
+/** Splits a postcode into its parts so we can take the leading outcode. */
+const POSTCODE_PART_RE = /\s+/;
+
 /**
  * Title block — eyebrow · street-name H1 · address+spec subtitle. Lives
  * above the two-column body (full content width) so the side rail's price
@@ -300,16 +305,19 @@ function HeroGallery({ data }: { data: ListingDetailPayload }) {
 function ListingTitle({ data }: { data: ListingDetailPayload }) {
   const { headline, cluster } = data;
   const title = shortAddressTitle(headline.addressRaw);
-  const facts = [
+  const outcode = (headline.postcode ?? cluster.postcode)?.split(
+    POSTCODE_PART_RE
+  )[0];
+  const location = outcodeLocationLabel(outcode);
+  const subtitleParts = [
+    cluster.userAddress ?? headline.addressRaw,
+    propertyKindLabel(headline.propertyKind),
     headline.bedrooms != null ? `${headline.bedrooms} bed` : null,
     headline.bathrooms != null ? `${headline.bathrooms} bath` : null,
     data.fineprint.sizeSqFt
       ? `${data.fineprint.sizeSqFt.toLocaleString("en-GB")} sqft`
       : null,
-  ].filter(Boolean);
-  const subtitleParts = [
-    cluster.userAddress ?? headline.addressRaw,
-    ...facts,
+    location,
   ].filter(Boolean);
 
   return (

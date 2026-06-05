@@ -35,11 +35,12 @@ import {
 import {
   EMPTY_QUEUE_FILTERS,
   QueueFilter,
+  type QueueFilterOptions,
   type QueueFilterable,
   type QueueFilters,
   activeFilterCount,
   matchesQueueFilters,
-  queuePriceBounds,
+  queueFilterOptions,
 } from "../components/review/queue-filter";
 import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
@@ -51,6 +52,8 @@ import {
   type HouseholdValue,
   useHouseholdOptional,
 } from "../lib/household-context";
+import { outcodeLocationLabel } from "../lib/outcode-areas";
+import { propertyKindLabel } from "../lib/property-kind";
 import { queryKeys } from "../lib/query-keys";
 import {
   type ReviewCard,
@@ -446,8 +449,8 @@ function ReviewPage() {
   const filteredQueueItems = queueItems.filter((i) =>
     matchesQueueFilters(queueFilterable(i), filters)
   );
-  const mobilePriceBounds = queuePriceBounds(
-    queueItems.map((i) => i.priceMonthly)
+  const mobileFilterOptions = queueFilterOptions(
+    queueItems.map(queueFilterable)
   );
   useEffect(() => {
     if (!isMobile || filterCount === 0) {
@@ -512,7 +515,7 @@ function ReviewPage() {
         filterCount,
         filters,
         setFilters,
-        mobilePriceBounds,
+        mobileFilterOptions,
         pending,
         pendingAction,
         doSkip,
@@ -538,7 +541,7 @@ function renderMobileReview(args: {
   filterCount: number;
   filters: QueueFilters;
   setFilters: (next: QueueFilters) => void;
-  mobilePriceBounds: { min: number; max: number } | null;
+  mobileFilterOptions: QueueFilterOptions;
   pending: boolean;
   pendingAction: PendingAction;
   doSkip: () => void;
@@ -571,7 +574,7 @@ function renderMobileReview(args: {
           <QueueFilter
             filters={args.filters}
             onChange={args.setFilters}
-            priceBounds={args.mobilePriceBounds}
+            options={args.mobileFilterOptions}
           />
         </div>
       ) : null}
@@ -840,9 +843,16 @@ function buildQueueItems(
     priceValue: item.priceMonthly,
     outcode: item.outcode || "—",
     beds: item.bedrooms,
-    baths: item.bathrooms,
+    bathrooms: item.bathrooms,
     availability: formatAvailability(item.availableFrom, item.availableNow),
+    availableInDays: availableInDays(item.availableFrom, item.availableNow),
     furnished: formatFurnished(item.furnished),
+    propertyKind: item.propertyKind,
+    councilTaxBand: item.councilTaxBand,
+    epcBand: item.epcBand,
+    commuteMinutes: item.commuteMinutes,
+    fttp: item.fttp,
+    portalCount: item.portalCount,
     photo: item.photo ?? FALLBACK_PHOTO,
   }));
 }
@@ -858,9 +868,16 @@ function queueItemFromCard(
     priceValue: hl.priceMonthly,
     outcode: hl.outcode || "—",
     beds: hl.bedrooms,
-    baths: hl.bathrooms,
+    bathrooms: hl.bathrooms,
     availability: formatAvailability(hl.availableFrom, hl.availableNow),
+    availableInDays: availableInDays(hl.availableFrom, hl.availableNow),
     furnished: formatFurnished(hl.furnished),
+    propertyKind: card.propertyKind,
+    councilTaxBand: card.councilTaxBand,
+    epcBand: card.epcRating ?? null,
+    commuteMinutes: card.commuteMinutes,
+    fttp: card.broadband ? card.broadband.fttpAvailable : null,
+    portalCount: card.portalsAlsoOn.length + 1,
     photo: hl.photos[0] ?? FALLBACK_PHOTO,
   };
 }
@@ -877,21 +894,6 @@ function buildHero(card: ReviewCard): DesktopReviewData["hero"] {
     signals: buildSignals(card.features),
     stats: buildStats(card),
   };
-}
-
-/**
- * True when some portal lists this property dearer than the headline — i.e.
- * there's a real spread worth crowning a "cheapest". When every portal
- * shows the same rent (or there's only one), there's no cheapest to mark.
- */
-function clusterHasPriceSpread(card: ReviewCard): boolean {
-  const headlinePrice = card.headlineListing.priceMonthly;
-  if (headlinePrice == null) {
-    return false;
-  }
-  return card.portalsAlsoOn.some(
-    (p) => p.priceMonthly != null && p.priceMonthly > headlinePrice
-  );
 }
 
 const FLAT_PREFIX_RE = /^(?:flat|unit|apartment|apt)\s+\w+\s+/i;
@@ -912,10 +914,18 @@ function streetName(addressRaw: string): string {
   return stripped.length > 0 ? stripped : firstLine;
 }
 
-/** "2 bed · 1 bath · 712 sqft · Listed 2 days ago" — skips unknown fields. */
+/**
+ * "Flat · 2 bed · 1 bath · 712 sqft · Hampstead NW3 · Listed 2 days ago" —
+ * leads with the property kind, ends with the area/postcode, and skips any
+ * field we don't know.
+ */
 function composeSubtitle(card: ReviewCard): string {
   const hl = card.headlineListing;
   const parts: string[] = [];
+  const kind = propertyKindLabel(card.propertyKind);
+  if (kind) {
+    parts.push(kind);
+  }
   if (hl.bedrooms != null) {
     parts.push(`${hl.bedrooms} bed`);
   }
@@ -924,6 +934,10 @@ function composeSubtitle(card: ReviewCard): string {
   }
   if (hl.sizeSqFt != null) {
     parts.push(`${hl.sizeSqFt.toLocaleString("en-GB")} sqft`);
+  }
+  const location = outcodeLocationLabel(hl.outcode);
+  if (location) {
+    parts.push(location);
   }
   parts.push(`Listed ${card.firstSeenLabel}`);
   return parts.join(" · ");
@@ -1056,34 +1070,51 @@ function avatarInitial(nameOrEmail: string | null): string {
 function buildPortals(card: ReviewCard): DesktopReviewData["portals"] {
   const headlinePrice = card.headlineListing.priceMonthly;
   const headlineName = prettyPortal(card.headlineListing.portal);
-  const rows: DesktopReviewData["portals"] = [
+
+  // Dedupe "also on" listings to one row per *distinct* portal — two
+  // Rightmove listings in a cluster collapse into the single headline row,
+  // not a second portal. portalsAlsoOn arrives cheapest-first, so the first
+  // listing kept per portal is that portal's cheapest.
+  const seen = new Set([headlineName]);
+  const otherPortals = card.portalsAlsoOn.filter((p) => {
+    const name = prettyPortal(p.portal);
+    if (seen.has(name)) {
+      return false;
+    }
+    seen.add(name);
+    return true;
+  });
+
+  // Crown the headline "cheapest" only when another distinct portal is
+  // actually dearer. Same-portal duplicates don't count: they collapse into
+  // the headline row, so flagging them left a lone portal wearing the tag.
+  const hasSpread =
+    headlinePrice != null &&
+    otherPortals.some(
+      (p) => p.priceMonthly != null && p.priceMonthly > headlinePrice
+    );
+
+  return [
     {
       portal: headlineName,
       initial: headlineName.charAt(0),
       url: card.headlineListing.url,
       price: formatPrice(headlinePrice),
       delta: null,
-      // Only crown a cheapest when a portal is actually dearer.
-      cheapest: clusterHasPriceSpread(card),
+      cheapest: hasSpread,
     },
+    ...otherPortals.map((p) => {
+      const name = prettyPortal(p.portal);
+      return {
+        portal: name,
+        initial: name.charAt(0),
+        url: p.url,
+        price: formatPrice(p.priceMonthly),
+        delta: portalDelta(headlinePrice, p.priceMonthly),
+        cheapest: false,
+      };
+    }),
   ];
-  const seen = new Set([headlineName]);
-  for (const p of card.portalsAlsoOn) {
-    const name = prettyPortal(p.portal);
-    if (seen.has(name)) {
-      continue;
-    }
-    seen.add(name);
-    rows.push({
-      portal: name,
-      initial: name.charAt(0),
-      url: p.url,
-      price: formatPrice(p.priceMonthly),
-      delta: portalDelta(headlinePrice, p.priceMonthly),
-      cheapest: false,
-    });
-  }
-  return rows;
 }
 
 /** "+£50" style delta vs the cheapest, or null when unknown / equal. */
@@ -1328,16 +1359,54 @@ function formatFurnished(value: string | null): string | null {
   return value ? (FURNISHED_LABELS[value] ?? null) : null;
 }
 
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+/**
+ * Days until move-in for the queue's move-in facet: 0 when the listing is
+ * flagged available now or its date is today/past, a positive day count
+ * for a future date, null when we know neither (so the facet can drop it).
+ */
+function availableInDays(
+  iso: string | null,
+  availableNow: boolean
+): number | null {
+  if (availableNow) {
+    return 0;
+  }
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const now = new Date();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+  return Math.max(0, Math.ceil((date.getTime() - startOfToday.getTime()) / MS_PER_DAY));
+}
+
 /**
  * Normalise a raw queue item into the shape the queue filter reads. The
- * filter's furnishing/availability facets compare against the same
- * formatted labels the rail renders, so we reuse the same formatters.
+ * filter's furnishing facet compares against the same formatted labels the
+ * rail renders, so we reuse the same formatter.
  */
 function queueFilterable(item: ReviewQueueItem): QueueFilterable {
   return {
     beds: item.bedrooms,
+    bathrooms: item.bathrooms,
     furnished: formatFurnished(item.furnished),
-    availability: formatAvailability(item.availableFrom, item.availableNow),
+    availableInDays: availableInDays(item.availableFrom, item.availableNow),
+    outcode: item.outcode,
+    propertyKind: item.propertyKind,
+    councilTaxBand: item.councilTaxBand,
+    epcBand: item.epcBand,
+    commuteMinutes: item.commuteMinutes,
+    fttp: item.fttp,
+    portalCount: item.portalCount,
     priceValue: item.priceMonthly,
   };
 }

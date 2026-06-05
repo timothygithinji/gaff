@@ -43,7 +43,12 @@ import {
 } from "../../../db/schema";
 import { filterFeatures } from "../../lib/ai/feature-filter";
 import type { Features } from "../../lib/ai/prompt";
-import { parseEnrichmentEpc, pickPortalEpcRating, resolveEpc } from "../../lib/epc";
+import {
+  EPC_LETTER_RE,
+  parseEnrichmentEpc,
+  pickPortalEpcRating,
+  resolveEpc,
+} from "../../lib/epc";
 import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
@@ -198,6 +203,8 @@ export type ReviewCard = {
   broadband: ReviewCardBroadband | null;
   /** Council tax band (A–H) published on the headline listing; null if unknown. */
   councilTaxBand: string | null;
+  /** Coarse property kind for the queue's Type facet. */
+  propertyKind: PropertyKind;
   /**
    * Total floor area from the EPC certificate, in sq ft — the fallback for the
    * "Size" stat when no portal published `sizeSqFt`. Null when the EPC carries
@@ -782,6 +789,43 @@ function passesExclusions(
   return true;
 }
 
+/** Coarse property kind for the review-queue Type facet. */
+export type PropertyKind = "flat" | "house" | "studio" | "share" | "other";
+
+const HOUSE_SHARE_RE = new RegExp(EXCLUSION_PATTERNS.house_share, "i");
+const STUDIO_RE = /studio/i;
+const FLAT_RE = /\b(?:flat|apartment|maisonette)\b/i;
+const HOUSE_RE =
+  /\b(?:house|bungalow|cottage|terrace[d]?|detached|semi|mews|town\s*house)\b/i;
+
+/**
+ * Bucket a listing into a coarse kind for the queue's Type filter. Shares
+ * are detected with the same pattern the exclusions backstop uses (see
+ * {@link EXCLUSION_PATTERNS}) so an ad-hoc "hide shares" toggle and the
+ * search-level `house_share` exclusion classify identically. Tested
+ * share → studio → flat → house so the specific labels win over a generic
+ * "house" hiding in the title.
+ */
+export function classifyPropertyKind(
+  propertyType: string | null,
+  title: string
+): PropertyKind {
+  const hay = `${propertyType ?? ""} ${title}`;
+  if (HOUSE_SHARE_RE.test(hay)) {
+    return "share";
+  }
+  if (STUDIO_RE.test(hay)) {
+    return "studio";
+  }
+  if (FLAT_RE.test(hay)) {
+    return "flat";
+  }
+  if (HOUSE_RE.test(hay)) {
+    return "house";
+  }
+  return "other";
+}
+
 /**
  * Approximate minutes-per-mile by travel mode, used to turn a transport
  * target's `maxMinutes` into a reachable straight-line distance. The
@@ -1299,6 +1343,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       ),
       broadband: asBroadband(enrichment?.broadband),
       councilTaxBand: headline.councilTaxBand ?? null,
+      propertyKind: classifyPropertyKind(headline.propertyType, headline.title),
       epcFloorAreaSqFt,
       leftToday: clusterIds.length,
       searchId: headline.searchId ?? "",
@@ -1335,6 +1380,16 @@ export type ReviewQueueItem = {
   availableNow: boolean;
   /** Furnishing status; null = unknown. */
   furnished: FurnishedStatus | null;
+  /** Coarse property kind for the queue's Type facet. */
+  propertyKind: PropertyKind;
+  /** Council tax band letter (typically A–H); null = unknown. */
+  councilTaxBand: string | null;
+  /** Resolved EPC band letter (A–G), building-specific; null = unknown. */
+  epcBand: string | null;
+  /** Best-case commute minutes across the search's targets; null = no enrichment yet. */
+  commuteMinutes: number | null;
+  /** Gigabit/FTTP available at the postcode; null = unknown (no enrichment). */
+  fttp: boolean | null;
   photo: string | null;
   portalCount: number;
 };
@@ -1410,13 +1465,18 @@ async function hydrateQueueItems(
       bedrooms: listings.bedrooms,
       bathrooms: listings.bathrooms,
       priceMonthly: listings.priceMonthly,
+      propertyType: listings.propertyType,
+      councilTaxBand: listings.councilTaxBand,
       availableFrom: listings.availableFrom,
       // Furnishing + availability live in the detail blob / summary tags,
       // not columns — pull just those bits out of JSONB rather than
       // hauling the whole rawJson per queue row. `tags` backstops the
       // sparse detail-scrape fields (see `deriveFurnished`/`resolveAvailability`).
+      // `epcRating` is the portal-published band, scanned across the cluster
+      // (OpenRent never publishes one) for the EPC facet.
       furnished: sql<string | null>`${listings.rawJson}->>'furnished'`,
       tags: sql<string[] | null>`${listings.rawJson}->'tags'`,
+      epcRating: sql<string | null>`${listings.rawJson}->>'epcRating'`,
     })
     .from(listings)
     .innerJoin(searches, eq(listings.searchId, searches.id))
@@ -1430,9 +1490,17 @@ async function hydrateQueueItems(
       )
     );
 
+  // Portal-published EPC band — first usable A–G letter on any listing in
+  // the cluster (mirrors `pickPortalEpcRating`; OpenRent never publishes one).
+  const portalEpcOf = (raw: string | null): string | null => {
+    const letter = (raw ?? "").trim().toUpperCase();
+    return EPC_LETTER_RE.test(letter) ? letter : null;
+  };
+
   type GroupedCluster = {
     headline: (typeof rows)[number];
     portals: Set<string>;
+    portalEpc: string | null;
   };
   const grouped = new Map<string, GroupedCluster>();
   for (const row of rows) {
@@ -1444,10 +1512,12 @@ async function hydrateQueueItems(
       grouped.set(row.clusterId, {
         headline: row,
         portals: new Set([row.portal]),
+        portalEpc: portalEpcOf(row.epcRating),
       });
       continue;
     }
     existing.portals.add(row.portal);
+    existing.portalEpc = existing.portalEpc ?? portalEpcOf(row.epcRating);
     if (isCheaper(row.priceMonthly, existing.headline.priceMonthly)) {
       existing.headline = row;
     }
@@ -1456,10 +1526,10 @@ async function hydrateQueueItems(
   const headlineListingIds = Array.from(grouped.values()).map(
     (g) => g.headline.id
   );
-  const photoByListingId = await loadFirstPhotoByListing(
-    db,
-    headlineListingIds
-  );
+  const [photoByListingId, enrichmentByListingId] = await Promise.all([
+    loadFirstPhotoByListing(db, headlineListingIds),
+    loadHeadlineEnrichments(db, headlineListingIds),
+  ]);
 
   return upcomingClusterIds
     .map((clusterId): ReviewQueueItem | null => {
@@ -1474,6 +1544,8 @@ async function hydrateQueueItems(
         g.headline.availableFrom,
         headlineTags
       );
+      const enr = enrichmentByListingId.get(g.headline.id);
+      const epc = resolveEpc(g.portalEpc, parseEnrichmentEpc(enr?.epc));
       return {
         clusterId,
         searchId: g.headline.searchId ?? "",
@@ -1487,6 +1559,14 @@ async function hydrateQueueItems(
         availableFrom: headlineAvail.iso,
         availableNow: headlineAvail.now,
         furnished: deriveFurnished(g.headline.furnished, headlineTags),
+        propertyKind: classifyPropertyKind(
+          g.headline.propertyType,
+          g.headline.title
+        ),
+        councilTaxBand: g.headline.councilTaxBand ?? null,
+        epcBand: epc?.rating ?? null,
+        commuteMinutes: pickSoonestCommute(enr?.commuteMinutes),
+        fttp: enr?.broadband ? enr.broadband.fttpAvailable === true : null,
         photo: photoByListingId.get(g.headline.id) ?? null,
         portalCount: g.portals.size,
       };
@@ -1532,6 +1612,59 @@ async function loadFirstPhotoByListing(
     }
   }
   return byListingId;
+}
+
+/**
+ * The latest enrichment per headline listing — just the bits the queue
+ * facets need (EPC / commute / broadband). Mirrors the card's "greatest
+ * prompt_version wins" rule (see `getNextReviewCard`) by ordering desc and
+ * keeping the first row seen per listing. Second round-trip, same pattern
+ * as {@link loadFirstPhotoByListing}, so the main grouped query stays lean.
+ */
+async function loadHeadlineEnrichments(
+  db: Db,
+  listingIds: string[]
+): Promise<
+  Map<
+    string,
+    {
+      epc: typeof enrichments.$inferSelect.epc;
+      commuteMinutes: typeof enrichments.$inferSelect.commuteMinutes;
+      broadband: typeof enrichments.$inferSelect.broadband;
+    }
+  >
+> {
+  const out = new Map<
+    string,
+    {
+      epc: typeof enrichments.$inferSelect.epc;
+      commuteMinutes: typeof enrichments.$inferSelect.commuteMinutes;
+      broadband: typeof enrichments.$inferSelect.broadband;
+    }
+  >();
+  if (listingIds.length === 0) {
+    return out;
+  }
+  const rows = await db
+    .select({
+      listingId: enrichments.listingId,
+      epc: enrichments.epc,
+      commuteMinutes: enrichments.commuteMinutes,
+      broadband: enrichments.broadband,
+    })
+    .from(enrichments)
+    .where(inArray(enrichments.listingId, listingIds))
+    .orderBy(desc(enrichments.promptVersion));
+  for (const r of rows) {
+    if (!out.has(r.listingId)) {
+      out.set(r.listingId, {
+        epc: r.epc,
+        commuteMinutes: r.commuteMinutes,
+        broadband: r.broadband,
+      });
+    }
+  }
+  return out;
 }
 
 /**

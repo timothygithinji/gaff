@@ -1,6 +1,7 @@
 /**
  * Queue filter — narrows the desktop Review "Up next" rail by bedrooms,
- * furnishing, availability, and a max-price ceiling.
+ * furnishing, availability, location (postcode area + outcode), and a
+ * max-price ceiling.
  *
  * Purely client-side over the already-loaded queue: it transforms the
  * `items` the rail already has, so there's no refetch and the server
@@ -19,39 +20,103 @@ import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Slider } from "../ui/slider";
 
+/** How soon a listing is available — the move-in facet's choices. */
+export type MoveInWindow = "any" | "now" | "1m" | "2m";
+
 export type QueueFilters = {
   /** Selected bedroom counts; `4` stands for "4+". Empty = any. */
   beds: number[];
+  /** Selected bathroom counts; `3` stands for "3+". Empty = any. */
+  bathrooms: number[];
   /** Selected furnishing labels ("Furnished" / …). Empty = any. */
   furnished: string[];
-  /** Restrict to "Avail now" listings when true. */
-  availableNow: boolean;
+  /** Move-in window; "any" = no restriction. */
+  moveIn: MoveInWindow;
+  /** Selected postcode-area prefixes ("SE", "N", …). Empty = any. */
+  areas: string[];
+  /** Selected full outcodes ("SE15", "N1", …). Empty = any. */
+  outcodes: string[];
+  /** Selected property kinds ("flat" / "house" / …). Empty = any. */
+  types: string[];
+  /** Drop house-shares / rooms in a shared house when true. */
+  hideShares: boolean;
+  /** Selected council-tax bands ("A"–"H"). Empty = any. */
+  councilTax: string[];
+  /** Selected EPC bands ("A"–"G"). Empty = any. */
+  epc: string[];
+  /** Inclusive commute-minutes ceiling; null = no ceiling. */
+  maxCommute: number | null;
+  /** Restrict to gigabit/FTTP-capable postcodes when true. */
+  fttpOnly: boolean;
+  /** Restrict to clusters listed on more than one portal when true. */
+  crossListedOnly: boolean;
+  /** Inclusive monthly-rent floor; null = no floor. */
+  minPrice: number | null;
   /** Inclusive monthly-rent ceiling; null = no ceiling. */
   maxPrice: number | null;
 };
 
 export const EMPTY_QUEUE_FILTERS: QueueFilters = {
   beds: [],
+  bathrooms: [],
   furnished: [],
-  availableNow: false,
+  moveIn: "any",
+  areas: [],
+  outcodes: [],
+  types: [],
+  hideShares: false,
+  councilTax: [],
+  epc: [],
+  maxCommute: null,
+  fttpOnly: false,
+  crossListedOnly: false,
+  minPrice: null,
   maxPrice: null,
 };
 
 // `4` is the open-ended "4+" bucket; the others match exactly.
 const BED_OPTIONS = [1, 2, 3, 4] as const;
+// `3` is the open-ended "3+" bucket.
+const BATH_OPTIONS = [1, 2, 3] as const;
 // Mirrors the labels `formatFurnished` writes onto each queue item.
 const FURNISHED_OPTIONS = [
   "Furnished",
   "Unfurnished",
   "Part furnished",
 ] as const;
+// Move-in window chips ("any" is the cleared state, so it has no chip).
+const MOVE_IN_OPTIONS: ReadonlyArray<{ value: MoveInWindow; label: string }> = [
+  { value: "now", label: "Now" },
+  { value: "1m", label: "≤ 1 month" },
+  { value: "2m", label: "≤ 2 months" },
+];
+// Property-kind chip labels + render order. "share" has no chip — it's
+// governed by the dedicated "Hide shares" toggle instead.
+const TYPE_ORDER = ["flat", "house", "studio", "other"] as const;
+const TYPE_LABELS: Record<string, string> = {
+  flat: "Flat",
+  house: "House",
+  studio: "Studio",
+  other: "Other",
+};
 
 /** How many facets are actively narrowing the queue (drives the badge). */
 export function activeFilterCount(f: QueueFilters): number {
   return (
     (f.beds.length > 0 ? 1 : 0) +
+    (f.bathrooms.length > 0 ? 1 : 0) +
     (f.furnished.length > 0 ? 1 : 0) +
-    (f.availableNow ? 1 : 0) +
+    (f.moveIn !== "any" ? 1 : 0) +
+    (f.areas.length > 0 ? 1 : 0) +
+    (f.outcodes.length > 0 ? 1 : 0) +
+    (f.types.length > 0 ? 1 : 0) +
+    (f.hideShares ? 1 : 0) +
+    (f.councilTax.length > 0 ? 1 : 0) +
+    (f.epc.length > 0 ? 1 : 0) +
+    (f.maxCommute != null ? 1 : 0) +
+    (f.fttpOnly ? 1 : 0) +
+    (f.crossListedOnly ? 1 : 0) +
+    (f.minPrice != null ? 1 : 0) +
     (f.maxPrice != null ? 1 : 0)
   );
 }
@@ -59,43 +124,188 @@ export function activeFilterCount(f: QueueFilters): number {
 /** The minimal item shape the filter reads — a subset of the rail item. */
 export type QueueFilterable = {
   beds: number | null;
+  bathrooms: number | null;
   furnished: string | null;
-  availability: string | null;
+  /** Days until move-in; 0 = available now/immediately, null = unknown. */
+  availableInDays: number | null;
+  /** Outcode, e.g. "SE15"; null = unknown. Backs the area + postcode facets. */
+  outcode: string | null;
+  /** Coarse property kind ("flat" / "house" / "studio" / "share" / "other"). */
+  propertyKind: string | null;
+  councilTaxBand: string | null;
+  epcBand: string | null;
+  commuteMinutes: number | null;
+  /** Gigabit/FTTP available; null = unknown. */
+  fttp: boolean | null;
+  /** Distinct portals this cluster is listed on. */
+  portalCount: number;
   priceValue: number | null;
 };
+
+/** Leading-letters of an outcode — the postcode area, e.g. "SE15" → "SE". */
+const OUTCODE_AREA_RE = /^[A-Z]+/;
+
+/**
+ * Postcode-area prefix of an outcode — the leading letters, e.g. "SE15" →
+ * "SE", "N1" → "N", "EC1A" → "EC". This is the standard London "postcode
+ * area" and groups every outcode under it (all of South-East under "SE").
+ */
+export function outcodeArea(outcode: string): string {
+  const upper = outcode.toUpperCase();
+  const match = upper.match(OUTCODE_AREA_RE);
+  return match ? match[0] : upper;
+}
+
+/**
+ * Distinct postcode areas + outcodes present across the (unfiltered) queue,
+ * each sorted for stable chip order. Built from the rows the rail already
+ * holds so the option lists only ever show locations that are actually in
+ * the queue — same client-side, no-refetch contract as {@link queuePriceBounds}.
+ */
+export function queueLocationOptions(
+  outcodes: Array<string | null>
+): { areas: string[]; outcodes: string[] } {
+  const seen = outcodes.filter((o): o is string => Boolean(o)).map((o) =>
+    o.toUpperCase()
+  );
+  const areas = [...new Set(seen.map(outcodeArea))].sort();
+  const uniqueOutcodes = [...new Set(seen)].sort((a, b) =>
+    a.localeCompare(b, "en", { numeric: true })
+  );
+  return { areas, outcodes: uniqueOutcodes };
+}
 
 /**
  * True when an item survives every active facet. A facet with no
  * selection is a no-op. Items missing the field a facet narrows on are
  * dropped (you asked for 2-beds; a bed-less row isn't a 2-bed) — except
  * price, where a null follows the codebase's "unknown price is kept"
- * convention so a missing rent never silently hides a listing.
+ * convention so a missing rent never silently hides a listing. Each facet
+ * is its own predicate so the whole thing reads as a flat AND.
  */
 export function matchesQueueFilters(
   item: QueueFilterable,
   f: QueueFilters
 ): boolean {
-  if (f.beds.length > 0) {
-    const beds = item.beds;
-    if (beds == null) {
-      return false;
-    }
-    const hit = f.beds.some((b) => (b === 4 ? beds >= 4 : beds === b));
-    if (!hit) {
-      return false;
-    }
+  return (
+    matchesCount(item.beds, f.beds, 4) &&
+    matchesCount(item.bathrooms, f.bathrooms, 3) &&
+    matchesFurnished(item.furnished, f.furnished) &&
+    matchesMoveIn(item.availableInDays, f.moveIn) &&
+    matchesLocation(item.outcode, f) &&
+    matchesType(item.propertyKind, f) &&
+    matchesBand(item.councilTaxBand, f.councilTax) &&
+    matchesBand(item.epcBand, f.epc) &&
+    matchesCommute(item.commuteMinutes, f.maxCommute) &&
+    matchesFttp(item.fttp, f.fttpOnly) &&
+    (!f.crossListedOnly || item.portalCount > 1) &&
+    matchesPrice(item.priceValue, f.minPrice, f.maxPrice)
+  );
+}
+
+/** Bed/bath count facet; `plus` is the open-ended top bucket ("4+"/"3+"). */
+function matchesCount(
+  value: number | null,
+  selected: number[],
+  plus: number
+): boolean {
+  if (selected.length === 0) {
+    return true;
   }
-  if (f.furnished.length > 0 && !(item.furnished && f.furnished.includes(item.furnished))) {
-      return false;
-    }
-  if (f.availableNow && item.availability !== "Avail now") {
+  if (value == null) {
     return false;
   }
-  if (
-    f.maxPrice != null &&
-    item.priceValue != null &&
-    item.priceValue > f.maxPrice
-  ) {
+  return selected.some((n) => (n === plus ? value >= plus : value === n));
+}
+
+function matchesFurnished(value: string | null, selected: string[]): boolean {
+  if (selected.length === 0) {
+    return true;
+  }
+  return Boolean(value && selected.includes(value));
+}
+
+/** Move-in window — unknown availability drops once a window is chosen. */
+function matchesMoveIn(days: number | null, w: MoveInWindow): boolean {
+  if (w === "any") {
+    return true;
+  }
+  if (days == null) {
+    return false;
+  }
+  if (w === "now") {
+    return days <= 0;
+  }
+  return days <= (w === "1m" ? 31 : 62);
+}
+
+/** Type chips AND with the "hide shares" toggle (shares have no chip). */
+function matchesType(kind: string | null, f: QueueFilters): boolean {
+  if (f.hideShares && kind === "share") {
+    return false;
+  }
+  if (f.types.length === 0) {
+    return true;
+  }
+  return Boolean(kind && f.types.includes(kind));
+}
+
+/** Council-tax / EPC band facet; bands compared case-insensitively. */
+function matchesBand(band: string | null, selected: string[]): boolean {
+  if (selected.length === 0) {
+    return true;
+  }
+  return Boolean(band && selected.includes(band.toUpperCase()));
+}
+
+function matchesCommute(mins: number | null, max: number | null): boolean {
+  if (max == null) {
+    return true;
+  }
+  return mins != null && mins <= max;
+}
+
+function matchesFttp(fttp: boolean | null, only: boolean): boolean {
+  if (!only) {
+    return true;
+  }
+  return fttp === true;
+}
+
+function matchesPrice(
+  price: number | null,
+  min: number | null,
+  max: number | null
+): boolean {
+  if (price == null) {
+    return true;
+  }
+  if (min != null && price < min) {
+    return false;
+  }
+  if (max != null && price > max) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Area + outcode facets. They share the "drop when unknown" rule with beds
+ * — you asked for SE15; a row with no outcode can't be vouched for — and
+ * AND together (area narrows the region, outcode pins a district).
+ */
+function matchesLocation(outcode: string | null, f: QueueFilters): boolean {
+  if (f.areas.length === 0 && f.outcodes.length === 0) {
+    return true;
+  }
+  if (!outcode) {
+    return false;
+  }
+  const upper = outcode.toUpperCase();
+  if (f.areas.length > 0 && !f.areas.includes(outcodeArea(upper))) {
+    return false;
+  }
+  if (f.outcodes.length > 0 && !f.outcodes.includes(upper)) {
     return false;
   }
   return true;
@@ -119,31 +329,122 @@ export function queuePriceBounds(
   return max > min ? { min, max } : null;
 }
 
+/** Commute-minute bounds, snapped to 5 min. Null when there's no spread. */
+function commuteBounds(
+  values: Array<number | null>
+): { min: number; max: number } | null {
+  const real = values.filter((v): v is number => v != null);
+  if (real.length < 2) {
+    return null;
+  }
+  const min = Math.floor(Math.min(...real) / 5) * 5;
+  const max = Math.ceil(Math.max(...real) / 5) * 5;
+  return max > min ? { min, max } : null;
+}
+
+/** Distinct, sorted band letters present across the queue. */
+function bandsPresent(values: Array<string | null>): string[] {
+  return [
+    ...new Set(
+      values.flatMap((v) => (v ? [v.toUpperCase()] : []))
+    ),
+  ].sort();
+}
+
+/** Everything the filter popover needs to know about the live queue. */
+export type QueueFilterOptions = {
+  areas: string[];
+  outcodes: string[];
+  /** Any row carries a bathroom count (gates the Bathrooms chips). */
+  bathsPresent: boolean;
+  /** Property kinds present, excluding "share" (ordered for chips). */
+  types: string[];
+  /** At least one share is in the queue (gates the "Hide shares" toggle). */
+  hasShares: boolean;
+  councilTax: string[];
+  epc: string[];
+  /** Commute slider bounds; null hides the slider. */
+  commute: { min: number; max: number } | null;
+  /** Any row has known broadband (gates the FTTP toggle). */
+  hasFttpData: boolean;
+  /** Any cluster is listed on >1 portal (gates the cross-listed toggle). */
+  hasCrossListed: boolean;
+  /** Price slider bounds; null hides the slider. */
+  price: { min: number; max: number } | null;
+};
+
+/**
+ * Derive every facet's option list from the rows the rail already holds, so
+ * the popover only ever offers values that are actually in the queue (no
+ * empty "EPC: A" chip when nothing is rated A). Same no-refetch contract as
+ * the rest of the filter.
+ */
+export function queueFilterOptions(
+  items: QueueFilterable[]
+): QueueFilterOptions {
+  const loc = queueLocationOptions(items.map((i) => i.outcode));
+  const kinds = new Set(
+    items.flatMap((i) => (i.propertyKind ? [i.propertyKind] : []))
+  );
+  return {
+    areas: loc.areas,
+    outcodes: loc.outcodes,
+    bathsPresent: items.some((i) => i.bathrooms != null),
+    types: TYPE_ORDER.filter((k) => kinds.has(k)),
+    hasShares: kinds.has("share"),
+    councilTax: bandsPresent(items.map((i) => i.councilTaxBand)),
+    epc: bandsPresent(items.map((i) => i.epcBand)),
+    commute: commuteBounds(items.map((i) => i.commuteMinutes)),
+    hasFttpData: items.some((i) => i.fttp != null),
+    hasCrossListed: items.some((i) => i.portalCount > 1),
+    price: queuePriceBounds(items.map((i) => i.priceValue)),
+  };
+}
+
 type Props = {
   filters: QueueFilters;
   onChange: (next: QueueFilters) => void;
-  /** Price range across the unfiltered queue; null hides the slider. */
-  priceBounds: { min: number; max: number } | null;
+  /** Facet option lists derived from the unfiltered queue. */
+  options: QueueFilterOptions;
 };
 
-export function QueueFilter({ filters, onChange, priceBounds }: Props) {
+/** Add/remove `value` from a chip-set, optionally re-sorting. */
+function toggle<T>(list: T[], value: T, sort?: (a: T, z: T) => number): T[] {
+  const next = list.includes(value)
+    ? list.filter((x) => x !== value)
+    : [...list, value];
+  return sort ? next.sort(sort) : next;
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: a flat list of independent, self-gating facet sections — the "complexity" is breadth (one block per facet), not nested logic.
+export function QueueFilter({ filters, onChange, options }: Props) {
   const count = activeFilterCount(filters);
+  const set = (patch: Partial<QueueFilters>) =>
+    onChange({ ...filters, ...patch });
 
-  const toggleBed = (b: number) =>
-    onChange({
-      ...filters,
-      beds: filters.beds.includes(b)
-        ? filters.beds.filter((x) => x !== b)
-        : [...filters.beds, b].sort((a, z) => a - z),
+  const toggleArea = (area: string) => {
+    const on = filters.areas.includes(area);
+    set({
+      areas: on
+        ? filters.areas.filter((x) => x !== area)
+        : [...filters.areas, area].sort(),
+      // Dropping an area also drops any outcode it owned, so a hidden
+      // outcode chip can't keep silently narrowing the queue.
+      outcodes: on
+        ? filters.outcodes.filter((o) => outcodeArea(o) !== area)
+        : filters.outcodes,
     });
+  };
 
-  const toggleFurnished = (label: string) =>
-    onChange({
-      ...filters,
-      furnished: filters.furnished.includes(label)
-        ? filters.furnished.filter((x) => x !== label)
-        : [...filters.furnished, label],
-    });
+  const byOutcode = (a: string, b: string) =>
+    a.localeCompare(b, "en", { numeric: true });
+
+  // When areas are picked, the postcode list trims to those areas — the two
+  // facets read as coarse → fine rather than two clashing lists.
+  const visibleOutcodes =
+    filters.areas.length > 0
+      ? options.outcodes.filter((o) => filters.areas.includes(outcodeArea(o)))
+      : options.outcodes;
 
   return (
     <Popover>
@@ -163,14 +464,19 @@ export function QueueFilter({ filters, onChange, priceBounds }: Props) {
           </span>
         ) : null}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-60 gap-3.5">
+      <PopoverContent
+        align="end"
+        className="max-h-[70vh] w-60 gap-3.5 overflow-y-auto"
+      >
         <Section label="Bedrooms">
           <div className="flex flex-wrap gap-1.5">
             {BED_OPTIONS.map((b) => (
               <Chip
                 active={filters.beds.includes(b)}
                 key={b}
-                onClick={() => toggleBed(b)}
+                onClick={() =>
+                  set({ beds: toggle(filters.beds, b, (a, z) => a - z) })
+                }
               >
                 {b === 4 ? "4+" : b}
               </Chip>
@@ -178,13 +484,33 @@ export function QueueFilter({ filters, onChange, priceBounds }: Props) {
           </div>
         </Section>
 
+        {options.bathsPresent ? (
+          <Section label="Bathrooms">
+            <div className="flex flex-wrap gap-1.5">
+              {BATH_OPTIONS.map((b) => (
+                <Chip
+                  active={filters.bathrooms.includes(b)}
+                  key={b}
+                  onClick={() =>
+                    set({
+                      bathrooms: toggle(filters.bathrooms, b, (a, z) => a - z),
+                    })
+                  }
+                >
+                  {b === 3 ? "3+" : b}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
         <Section label="Furnishing">
           <div className="flex flex-wrap gap-1.5">
             {FURNISHED_OPTIONS.map((label) => (
               <Chip
                 active={filters.furnished.includes(label)}
                 key={label}
-                onClick={() => toggleFurnished(label)}
+                onClick={() => set({ furnished: toggle(filters.furnished, label) })}
               >
                 {label}
               </Chip>
@@ -192,40 +518,193 @@ export function QueueFilter({ filters, onChange, priceBounds }: Props) {
           </div>
         </Section>
 
-        <Section label="Availability">
-          <Chip
-            active={filters.availableNow}
-            onClick={() =>
-              onChange({ ...filters, availableNow: !filters.availableNow })
-            }
-          >
-            Available now
-          </Chip>
+        {options.types.length > 0 || options.hasShares ? (
+          <Section label="Type">
+            <div className="flex flex-wrap gap-1.5">
+              {options.types.map((kind) => (
+                <Chip
+                  active={filters.types.includes(kind)}
+                  key={kind}
+                  onClick={() => set({ types: toggle(filters.types, kind) })}
+                >
+                  {TYPE_LABELS[kind] ?? kind}
+                </Chip>
+              ))}
+              {options.hasShares ? (
+                <Chip
+                  active={filters.hideShares}
+                  onClick={() => set({ hideShares: !filters.hideShares })}
+                >
+                  Hide shares
+                </Chip>
+              ) : null}
+            </div>
+          </Section>
+        ) : null}
+
+        {options.areas.length > 1 ? (
+          <Section label="Area">
+            <div className="flex flex-wrap gap-1.5">
+              {options.areas.map((area) => (
+                <Chip
+                  active={filters.areas.includes(area)}
+                  key={area}
+                  onClick={() => toggleArea(area)}
+                >
+                  {area}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
+        {visibleOutcodes.length > 1 ? (
+          <Section label="Postcode">
+            <div className="flex flex-wrap gap-1.5">
+              {visibleOutcodes.map((outcode) => (
+                <Chip
+                  active={filters.outcodes.includes(outcode)}
+                  key={outcode}
+                  onClick={() =>
+                    set({
+                      outcodes: toggle(filters.outcodes, outcode, byOutcode),
+                    })
+                  }
+                >
+                  {outcode}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
+        <Section label="Move-in">
+          <div className="flex flex-wrap gap-1.5">
+            {MOVE_IN_OPTIONS.map(({ value, label }) => (
+              <Chip
+                active={filters.moveIn === value}
+                key={value}
+                onClick={() =>
+                  set({ moveIn: filters.moveIn === value ? "any" : value })
+                }
+              >
+                {label}
+              </Chip>
+            ))}
+          </div>
         </Section>
 
-        {priceBounds ? (
+        {options.commute ? (
           <Section
-            label="Max price"
+            label="Max commute"
             value={
-              filters.maxPrice != null
-                ? `£${filters.maxPrice.toLocaleString("en-GB")}`
+              filters.maxCommute != null
+                ? `${filters.maxCommute} min`
                 : "Any"
             }
           >
             <Slider
-              max={priceBounds.max}
-              min={priceBounds.min}
+              max={options.commute.max}
+              min={options.commute.min}
               onValueChange={(value) => {
                 const next = Array.isArray(value) ? value[0] : value;
-                onChange({
-                  ...filters,
-                  // Snap the top of the range back to "no ceiling" so the
-                  // facet count + chip clear cleanly at the max.
-                  maxPrice: next >= priceBounds.max ? null : next,
+                set({
+                  maxCommute:
+                    next >= (options.commute?.max ?? next) ? null : next,
+                });
+              }}
+              step={5}
+              value={[filters.maxCommute ?? options.commute.max]}
+            />
+          </Section>
+        ) : null}
+
+        {options.epc.length > 0 ? (
+          <Section label="EPC">
+            <div className="flex flex-wrap gap-1.5">
+              {options.epc.map((band) => (
+                <Chip
+                  active={filters.epc.includes(band)}
+                  key={band}
+                  onClick={() => set({ epc: toggle(filters.epc, band) })}
+                >
+                  {band}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
+        {options.councilTax.length > 0 ? (
+          <Section label="Council tax">
+            <div className="flex flex-wrap gap-1.5">
+              {options.councilTax.map((band) => (
+                <Chip
+                  active={filters.councilTax.includes(band)}
+                  key={band}
+                  onClick={() =>
+                    set({ councilTax: toggle(filters.councilTax, band) })
+                  }
+                >
+                  {band}
+                </Chip>
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
+        {options.hasFttpData || options.hasCrossListed ? (
+          <Section label="More">
+            <div className="flex flex-wrap gap-1.5">
+              {options.hasFttpData ? (
+                <Chip
+                  active={filters.fttpOnly}
+                  onClick={() => set({ fttpOnly: !filters.fttpOnly })}
+                >
+                  Gigabit / FTTP
+                </Chip>
+              ) : null}
+              {options.hasCrossListed ? (
+                <Chip
+                  active={filters.crossListedOnly}
+                  onClick={() =>
+                    set({ crossListedOnly: !filters.crossListedOnly })
+                  }
+                >
+                  Cross-listed
+                </Chip>
+              ) : null}
+            </div>
+          </Section>
+        ) : null}
+
+        {options.price ? (
+          <Section
+            label="Price"
+            value={priceRangeLabel(filters, options.price)}
+          >
+            <Slider
+              max={options.price.max}
+              min={options.price.min}
+              onValueChange={(value) => {
+                const range = Array.isArray(value) ? value : [value];
+                const [lo, hi] = range;
+                const bounds = options.price;
+                if (!bounds) {
+                  return;
+                }
+                set({
+                  // Snap each handle back to "no bound" at the extremes so
+                  // the facet count + label clear cleanly.
+                  minPrice: lo <= bounds.min ? null : lo,
+                  maxPrice: hi >= bounds.max ? null : hi,
                 });
               }}
               step={50}
-              value={[filters.maxPrice ?? priceBounds.max]}
+              value={[
+                filters.minPrice ?? options.price.min,
+                filters.maxPrice ?? options.price.max,
+              ]}
             />
           </Section>
         ) : null}
@@ -242,6 +721,26 @@ export function QueueFilter({ filters, onChange, priceBounds }: Props) {
       </PopoverContent>
     </Popover>
   );
+}
+
+/** "£1,200 – £2,800" / "≤ £2,800" / "≥ £1,200" / "Any" for the price header. */
+function priceRangeLabel(
+  f: QueueFilters,
+  bounds: { min: number; max: number }
+): string {
+  const fmt = (n: number) => `£${n.toLocaleString("en-GB")}`;
+  const lo = f.minPrice != null && f.minPrice > bounds.min ? f.minPrice : null;
+  const hi = f.maxPrice != null && f.maxPrice < bounds.max ? f.maxPrice : null;
+  if (lo != null && hi != null) {
+    return `${fmt(lo)} – ${fmt(hi)}`;
+  }
+  if (hi != null) {
+    return `≤ ${fmt(hi)}`;
+  }
+  if (lo != null) {
+    return `≥ ${fmt(lo)}`;
+  }
+  return "Any";
 }
 
 function Section({
