@@ -32,6 +32,15 @@ import {
   DesktopReview,
   type DesktopReviewData,
 } from "../components/review/desktop-review";
+import {
+  EMPTY_QUEUE_FILTERS,
+  QueueFilter,
+  type QueueFilterable,
+  type QueueFilters,
+  activeFilterCount,
+  matchesQueueFilters,
+  queuePriceBounds,
+} from "../components/review/queue-filter";
 import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
@@ -175,6 +184,11 @@ function ReviewPage() {
   const searchesList = searchesQuery.data ?? [];
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  // Queue filter state, shared by the desktop rail and the mobile card
+  // stream (see queue-filter.tsx). On desktop it narrows the rail; on
+  // mobile, where there's no rail, the pin effect below uses it to choose
+  // which card to show.
+  const [filters, setFilters] = useState<QueueFilters>(EMPTY_QUEUE_FILTERS);
   // Surface the first query error we see so silent failures stop
   // masquerading as "empty queue" via the placeholder fallback.
   const queryError =
@@ -422,6 +436,33 @@ function ReviewPage() {
     meta: { category: "Review", description: "Next in queue" },
   });
 
+  // The same queue filter, applied to the mobile card stream. Mobile has
+  // no rail to narrow, so instead the filter pins the single card to the
+  // first listing that still matches; desktop keeps its independent hero,
+  // so the pin is gated to mobile. It rides the existing `clusterId` URL
+  // param — a swipe clears it (onSettled) and this re-pins to the next
+  // match. `filteredQueueItems` also feeds the mobile count + empty state.
+  const filterCount = activeFilterCount(filters);
+  const filteredQueueItems = queueItems.filter((i) =>
+    matchesQueueFilters(queueFilterable(i), filters)
+  );
+  const mobilePriceBounds = queuePriceBounds(
+    queueItems.map((i) => i.priceMonthly)
+  );
+  useEffect(() => {
+    if (!isMobile || filterCount === 0) {
+      return;
+    }
+    // Already showing a matching card (or it's mid-load) → leave it.
+    if (card && filteredQueueItems.some((i) => i.clusterId === card.cluster.id)) {
+      return;
+    }
+    const target = filteredQueueItems[0]?.clusterId ?? null;
+    if (target && target !== clusterId) {
+      navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: target }) });
+    }
+  }, [isMobile, filterCount, filteredQueueItems, card, clusterId, navigate]);
+
   const banner = error ?? queryError;
   // Three rendering states for the hero column:
   //   - `card` present     → real review card (covers in-flight swipes
@@ -453,6 +494,8 @@ function ReviewPage() {
         pending,
         pendingAction,
         queryError,
+        filters,
+        setFilters,
         doSkip,
         doShortlist,
         doUndo,
@@ -461,26 +504,97 @@ function ReviewPage() {
         navigate,
       })}
 
-      <div className="mx-auto flex min-h-screen max-w-md flex-col bg-background pb-24 sm:max-w-2xl lg:hidden">
-        <ReviewHeader
-          leftToday={card?.leftToday ?? 0}
-          searchPill={card?.searchPill}
-        />
-
-        {renderMobileHero({
-          card,
-          isCardLoading,
-          pending,
-          pendingAction,
-          doSkip,
-          doShortlist,
-          doUndo,
-          doOpenDetail,
-        })}
-
-        <BottomNav />
-      </div>
+      {renderMobileReview({
+        card,
+        isCardLoading,
+        queueItems,
+        filteredQueueItems,
+        filterCount,
+        filters,
+        setFilters,
+        mobilePriceBounds,
+        pending,
+        pendingAction,
+        doSkip,
+        doShortlist,
+        doUndo,
+        doOpenDetail,
+      })}
     </>
+  );
+}
+
+/**
+ * Mobile Review shell — header, the filter bar, and the single-card body
+ * (or the "no matches" state when the filter empties the queue). Pulled
+ * out of {@link ReviewPage} so the page's branchy mobile/desktop split
+ * stays under the cognitive-complexity cap.
+ */
+function renderMobileReview(args: {
+  card: ReviewCard | null | undefined;
+  isCardLoading: boolean;
+  queueItems: ReviewQueueItem[];
+  filteredQueueItems: ReviewQueueItem[];
+  filterCount: number;
+  filters: QueueFilters;
+  setFilters: (next: QueueFilters) => void;
+  mobilePriceBounds: { min: number; max: number } | null;
+  pending: boolean;
+  pendingAction: PendingAction;
+  doSkip: () => void;
+  doShortlist: () => void;
+  doUndo: () => void;
+  doOpenDetail: () => void;
+}) {
+  const filtering = args.filterCount > 0;
+  const showFilterBar = args.queueItems.length > 0 || filtering;
+  const noMatches =
+    filtering &&
+    args.filteredQueueItems.length === 0 &&
+    args.queueItems.length > 0;
+  return (
+    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-background pb-24 sm:max-w-2xl lg:hidden">
+      <ReviewHeader
+        leftToday={
+          filtering ? args.filteredQueueItems.length : (args.card?.leftToday ?? 0)
+        }
+        searchPill={args.card?.searchPill}
+      />
+
+      {showFilterBar ? (
+        <div className="flex items-center justify-between gap-2 px-5 pb-2">
+          <span className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
+            {filtering
+              ? `${args.filteredQueueItems.length} of ${args.queueItems.length} match`
+              : ""}
+          </span>
+          <QueueFilter
+            filters={args.filters}
+            onChange={args.setFilters}
+            priceBounds={args.mobilePriceBounds}
+          />
+        </div>
+      ) : null}
+
+      {noMatches ? (
+        <MobileFilterEmpty
+          onClear={() => args.setFilters(EMPTY_QUEUE_FILTERS)}
+        />
+      ) : (
+        renderMobileHero({
+          card: args.card,
+          isCardLoading: args.isCardLoading,
+          pending: args.pending,
+          pendingAction: args.pendingAction,
+          doSkip: args.doSkip,
+          doShortlist: args.doShortlist,
+          doUndo: args.doUndo,
+          doOpenDetail: args.doOpenDetail,
+        })
+      )}
+
+      <BottomNav />
+    </div>
   );
 }
 
@@ -588,6 +702,8 @@ function renderDesktopHero(args: {
   pending: boolean;
   pendingAction: PendingAction;
   queryError: string | null;
+  filters: QueueFilters;
+  setFilters: (next: QueueFilters) => void;
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
@@ -602,6 +718,8 @@ function renderDesktopHero(args: {
           household: args.household,
         })}
         disabled={args.pending}
+        filters={args.filters}
+        onFiltersChange={args.setFilters}
         onLightboxOpenChange={args.setLightboxOpen}
         onOpenDetail={args.doOpenDetail}
         onSelectCluster={(nextClusterId) => {
@@ -719,6 +837,7 @@ function buildQueueItems(
     id: item.clusterId,
     title: streetName(item.addressRaw) || item.title,
     price: formatPrice(item.priceMonthly),
+    priceValue: item.priceMonthly,
     outcode: item.outcode || "—",
     beds: item.bedrooms,
     baths: item.bathrooms,
@@ -736,6 +855,7 @@ function queueItemFromCard(
     id: card.cluster.id,
     title: streetName(hl.addressRaw) || hl.title,
     price: formatPrice(hl.priceMonthly),
+    priceValue: hl.priceMonthly,
     outcode: hl.outcode || "—",
     beds: hl.bedrooms,
     baths: hl.bathrooms,
@@ -1206,6 +1326,51 @@ const FURNISHED_LABELS: Record<string, string> = {
 };
 function formatFurnished(value: string | null): string | null {
   return value ? (FURNISHED_LABELS[value] ?? null) : null;
+}
+
+/**
+ * Normalise a raw queue item into the shape the queue filter reads. The
+ * filter's furnishing/availability facets compare against the same
+ * formatted labels the rail renders, so we reuse the same formatters.
+ */
+function queueFilterable(item: ReviewQueueItem): QueueFilterable {
+  return {
+    beds: item.bedrooms,
+    furnished: formatFurnished(item.furnished),
+    availability: formatAvailability(item.availableFrom, item.availableNow),
+    priceValue: item.priceMonthly,
+  };
+}
+
+/**
+ * Mobile counterpart of the desktop rail's "no matches" state — shown
+ * when the active filter leaves no listing to swipe. Mirrors
+ * {@link ReviewEmpty}'s card so the two empty states read the same.
+ */
+function MobileFilterEmpty({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="px-5 pt-8">
+      <div className="rounded-[2px] border border-line bg-paper p-8 text-center">
+        <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
+          Queue · filtered
+        </p>
+        <h2 className="mt-2 font-semibold text-[20px] text-navy tracking-[-0.01em]">
+          No listings match
+        </h2>
+        <p className="mt-2 text-[13px] text-slate">
+          Nothing in your queue matches these filters. Loosen them to see
+          more.
+        </p>
+        <button
+          className="mt-6 inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 font-semibold text-[14px] text-white"
+          onClick={onClear}
+          type="button"
+        >
+          Clear filters
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /**

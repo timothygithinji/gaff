@@ -55,6 +55,13 @@ import { AdminSidebar } from "../layout/admin-sidebar";
 import { PortalLogo } from "../portal-logo";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import {
+  EMPTY_QUEUE_FILTERS,
+  QueueFilter,
+  type QueueFilters,
+  matchesQueueFilters,
+  queuePriceBounds,
+} from "./queue-filter";
 
 /* ---------------- Types ---------------- */
 
@@ -64,6 +71,8 @@ export type DesktopReviewQueueItem = {
   title: string;
   /** Formatted price, e.g. "£2,450". */
   price: string;
+  /** Raw monthly rent backing the formatted `price`; null = unknown. Drives the queue filter's max-price facet. */
+  priceValue: number | null;
   outcode: string;
   beds: number | null;
   baths: number | null;
@@ -162,6 +171,13 @@ type Props = {
   onSelectCluster?: (clusterId: string | null) => void;
   /** Mirror lightbox open state up so the page can gate its hotkeys. */
   onLightboxOpenChange?: (open: boolean) => void;
+  /**
+   * Queue-rail filter state, lifted to the page so the same filter can
+   * drive the mobile card stream. Optional — falls back to internal
+   * state so the component still renders standalone (e.g. the artboard).
+   */
+  filters?: QueueFilters;
+  onFiltersChange?: (next: QueueFilters) => void;
   disabled?: boolean;
   pendingAction?: DesktopReviewPendingAction;
 };
@@ -173,6 +189,8 @@ export function DesktopReview({
   onOpenDetail,
   onSelectCluster,
   onLightboxOpenChange,
+  filters,
+  onFiltersChange,
   disabled,
   pendingAction = null,
 }: Props) {
@@ -180,7 +198,9 @@ export function DesktopReview({
     <AdminSidebar mode="desktop-only">
       <div className="flex min-h-0 w-full flex-1 gap-6 px-8 py-6">
         <QueueRail
+          filters={filters}
           items={data.queue.items}
+          onFiltersChange={onFiltersChange}
           onSelectCluster={onSelectCluster}
           remaining={data.queue.remaining}
           selectedClusterId={data.queue.selectedClusterId}
@@ -212,11 +232,15 @@ function QueueRail({
   remaining,
   selectedClusterId,
   onSelectCluster,
+  filters: filtersProp,
+  onFiltersChange,
 }: {
   items: DesktopReviewQueueItem[];
   remaining: number;
   selectedClusterId: string | null;
   onSelectCluster?: (clusterId: string | null) => void;
+  filters?: QueueFilters;
+  onFiltersChange?: (next: QueueFilters) => void;
 }) {
   // Keep the selected row visible as ↑/↓ walk the queue.
   const currentRowRef = useRef<HTMLLIElement>(null);
@@ -225,30 +249,65 @@ function QueueRail({
     currentRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [selectedClusterId]);
 
+  // Filters are normally lifted to the page (so mobile shares them); fall
+  // back to local state when rendered standalone. Client-side narrowing of
+  // the already-loaded queue — see queue-filter.tsx.
+  const [localFilters, setLocalFilters] =
+    useState<QueueFilters>(EMPTY_QUEUE_FILTERS);
+  const filters = filtersProp ?? localFilters;
+  const setFilters = onFiltersChange ?? setLocalFilters;
+  const priceBounds = queuePriceBounds(items.map((i) => i.priceValue));
+  const visible = items.filter((item) => matchesQueueFilters(item, filters));
+  const isFiltered = visible.length !== items.length;
+
   return (
     <aside className="flex min-h-0 w-60 shrink-0 flex-col gap-3">
-      <div className="flex shrink-0 items-center pb-0.5">
-        <Eyebrow>Queue · {remaining} left</Eyebrow>
+      <div className="flex shrink-0 items-center justify-between gap-2 pb-0.5">
+        <Eyebrow>
+          {isFiltered
+            ? `Queue · ${visible.length} of ${remaining}`
+            : `Queue · ${remaining} left`}
+        </Eyebrow>
+        <QueueFilter
+          filters={filters}
+          onChange={setFilters}
+          priceBounds={priceBounds}
+        />
       </div>
       {/* Independent scroll: the rail keeps its header pinned while the
           queue itself scrolls, so a long queue never pushes the hero or
           right rail off-screen. */}
-      <ul className="-mr-2 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-2">
-        {items.map((item) => {
-          const isCurrent = item.id === selectedClusterId;
-          return (
-            <li key={item.id} ref={isCurrent ? currentRowRef : undefined}>
-              <QueueCard
-                isCurrent={isCurrent}
-                item={item}
-                onSelect={
-                  onSelectCluster ? () => onSelectCluster(item.id) : undefined
-                }
-              />
-            </li>
-          );
-        })}
-      </ul>
+      {visible.length > 0 ? (
+        <ul className="-mr-2 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-2">
+          {visible.map((item) => {
+            const isCurrent = item.id === selectedClusterId;
+            return (
+              <li key={item.id} ref={isCurrent ? currentRowRef : undefined}>
+                <QueueCard
+                  isCurrent={isCurrent}
+                  item={item}
+                  onSelect={
+                    onSelectCluster ? () => onSelectCluster(item.id) : undefined
+                  }
+                />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="flex flex-1 flex-col items-start gap-2 rounded-[6px] border border-line border-dashed bg-paper p-4">
+          <p className="text-[12px] text-slate leading-4">
+            No queued listings match these filters.
+          </p>
+          <button
+            className="font-medium text-[11px] text-navy underline-offset-2 hover:underline"
+            onClick={() => setFilters(EMPTY_QUEUE_FILTERS)}
+            type="button"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
@@ -1117,6 +1176,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         id: "belsize",
         title: "Belsize Park Mews",
         price: "£2,450",
+        priceValue: 2450,
         outcode: "NW3",
         beds: 2,
         baths: 1,
@@ -1128,6 +1188,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         id: "camden",
         title: "Camden Lock Studio",
         price: "£2,200",
+        priceValue: 2200,
         outcode: "NW1",
         beds: 1,
         baths: 1,
@@ -1139,6 +1200,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         id: "highgate",
         title: "Highgate Studios",
         price: "£2,300",
+        priceValue: 2300,
         outcode: "N6",
         beds: 2,
         baths: 1,
@@ -1150,6 +1212,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         id: "kentish",
         title: "Kentish Town Loft",
         price: "£2,550",
+        priceValue: 2550,
         outcode: "NW5",
         beds: 2,
         baths: 2,
@@ -1161,6 +1224,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         id: "tufnell",
         title: "Tufnell Park Garden",
         price: "£2,650",
+        priceValue: 2650,
         outcode: "N19",
         beds: 2,
         baths: 1,
@@ -1172,6 +1236,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         id: "hampstead",
         title: "Hampstead Bridge",
         price: "£2,600",
+        priceValue: 2600,
         outcode: "NW3",
         beds: 3,
         baths: 1,
