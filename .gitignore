@@ -77,3 +77,6 @@ worktrees/
 # Claude Code local project memory
 .claude/projects/
 .fallow/
+
+# Trigger.dev local build/temp state
+.trigger/
