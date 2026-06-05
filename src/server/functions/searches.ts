@@ -727,6 +727,44 @@ export const runSearchNow = createServerFn({ method: "POST" })
     };
   });
 
+/**
+ * One-off full-depth backfill. Same fan-out as {@link runSearchNow} but
+ * triggers each portal in `backfill` mode: scrape-portal drops the cadence
+ * recency window and paginates to each portal's full depth (and ingests
+ * every unseen OpenRent ID), so the search captures the whole current
+ * inventory rather than just the recency window. Expensive — user-invoked
+ * from the "Backfill now" button, not scheduled.
+ */
+export const backfillSearchNow = createServerFn({ method: "POST" })
+  .inputValidator(idSchema)
+  .handler(async ({ data }): Promise<RunSearchNowResult> => {
+    const householdId = await requireHouseholdId();
+    const db = getDb();
+    const search = await findHouseholdSearch(db, data.id, householdId);
+    if (search.portals.length === 0) {
+      throw new Error("no_portals_selected");
+    }
+    const tag = `backfill:${search.id}:${Date.now()}`;
+    const handles = await Promise.all(
+      search.portals.map((portal) =>
+        tasks.trigger(
+          "scrape-portal",
+          { searchId: search.id, portal, mode: "backfill" as const },
+          { tags: [tag] }
+        )
+      )
+    );
+    const publicAccessToken = await auth.createPublicToken({
+      scopes: { read: { tags: [tag] } },
+      expirationTime: "1h",
+    });
+    return {
+      tag,
+      runIds: handles.map((h) => h.id),
+      publicAccessToken,
+    };
+  });
+
 // -----------------------------------------------------------------------------
 // Portfolio aggregations — powers the desktop `/searches` view's metric
 // strip, per-card stats footer, and 7-day pulse chart in one round-trip.
@@ -811,7 +849,8 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       // firstSeenAt so we can bucket the pulse chart in JS.
       db
         .select({
-          searchId: listings.searchId,
+          // Non-null: `inArray(searchId, searchIds)` excludes manual rows.
+          searchId: sql<string>`${listings.searchId}`,
           firstSeenAt: listings.firstSeenAt,
         })
         .from(listings)
@@ -859,7 +898,8 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       // (search_id, cluster_id) pairs — the raw material for in-queue.
       db
         .select({
-          searchId: listings.searchId,
+          // Non-null: `inArray(searchId, searchIds)` excludes manual rows.
+          searchId: sql<string>`${listings.searchId}`,
           clusterId: listings.clusterId,
         })
         .from(listings)

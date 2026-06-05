@@ -43,6 +43,10 @@ type Props = {
   pauseAction?: ActionState;
   /** Edit-mode-only — soft-delete the search (hidden everywhere). */
   deleteAction?: ActionState;
+  /** Edit-mode-only — run the normal incremental scrape on demand. */
+  scrapeAction?: ActionState;
+  /** Edit-mode-only — one-off full-depth backfill of the current inventory. */
+  backfillAction?: ActionState;
 };
 
 export function DesktopSearchCreate(props: Props) {
@@ -52,12 +56,14 @@ export function DesktopSearchCreate(props: Props) {
   return (
     <AdminSidebar mode="desktop-only">
       <Breadcrumb
+        backfillAction={props.backfillAction}
         deleteAction={props.deleteAction}
         dirty={dirty}
         mode={props.mode}
         onCancel={props.onCancel}
         pauseAction={props.pauseAction}
         pending={props.pending}
+        scrapeAction={props.scrapeAction}
       />
       <SearchForm {...props} layout="desktop" onDirtyChange={setDirty} />
     </AdminSidebar>
@@ -69,6 +75,8 @@ function Breadcrumb({
   onCancel,
   pauseAction,
   deleteAction,
+  scrapeAction,
+  backfillAction,
   pending,
   dirty,
 }: {
@@ -76,6 +84,8 @@ function Breadcrumb({
   onCancel?: () => void;
   pauseAction?: ActionState;
   deleteAction?: ActionState;
+  scrapeAction?: ActionState;
+  backfillAction?: ActionState;
   pending?: boolean;
   dirty?: boolean;
 }) {
@@ -123,6 +133,18 @@ function Breadcrumb({
           ) : null}
           {pending ? "Saving…" : submitLabel}
         </button>
+        {mode === "edit" && scrapeAction ? (
+          <ActionButton
+            action={scrapeAction}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 font-medium text-muted-foreground text-xs disabled:opacity-50"
+          />
+        ) : null}
+        {mode === "edit" && backfillAction ? (
+          <ActionButton
+            action={backfillAction}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 font-medium text-muted-foreground text-xs disabled:opacity-50"
+          />
+        ) : null}
         {mode === "edit" && pauseAction ? (
           <ActionButton
             action={pauseAction}
