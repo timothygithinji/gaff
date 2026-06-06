@@ -45,7 +45,10 @@ import {
 import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
-import { toStatCells } from "../components/review/review-shapers";
+import {
+  reviewToPortalRows,
+  toStatCells,
+} from "../components/review/review-shapers";
 import { EmptyState } from "../components/ui/patterns/empty-state";
 import { toPills } from "../components/ui/patterns/feature-pills";
 import { Skeleton } from "../components/ui/skeleton";
@@ -912,7 +915,7 @@ function desktopData(
     // No cluster-match score is computed yet — the "N% match" chip stays
     // hidden until one exists.
     matchPct: null,
-    portals: buildPortals(card),
+    portals: reviewToPortalRows(card).rows,
     today: buildToday(todayStats, opts.household),
   };
 }
@@ -1082,71 +1085,6 @@ function avatarInitial(nameOrEmail: string | null): string {
  * portal the cluster appears on. Deltas are computed against the headline
  * price; the headline carries the `cheapest` flag (bold price, no delta).
  */
-function buildPortals(card: ReviewCard): DesktopReviewData["portals"] {
-  const headlinePrice = card.headlineListing.priceMonthly;
-  const headlineName = prettyPortal(card.headlineListing.portal);
-
-  // Dedupe "also on" listings to one row per *distinct* portal — two
-  // Rightmove listings in a cluster collapse into the single headline row,
-  // not a second portal. portalsAlsoOn arrives cheapest-first, so the first
-  // listing kept per portal is that portal's cheapest.
-  const seen = new Set([headlineName]);
-  const otherPortals = card.portalsAlsoOn.filter((p) => {
-    const name = prettyPortal(p.portal);
-    if (seen.has(name)) {
-      return false;
-    }
-    seen.add(name);
-    return true;
-  });
-
-  // Crown the headline "cheapest" only when another distinct portal is
-  // actually dearer. Same-portal duplicates don't count: they collapse into
-  // the headline row, so flagging them left a lone portal wearing the tag.
-  const hasSpread =
-    headlinePrice != null &&
-    otherPortals.some(
-      (p) => p.priceMonthly != null && p.priceMonthly > headlinePrice
-    );
-
-  return [
-    {
-      portal: headlineName,
-      initial: headlineName.charAt(0),
-      url: card.headlineListing.url,
-      price: formatPrice(headlinePrice),
-      delta: null,
-      cheapest: hasSpread,
-    },
-    ...otherPortals.map((p) => {
-      const name = prettyPortal(p.portal);
-      return {
-        portal: name,
-        initial: name.charAt(0),
-        url: p.url,
-        price: formatPrice(p.priceMonthly),
-        delta: portalDelta(headlinePrice, p.priceMonthly),
-        cheapest: false,
-      };
-    }),
-  ];
-}
-
-/** "+£50" style delta vs the cheapest, or null when unknown / equal. */
-function portalDelta(
-  cheapest: number | null,
-  other: number | null
-): string | null {
-  if (cheapest == null || other == null) {
-    return null;
-  }
-  const diff = other - cheapest;
-  if (diff <= 0) {
-    return null;
-  }
-  return `+£${diff.toLocaleString("en-GB")}`;
-}
-
 /**
  * Shown above the `md` breakpoint when there's no current card —
  * either the queue is genuinely empty (all caught up, or no listings
@@ -1307,19 +1245,6 @@ function MobileReviewSkeleton() {
       </div>
     </main>
   );
-}
-
-function prettyPortal(portal: string): string {
-  switch (portal.toLowerCase()) {
-    case "rightmove":
-      return "Rightmove";
-    case "zoopla":
-      return "Zoopla";
-    case "openrent":
-      return "OpenRent";
-    default:
-      return portal.charAt(0).toUpperCase() + portal.slice(1);
-  }
 }
 
 function formatPrice(priceMonthly: number | null): string {

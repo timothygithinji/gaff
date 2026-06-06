@@ -29,7 +29,6 @@
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  ArrowUpRight01Icon,
   BathtubIcon,
   BedIcon,
   Cancel01Icon,
@@ -54,10 +53,10 @@ import { sizedPhoto } from "../../lib/photo-size";
 import { propertyKindLabel } from "../../lib/property-kind";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
-import { PortalLogo } from "../portal-logo";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { type Pill, severityToken } from "../ui/patterns/feature-pills";
+import { PortalList, type PortalRowItem } from "../ui/patterns/portal-list";
 import { type StatCell, StatRow } from "../ui/patterns/stat-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { DeferMenu } from "./defer-menu";
@@ -104,20 +103,6 @@ export type DesktopReviewQueueItem = {
 /** The review hero's stat cells use the shared {@link StatCell} shape. */
 export type DesktopReviewStatCell = StatCell;
 
-export type DesktopReviewPortalPrice = {
-  portal: string;
-  /** Single-letter avatar mark. */
-  initial: string;
-  /** Deep link to this listing on the portal; opens in a new tab. */
-  url: string;
-  /** Formatted price, e.g. "£2,450". */
-  price: string;
-  /** "+£50" delta vs cheapest, shown after the price on non-cheapest rows. */
-  delta?: string | null;
-  /** The cheapest row renders its price bold. */
-  cheapest: boolean;
-};
-
 export type DesktopReviewTodayCell = {
   value: string;
   label: string;
@@ -149,7 +134,7 @@ export type DesktopReviewData = {
   };
   /** "98% match" or null when we can't score the cluster. */
   matchPct: string | null;
-  portals: DesktopReviewPortalPrice[];
+  portals: PortalRowItem[];
   today: {
     cells: DesktopReviewTodayCell[];
     youInitial: string;
@@ -815,7 +800,7 @@ function RightRail({
   pendingAction,
 }: {
   matchPct: string | null;
-  portals: DesktopReviewPortalPrice[];
+  portals: PortalRowItem[];
   today: DesktopReviewData["today"];
   onSkip?: () => void;
   onShortlist?: () => void;
@@ -845,11 +830,14 @@ function PortalsPanel({
   portals,
 }: {
   matchPct: string | null;
-  portals: DesktopReviewPortalPrice[];
+  portals: PortalRowItem[];
 }) {
   if (portals.length === 0) {
     return null;
   }
+  const hasSpread = portals.some(
+    (p) => !p.isHeadline && (p.deltaFromHeadline ?? 0) > 0
+  );
   return (
     <section className="flex flex-col gap-2.5 rounded-[6px] border border-line bg-paper p-[18px]">
       <div className="flex items-center justify-between">
@@ -860,55 +848,8 @@ function PortalsPanel({
           </span>
         ) : null}
       </div>
-      <ul className="flex flex-col">
-        {portals.map((p) => (
-          <li key={p.portal}>
-            <PortalRow portal={p} />
-          </li>
-        ))}
-      </ul>
+      <PortalList hasSpread={hasSpread} rows={portals} variant="rail" />
     </section>
-  );
-}
-
-function PortalRow({ portal }: { portal: DesktopReviewPortalPrice }) {
-  return (
-    <a
-      className="-mx-2 group flex flex-col gap-1 rounded-[4px] px-2 py-2 transition-colors hover:bg-mist focus-visible:bg-mist focus-visible:outline-none"
-      href={portal.url}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <div className="flex items-center gap-2.5">
-        <PortalLogo portal={portal.portal} />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-navy leading-4 group-hover:underline">
-          {portal.portal}
-        </span>
-        <HugeiconsIcon
-          className="shrink-0 text-steel opacity-0 transition-opacity group-hover:opacity-100"
-          icon={ArrowUpRight01Icon}
-          size={13}
-          strokeWidth={1.8}
-        />
-      </div>
-      <div className="flex items-baseline gap-1.5 pl-[34px]">
-        {portal.cheapest ? (
-          <>
-            <span className="font-semibold text-[13px] text-navy leading-4">
-              {portal.price}
-            </span>
-            <span className="font-bold text-[9px] text-copper uppercase tracking-[0.08em]">
-              Cheapest
-            </span>
-          </>
-        ) : (
-          <span className="text-[13px] text-slate leading-4">
-            {portal.price}
-            {portal.delta ? ` ${portal.delta}` : null}
-          </span>
-        )}
-      </div>
-    </a>
   );
 }
 
@@ -1301,28 +1242,31 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
   matchPct: "98%",
   portals: [
     {
-      portal: "OpenRent",
-      initial: "O",
+      portal: "openrent",
       url: "https://www.openrent.co.uk/",
-      price: "£2,450",
-      delta: null,
-      cheapest: true,
+      priceMonthly: 2450,
+      agentName: null,
+      agentEmail: null,
+      deltaFromHeadline: null,
+      isHeadline: true,
     },
     {
-      portal: "Rightmove",
-      initial: "R",
+      portal: "rightmove",
       url: "https://www.rightmove.co.uk/",
-      price: "£2,500",
-      delta: "+£50",
-      cheapest: false,
+      priceMonthly: 2500,
+      agentName: null,
+      agentEmail: null,
+      deltaFromHeadline: 50,
+      isHeadline: false,
     },
     {
-      portal: "Zoopla",
-      initial: "Z",
+      portal: "zoopla",
       url: "https://www.zoopla.co.uk/",
-      price: "£2,500",
-      delta: "+£50",
-      cheapest: false,
+      priceMonthly: 2500,
+      agentName: null,
+      agentEmail: null,
+      deltaFromHeadline: 50,
+      isHeadline: false,
     },
   ],
   today: {

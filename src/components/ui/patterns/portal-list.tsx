@@ -5,14 +5,20 @@ import { cn } from "@/lib/utils";
  * portal label + badge helpers that were duplicated between
  * portal-cross-list.tsx and desktop-listing-detail's PortalRow.
  *
- * Two presentations over one `toPortalRows` shaper:
- *   - `variant="card"` — 28px initial badge + name/agent + right price (Paper
+ * Three presentations over one `toPortalRows` shaper:
+ *   - `variant="card"`  — 28px initial badge + name/agent + right price (Paper
  *     mobile "Same property" card).
- *   - `variant="rail"` — brand `PortalLogo` + name·agent, price indented
- *     below with a hover open-link affordance (desktop price card).
+ *   - `variant="rail"`  — brand `PortalLogo` + name·agent, price indented
+ *     below with a hover open-link affordance (desktop price card / review rail).
+ *   - `variant="stack"` — compact overlapping avatars + summary that taps to
+ *     expand into the rail rows (mobile review card).
  */
-import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  LinkSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 import { PortalLogo } from "../../portal-logo";
 import { formatPrice } from "./price-block";
 
@@ -103,9 +109,12 @@ export function PortalList({
 }: {
   rows: PortalRowItem[];
   hasSpread: boolean;
-  variant: "card" | "rail";
+  variant: "card" | "rail" | "stack";
   className?: string;
 }) {
+  if (variant === "stack") {
+    return <StackPortals className={className} hasSpread={hasSpread} rows={rows} />;
+  }
   if (variant === "rail") {
     return (
       <div className={cn("flex flex-col gap-1.5", className)}>
@@ -133,6 +142,95 @@ export function PortalList({
           showCheapest={hasSpread}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * Mobile review-card portals: an overlapping avatar stack + a one-line
+ * summary that taps to reveal the same delta + link rows the rail shows
+ * (so the compact card still carries the full per-portal data on demand).
+ */
+function StackPortals({
+  rows,
+  hasSpread,
+  className,
+}: {
+  rows: PortalRowItem[];
+  hasSpread: boolean;
+  className?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const count = rows.length;
+  const cheapest = rows[0] ? portalLabel(rows[0].portal) : "";
+  let summary: string;
+  if (count <= 1) {
+    summary = `Tracking on ${cheapest}`;
+  } else if (hasSpread) {
+    summary = `${count} portals tracking · ${cheapest} cheapest`;
+  } else {
+    summary = `${count} portals tracking`;
+  }
+
+  const stack = (
+    <>
+      <div className="flex items-center">
+        {rows.slice(0, 3).map((row, i) => (
+          <span
+            className={cn(
+              "flex size-[22px] items-center justify-center rounded-full border-2 border-white font-semibold text-[9px] text-white",
+              badgeColour(row.portal),
+              i > 0 && "-ml-2"
+            )}
+            key={row.portal}
+          >
+            {portalInitial(row.portal)}
+          </span>
+        ))}
+      </div>
+      <p className="min-w-0 flex-1 text-[11px] text-slate leading-[14px]">
+        {summary}
+      </p>
+    </>
+  );
+
+  // Single portal — nothing to expand; show the stack + summary as-is.
+  if (count <= 1) {
+    return (
+      <div className={cn("flex items-center gap-2.5", className)}>{stack}</div>
+    );
+  }
+
+  return (
+    <div className={className}>
+      <button
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2.5 text-left"
+        onClick={() => setExpanded((v) => !v)}
+        type="button"
+      >
+        {stack}
+        <HugeiconsIcon
+          className={cn(
+            "shrink-0 text-slate transition-transform",
+            expanded && "rotate-180"
+          )}
+          icon={ArrowDown01Icon}
+          size={16}
+          strokeWidth={1.8}
+        />
+      </button>
+      {expanded ? (
+        <div className="flex flex-col gap-1.5 pt-3">
+          {rows.map((row) => (
+            <RailRow
+              key={`${row.portal}:${row.url}`}
+              row={row}
+              showCheapest={hasSpread && row.isHeadline}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -5,7 +5,58 @@ import type { ReviewCard } from "../../server/functions/review";
  * the 4-vs-2 stat drift used to live (desktop's buildStats vs mobile's inline
  * CardStats); now there's one source.
  */
+import type { PortalRowItem } from "../ui/patterns/portal-list";
 import type { StatCell } from "../ui/patterns/stat-row";
+
+/**
+ * Per-portal spread for the review card/hero: dedupe to one row per distinct
+ * portal (headline first; same-portal duplicates collapse into it), compute
+ * each row's £ delta vs the headline, and flag whether any portal is dearer
+ * (the only case a "cheapest" call-out means anything). Mirrors the listing
+ * detail `toPortalRows`, shaped from the review card's headline + alsoOn.
+ */
+export function reviewToPortalRows(card: ReviewCard): {
+  rows: PortalRowItem[];
+  hasSpread: boolean;
+} {
+  const headline = card.headlineListing;
+  const headlinePrice = headline.priceMonthly;
+  const seen = new Set<string>([headline.portal]);
+  const others = card.portalsAlsoOn.filter((p) => {
+    if (seen.has(p.portal)) {
+      return false;
+    }
+    seen.add(p.portal);
+    return true;
+  });
+  const hasSpread =
+    headlinePrice != null &&
+    others.some((p) => p.priceMonthly != null && p.priceMonthly > headlinePrice);
+  const rows: PortalRowItem[] = [
+    {
+      portal: headline.portal,
+      url: headline.url,
+      priceMonthly: headlinePrice,
+      agentName: null,
+      agentEmail: null,
+      deltaFromHeadline: null,
+      isHeadline: true,
+    },
+    ...others.map((p) => ({
+      portal: p.portal,
+      url: p.url,
+      priceMonthly: p.priceMonthly,
+      agentName: null,
+      agentEmail: null,
+      deltaFromHeadline:
+        headlinePrice != null && p.priceMonthly != null
+          ? p.priceMonthly - headlinePrice
+          : null,
+      isHeadline: false,
+    })),
+  ];
+  return { rows, hasSpread };
+}
 
 /**
  * The canonical review stat set: Transport · EPC · Council tax · Size.

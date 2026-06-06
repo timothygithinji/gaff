@@ -26,22 +26,10 @@ import { cn } from "../../lib/utils";
  */
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
 import { FeaturePills, toPills } from "../ui/patterns/feature-pills";
+import { PortalList } from "../ui/patterns/portal-list";
 import { PriceBlock } from "../ui/patterns/price-block";
 import { StatRow } from "../ui/patterns/stat-row";
-import { toStatCells } from "./review-shapers";
-
-function portalLabel(portal: string): string {
-  switch (portal.toLowerCase()) {
-    case "rightmove":
-      return "Rightmove";
-    case "zoopla":
-      return "Zoopla";
-    case "openrent":
-      return "OpenRent";
-    default:
-      return portal.charAt(0).toUpperCase() + portal.slice(1);
-  }
-}
+import { reviewToPortalRows, toStatCells } from "./review-shapers";
 
 /** Build the "NW3 · 2 bed · 1 bath · 712 sqft" sub-spec line. */
 function subSpec(card: ReviewCardData): string {
@@ -255,63 +243,11 @@ function CardStats({ card }: { card: ReviewCardData }) {
   );
 }
 
-/** Single-letter portal initial for the overlapping avatar stack. */
-function portalInitial(portal: string): string {
-  return portalLabel(portal).charAt(0).toUpperCase();
-}
-
-const AVATAR_BG = ["bg-primary", "bg-slate", "bg-steel"];
-
 function CardPortals({ card }: { card: ReviewCardData }) {
-  const { headlineListing, portalsAlsoOn } = card;
-  // Distinct portals across the cluster, headline first.
-  const seen = new Set<string>();
-  const portals: string[] = [];
-  for (const p of [
-    headlineListing.portal,
-    ...portalsAlsoOn.map((x) => x.portal),
-  ]) {
-    const pretty = portalLabel(p);
-    if (!seen.has(pretty)) {
-      seen.add(pretty);
-      portals.push(p);
-    }
-  }
-  const count = portals.length;
-  const cheapest = portalLabel(headlineListing.portal);
-  // Only say "cheapest" when a portal is actually dearer than the headline;
-  // if every portal lists the same rent there's no cheapest to call out.
-  const headlinePrice = headlineListing.priceMonthly;
-  const hasSpread =
-    headlinePrice != null &&
-    portalsAlsoOn.some(
-      (x) => x.priceMonthly != null && x.priceMonthly > headlinePrice
-    );
-  let summary: string;
-  if (count <= 1) {
-    summary = `Tracking on ${cheapest}`;
-  } else if (hasSpread) {
-    summary = `${count} portals tracking · ${cheapest} cheapest`;
-  } else {
-    summary = `${count} portals tracking`;
-  }
+  const { rows, hasSpread } = reviewToPortalRows(card);
   return (
-    <div className="flex items-center gap-2.5 px-[18px] pt-4 pb-[18px]">
-      <div className="flex items-center">
-        {portals.slice(0, 3).map((p, i) => (
-          <span
-            className={cn(
-              "flex size-[22px] items-center justify-center rounded-full border-2 border-white font-semibold text-[9px] text-white",
-              AVATAR_BG[i] ?? "bg-steel",
-              i > 0 && "-ml-2"
-            )}
-            key={p}
-          >
-            {portalInitial(p)}
-          </span>
-        ))}
-      </div>
-      <p className="text-[11px] text-slate leading-[14px]">{summary}</p>
+    <div className="px-[18px] pt-4 pb-[18px]">
+      <PortalList hasSpread={hasSpread} rows={rows} variant="stack" />
     </div>
   );
 }
