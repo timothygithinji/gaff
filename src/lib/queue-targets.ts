@@ -138,19 +138,22 @@ export function searchHasTargets(s: ActiveSearch): boolean {
  * the same source the review card shows — falling back to a `nearbyTransit`
  * stop's real routed walk time of that kind, but NEVER the straight-line
  * heuristic (on a mislabelled 0.03mi "rail" it reads seconds away, which is
- * exactly what leaked listings in). Bus/tram keep the heuristic. A target we
- * have no data for is "pending" — it neither satisfies nor drops the
- * cluster; only an evaluable-but-unmet set drops it.
+ * exactly what leaked listings in). Bus/tram keep the heuristic (they're
+ * never routed).
  *
- * PRODUCT DECISION (pending clusters): a cluster with NO routed transport
- * data yet PASSES rather than being held back. In an active hunt, hiding a
- * candidate because our enrichment is still catching up is worse than
- * showing it with transport marked "pending" on the card — the user can
- * see the criterion isn't confirmed and the cluster re-filters correctly
- * once `enrich-station-routes` / `enrich-nearby-transit` land. This is
- * safe because `nearbyTransit` gathers EVERY station kind within ~1mi, so
- * a kind that's absent from a populated set is genuinely unreachable (a
- * real drop), not pending — only a wholly-empty set means "not measured".
+ * PRODUCT DECISION (hold until routed): a cluster passes ONLY when we have
+ * positive evidence it meets at least one transport target — a real routed
+ * walk time within the limit (station) or a heuristic hit (bus/tram). A
+ * cluster whose station walk-times haven't been computed yet is HELD BACK
+ * (dropped from the queue) rather than admitted as "pending". In an active
+ * hunt, surfacing a candidate we can't yet confirm matches the walk
+ * requirement is worse than waiting for enrichment — the user explicitly
+ * chose strict matching here. The cost is that a cluster which never enriches
+ * (no coords, station out of `nearbyTransit` range, etc.) stays hidden, and
+ * matches appear only once `enrich-station-routes` / `enrich-nearby-transit`
+ * land. (Earlier this returned true for un-evaluable targets, which leaked
+ * in clusters like a 16-min-walk tube against a 15-min limit during the
+ * enrichment window.)
  */
 function clusterPassesTransport(
   search: ActiveSearch,
@@ -164,8 +167,6 @@ function clusterPassesTransport(
   }
   const stationWalk = bestStationWalkMinutes(enr?.stationRoutes);
   const stops = enr?.nearbyTransit;
-  let evaluable = false;
-  let satisfied = false;
   for (const t of transportTargets) {
     const kind = AMENITY_KIND[t.amenity];
     const max = t.maxMinutes as number;
@@ -178,15 +179,11 @@ function clusterPassesTransport(
     } else {
       reach = stops ? bestStopMinutes(stops, kind, t.mode) : null;
     }
-    if (reach === null) {
-      continue;
-    }
-    evaluable = true;
-    if (reach <= max) {
-      satisfied = true;
+    if (reach !== null && reach <= max) {
+      return true;
     }
   }
-  return !(evaluable && !satisfied);
+  return false;
 }
 
 /**

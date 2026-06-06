@@ -68,9 +68,20 @@ describe("clusterPassesSearch — station time", () => {
     expect(clusterPassesSearch(TUBE_OR_RAIL_15, far)).toBe(false);
   });
 
-  it("treats a cluster with no station data as pending (passes)", () => {
-    expect(clusterPassesSearch(TUBE_OR_RAIL_15, enr({}))).toBe(true);
-    expect(clusterPassesSearch(TUBE_OR_RAIL_15, undefined)).toBe(true);
+  it("HOLDS a cluster with no station data until it's routed", () => {
+    // Hold-until-routed: without a confirmed routed walk time we don't
+    // surface the cluster, rather than admitting it as "pending".
+    expect(clusterPassesSearch(TUBE_OR_RAIL_15, enr({}))).toBe(false);
+    expect(clusterPassesSearch(TUBE_OR_RAIL_15, undefined)).toBe(false);
+  });
+
+  it("HOLDS a cluster measured with no station of the wanted kind in range", () => {
+    // nearbyTransit populated (enrichment ran) but the only stop is a bus —
+    // no tube/rail routed walk to confirm, so hold rather than admit.
+    const e = enr({
+      nearbyTransit: [{ kind: "bus", distanceMiles: 0.1, walkMinutes: 3 }],
+    });
+    expect(clusterPassesSearch(TUBE_OR_RAIL_15, e)).toBe(false);
   });
 });
 
