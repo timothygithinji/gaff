@@ -18,7 +18,7 @@ export function EmptyState({
   variant = "card",
   className,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title?: string;
   body?: string;
   action?: ReactNode;
@@ -33,9 +33,11 @@ export function EmptyState({
           className
         )}
       >
-        <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
-          {eyebrow}
-        </p>
+        {eyebrow ? (
+          <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
+            {eyebrow}
+          </p>
+        ) : null}
         {title ? (
           <p className="font-semibold text-[13px] text-navy leading-4">{title}</p>
         ) : null}

@@ -26,4 +26,17 @@ describe("EmptyState", () => {
     expect(html).toContain("border-dashed");
     expect(html).not.toContain("text-center");
   });
+
+  it("omits the eyebrow when not given (desktop no-match)", () => {
+    const html = renderToStaticMarkup(
+      <EmptyState
+        action={<button type="button">Clear filters</button>}
+        body="No queued listings match these filters."
+        variant="inline"
+      />
+    );
+    expect(html).toContain("No queued listings match");
+    expect(html).toContain("Clear filters");
+    expect(html).not.toContain("uppercase");
+  });
 });

@@ -56,6 +56,7 @@ import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { PortalLogo } from "../portal-logo";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
+import { EmptyState } from "../ui/patterns/empty-state";
 import { type Pill, severityToken } from "../ui/patterns/feature-pills";
 import { type StatCell, StatRow } from "../ui/patterns/stat-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -300,18 +301,20 @@ function QueueRail({
           })}
         </ul>
       ) : (
-        <div className="flex flex-1 flex-col items-start gap-2 rounded-[6px] border border-line border-dashed bg-paper p-4">
-          <p className="text-[12px] text-slate leading-4">
-            No queued listings match these filters.
-          </p>
-          <button
-            className="font-medium text-[11px] text-navy underline-offset-2 hover:underline"
-            onClick={() => setFilters(EMPTY_QUEUE_FILTERS)}
-            type="button"
-          >
-            Clear filters
-          </button>
-        </div>
+        <EmptyState
+          action={
+            <button
+              className="font-medium text-[11px] text-navy underline-offset-2 hover:underline"
+              onClick={() => setFilters(EMPTY_QUEUE_FILTERS)}
+              type="button"
+            >
+              Clear filters
+            </button>
+          }
+          body="No queued listings match these filters."
+          className="flex-1"
+          variant="inline"
+        />
       )}
     </aside>
   );

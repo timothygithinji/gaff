@@ -46,6 +46,7 @@ import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
 import { toStatCells } from "../components/review/review-shapers";
+import { EmptyState } from "../components/ui/patterns/empty-state";
 import { toPills } from "../components/ui/patterns/feature-pills";
 import { Skeleton } from "../components/ui/skeleton";
 import { useIsMobile } from "../hooks/use-mobile";
@@ -1433,25 +1434,20 @@ function queueFilterable(item: ReviewQueueItem): QueueFilterable {
 function MobileFilterEmpty({ onClear }: { onClear: () => void }) {
   return (
     <div className="px-5 pt-8">
-      <div className="rounded-[2px] border border-line bg-paper p-8 text-center">
-        <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
-          Queue · filtered
-        </p>
-        <h2 className="mt-2 font-semibold text-[20px] text-navy tracking-[-0.01em]">
-          No listings match
-        </h2>
-        <p className="mt-2 text-[13px] text-slate">
-          Nothing in your queue matches these filters. Loosen them to see
-          more.
-        </p>
-        <button
-          className="mt-6 inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 font-semibold text-[14px] text-white"
-          onClick={onClear}
-          type="button"
-        >
-          Clear filters
-        </button>
-      </div>
+      <EmptyState
+        action={
+          <button
+            className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 font-semibold text-[14px] text-white"
+            onClick={onClear}
+            type="button"
+          >
+            Clear filters
+          </button>
+        }
+        body="Nothing in your queue matches these filters. Loosen them to see more."
+        eyebrow="Queue · filtered"
+        title="No listings match"
+      />
     </div>
   );
 }
