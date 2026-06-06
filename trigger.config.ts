@@ -58,6 +58,10 @@ export default defineConfig({
   },
   dirs: ["./src/trigger"],
   build: {
+    // `sharp` ships a native binary, which can't be bundled — Trigger.dev
+    // installs externals into the runtime image instead. Used by cache-photos
+    // to pre-generate the photo width-variants we serve from R2.
+    external: ["sharp"],
     extensions: [
       syncEnvVars(async ({ environment }) => {
         const config = DOPPLER_CONFIG_BY_ENV[environment];

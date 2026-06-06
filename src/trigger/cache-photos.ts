@@ -31,9 +31,11 @@
 import { logger, task } from "@trigger.dev/sdk";
 import { and, eq, isNull } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import sharp from "sharp";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
 import { env } from "../lib/env";
+import { PHOTO_WIDTH_BUCKETS, variantKey } from "../lib/photo-size";
 import { photoQueue } from "./queues";
 
 export type CachePhotosPayload = {
@@ -179,6 +181,79 @@ async function uploadToR2(args: {
 }
 
 /**
+ * Formats we pre-resize. Animated / vector / exotic inputs are served as the
+ * single original instead — `sharp` would flatten a GIF to one frame and we'd
+ * rather not silently change those, and the Worker falls back to the original
+ * whenever a variant is absent anyway.
+ */
+const VARIANT_EXTS = new Set(["jpg", "png", "webp"]);
+
+/**
+ * Pre-generate the fixed-width variants `sizedPhoto()` asks for and upload each
+ * beside the original (`{key%ext}_w{bucket}{ext}`, see `variantKey`).
+ *
+ * This is what replaced the per-request `cf.image` transform: the edge now
+ * serves a static, right-sized object straight from R2 — no
+ * Image-Transformations billing, so it stays inside Cloudflare's free tier.
+ * Buckets at or above the source width are skipped (never upscale; the Worker
+ * serves the original for those, preserving the old "scale-down" behaviour).
+ *
+ * Returns the number of variants written. Best-effort by contract: it never
+ * throws — a resize/upload failure is logged and swallowed so it can't undo
+ * the original upload (the photo is already cached and renders full-size; the
+ * Worker just falls back to the original for the missing widths).
+ */
+async function uploadVariants(args: {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucket: string;
+  baseKey: string;
+  body: ArrayBuffer;
+  contentType: string;
+  listingId: string;
+  photoId: string;
+}): Promise<number> {
+  const ext = extFromContentType(args.contentType);
+  if (!VARIANT_EXTS.has(ext)) {
+    return 0;
+  }
+  let made = 0;
+  try {
+    const src = Buffer.from(args.body);
+    const meta = await sharp(src).metadata();
+    const srcWidth = meta.width ?? 0;
+    for (const bucket of PHOTO_WIDTH_BUCKETS) {
+      // Never upscale: a source narrower than the bucket has no variant, and
+      // the Worker falls back to the (sharper) original when the lookup misses.
+      if (srcWidth && bucket >= srcWidth) {
+        continue;
+      }
+      const resized = await sharp(src)
+        .resize({ width: bucket, withoutEnlargement: true })
+        .toBuffer();
+      await uploadToR2({
+        accountId: args.accountId,
+        accessKeyId: args.accessKeyId,
+        secretAccessKey: args.secretAccessKey,
+        bucket: args.bucket,
+        key: variantKey(args.baseKey, bucket),
+        body: toArrayBuffer(resized),
+        contentType: args.contentType,
+      });
+      made += 1;
+    }
+  } catch (err) {
+    logger.warn("cache-photos: variant generation failed (original ok)", {
+      listingId: args.listingId,
+      photoId: args.photoId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return made;
+}
+
+/**
  * Hand the raw bytes to crypto.subtle.digest. workerd's WebCrypto types
  * are picky about `Uint8Array<ArrayBufferLike>` vs the spec's
  * `Uint8Array<ArrayBuffer>`, so we route every call through a fresh
@@ -224,6 +299,68 @@ async function hmac(
 async function hmacHex(key: Uint8Array, data: string): Promise<string> {
   const sig = await hmac(key, data);
   return [...sig].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+type R2Creds = {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucket: string;
+};
+
+/**
+ * Cache one photo: download the portal bytes, upload the original plus its
+ * pre-generated width-variants to R2, and record the key. Returns the outcome
+ * so the caller can tally without owning the try/catch — keeps the task's
+ * `run` loop flat. A fetch/upload failure is logged and reported as "failed",
+ * leaving `r2_key` NULL so a later run retries the row.
+ */
+async function cacheOnePhoto(args: {
+  db: ReturnType<typeof getDb>;
+  creds: R2Creds;
+  listingId: string;
+  clusterId: string;
+  row: { id: string; url: string; position: number; r2Key: string | null };
+}): Promise<"cached" | "skipped" | "failed"> {
+  const { db, creds, listingId, clusterId, row } = args;
+  if (row.r2Key) {
+    return "skipped";
+  }
+  try {
+    const res = await fetchWithTimeout(row.url);
+    if (!res.ok) {
+      throw new Error(`fetch ${res.status} ${res.statusText}`);
+    }
+    const buf = await res.arrayBuffer();
+    const ext = extFromContentType(res.headers.get("content-type"));
+    const contentType = res.headers.get("content-type") ?? `image/${ext}`;
+    const key = `clusters/${clusterId}/listings/${listingId}/${row.position}-${nanoid(8)}.${ext}`;
+    await uploadToR2({ ...creds, key, body: buf, contentType });
+    // Pre-generate the render-width variants the UI requests so the Worker can
+    // serve them statically (no `cf.image` billing). Never throws — a resize
+    // failure just leaves this photo to fall back to full-size.
+    await uploadVariants({
+      ...creds,
+      baseKey: key,
+      body: buf,
+      contentType,
+      listingId,
+      photoId: row.id,
+    });
+    await db
+      .update(schema.listingPhotos)
+      .set({ r2Key: key })
+      .where(eq(schema.listingPhotos.id, row.id));
+    return "cached";
+  } catch (err) {
+    logger.error("cache-photos: photo failed, leaving r2_key NULL", {
+      listingId,
+      photoId: row.id,
+      url: row.url,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return "failed";
+  }
 }
 
 export const cachePhotosTask = task({
@@ -281,45 +418,31 @@ export const cachePhotosTask = task({
         )
       );
 
+    const creds: R2Creds = {
+      accountId: R2_ACCOUNT_ID,
+      accessKeyId: R2_ACCESS_KEY_ID,
+      secretAccessKey: R2_SECRET_ACCESS_KEY,
+      bucket: R2_BUCKET,
+    };
+
     let cached = 0;
     let skipped = 0;
     let failed = 0;
 
     for (const row of rows) {
-      if (row.r2Key) {
-        skipped += 1;
-        continue;
-      }
-      try {
-        const res = await fetchWithTimeout(row.url);
-        if (!res.ok) {
-          throw new Error(`fetch ${res.status} ${res.statusText}`);
-        }
-        const buf = await res.arrayBuffer();
-        const ext = extFromContentType(res.headers.get("content-type"));
-        const key = `clusters/${clusterId}/listings/${listingId}/${row.position}-${nanoid(8)}.${ext}`;
-        await uploadToR2({
-          accountId: R2_ACCOUNT_ID,
-          accessKeyId: R2_ACCESS_KEY_ID,
-          secretAccessKey: R2_SECRET_ACCESS_KEY,
-          bucket: R2_BUCKET,
-          key,
-          body: buf,
-          contentType: res.headers.get("content-type") ?? `image/${ext}`,
-        });
-        await db
-          .update(schema.listingPhotos)
-          .set({ r2Key: key })
-          .where(eq(schema.listingPhotos.id, row.id));
+      const outcome = await cacheOnePhoto({
+        db,
+        creds,
+        listingId,
+        clusterId,
+        row,
+      });
+      if (outcome === "cached") {
         cached += 1;
-      } catch (err) {
+      } else if (outcome === "skipped") {
+        skipped += 1;
+      } else {
         failed += 1;
-        logger.error("cache-photos: photo failed, leaving r2_key NULL", {
-          listingId,
-          photoId: row.id,
-          url: row.url,
-          error: err instanceof Error ? err.message : String(err),
-        });
       }
     }
 

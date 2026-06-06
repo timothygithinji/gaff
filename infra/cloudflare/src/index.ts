@@ -170,36 +170,27 @@ const accessApp = new cloudflare.ZeroTrustAccessApplication(
 );
 
 // ---------------------------------------------------------------------------
-// Image Transformations (formerly "Image Resizing").
+// Image Transformations (formerly "Image Resizing") — DISABLED.
 //
-// Turns on the zone-level transform feature the Worker relies on for
-// render-time photo downscaling: `src/server.ts` re-fetches R2-served photos
-// through `cf.image` when a `?w=` param is present (see src/lib/photo-size.ts).
-// Cloudflare only honours `cf.image` when this setting is on — otherwise it
-// silently serves the original, so heroes go back to upscaling at full width.
+// We no longer transform at the edge. `cf.image` bills per unique transform
+// and the free tier (5,000/month) capped out in a single browse, returning
+// `9422` for new sizes. Photos are now PRE-GENERATED at a fixed ladder of
+// widths by `cache-photos` and stored beside the original in R2; the Worker
+// serves the static, right-sized object directly (see src/server.ts +
+// src/lib/photo-size.ts). Nothing calls `cf.image` anymore.
 //
-// Mode is "open", NOT "on", because the Worker resizes photos from their
-// PRESIGNED R2 URL (`<account>.r2.cloudflarestorage.com`), not from this zone.
-// The `/clusters/*` path is behind Cloudflare Access, and the resizer fetches
-// its source without forwarding auth headers — so resizing the in-zone path
-// gets the Access login page and fails `9412 (non-image)`. Sourcing from R2's
-// (off-zone) S3 host with query-string auth sidesteps Access, but "on" only
-// resizes same-zone sources — "open" is required to resize the R2 host. In
-// practice only our Worker constructs `cf.image` requests, so "open" isn't an
-// exploitable open proxy. See src/lib/r2-presign.ts + src/server.ts.
-//
-// Transformations is available on Free and Paid plans (a monthly free
-// allowance of unique transformations, billed beyond it) — no plan upgrade
-// needed. The provisioning CLOUDFLARE_API_TOKEN must carry "Zone > Zone
-// Settings > Edit" on this zone, or `pulumi up` (run by deploy.yml on every
-// push to main) 403s here and fails the deploy.
+// Kept "off" as defense-in-depth: with the feature disabled, even a stray
+// `cf.image` request can't rack up Transformations usage, guaranteeing we stay
+// on the free tier. The provisioning CLOUDFLARE_API_TOKEN must carry "Zone >
+// Zone Settings > Edit" on this zone, or `pulumi up` (run by deploy.yml on
+// every push to main) 403s here and fails the deploy.
 // ---------------------------------------------------------------------------
 const imageResizing = new cloudflare.ZoneSetting(
   `${projectName}-image-resizing`,
   {
     zoneId,
     settingId: "image_resizing",
-    value: "open",
+    value: "off",
   }
 );
 
