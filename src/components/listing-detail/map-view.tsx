@@ -86,11 +86,13 @@ const CATEGORY_COLOR: Record<PlaceCategory, string> = {
 
 interface GMapsMap {
   setOptions(opts: Record<string, unknown>): void;
+  setCenter(latLng: LatLng): void;
 }
 interface GMapsMarker {
   setMap(map: GMapsMap | null): void;
   addListener(event: string, handler: () => void): void;
   setIcon(icon: unknown): void;
+  setPosition(latLng: LatLng): void;
 }
 interface GMapsDirectionsRenderer {
   setMap(map: GMapsMap | null): void;
@@ -232,6 +234,20 @@ export function MapView({
       zIndex: 1000,
     });
   }, [status, lat, lng, title, isDark]);
+
+  // Recenter + move the property pin when the coordinates change without a
+  // remount — the review page reuses one `MapView` across properties, so the
+  // build effect above (guarded by `mapRef.current`) won't fire again.
+  useEffect(() => {
+    const map = mapRef.current;
+    const marker = propertyMarkerRef.current;
+    if (!map || !marker) {
+      return;
+    }
+    const center: LatLng = { lat, lng };
+    map.setCenter(center);
+    marker.setPosition(center);
+  }, [lat, lng]);
 
   // Sync the stop markers to `points`. Rebuilds when the set changes
   // (stable per listing in practice). Each marker toggles selection.

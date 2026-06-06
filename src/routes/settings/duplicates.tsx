@@ -136,7 +136,7 @@ function DuplicatesList() {
 
   if (data.length === 0) {
     return (
-      <div className="rounded-lg border border-line bg-white px-5 py-8 text-center">
+      <div className="rounded-lg border border-line bg-card px-5 py-8 text-center">
         <p className="font-medium text-navy text-sm">No duplicates found</p>
         <p className="mt-1 text-slate text-sm">
           Every property currently maps to a single cluster.
@@ -299,7 +299,7 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
   const canMerge = survivor != null && absorbedIds.length >= 1;
 
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
+    <div className="rounded-lg border border-line bg-card p-4">
       <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
         {group.clusters.length} possible matches · keep one, merge the same
         ones in, skip any that aren't

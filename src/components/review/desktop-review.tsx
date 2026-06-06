@@ -51,9 +51,11 @@ import { sizedPhoto } from "../../lib/photo-size";
 import { propertyKindLabel } from "../../lib/property-kind";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
+import { MapView } from "../listing-detail/map-view";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { type Pill, severityToken } from "../ui/patterns/feature-pills";
+import { MountWhenVisible } from "../ui/patterns/mount-when-visible";
 import { PortalList, type PortalRowItem } from "../ui/patterns/portal-list";
 import { type StatCell, StatRow } from "../ui/patterns/stat-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -129,6 +131,9 @@ export type DesktopReviewData = {
     signals: Pill[];
     /** The numbers cells: commute · EPC · council tax · size. */
     stats: DesktopReviewStatCell[];
+    /** Property coordinates for the "where it sits" map; null when unknown. */
+    lat: number | null;
+    lng: number | null;
   };
   /** "98% match" or null when we can't score the cluster. */
   matchPct: string | null;
@@ -417,17 +422,50 @@ function MainColumn({
   onLightboxOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <section className="-mr-2 flex min-h-0 min-w-0 flex-1 flex-col gap-[18px] overflow-y-auto pr-2">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-[18px]">
       <LeadHeader hero={hero} onOpenDetail={onOpenDetail} />
-      <HeroPhoto
-        onLightboxOpenChange={onLightboxOpenChange}
-        photos={hero.photos}
-      />
-      <div className="flex items-stretch gap-[18px]">
-        <WhatStandsOutCard signals={hero.signals} />
-        <StatRow stats={hero.stats} variant="card" />
+      {/* The photo fills the remaining viewport height; everything below it
+          (cards + map) scrolls underneath. The header stays pinned. */}
+      <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto pr-2">
+        <HeroPhoto
+          onLightboxOpenChange={onLightboxOpenChange}
+          photos={hero.photos}
+        />
+        <div className="flex items-stretch gap-[18px]">
+          <WhatStandsOutCard signals={hero.signals} />
+          <StatRow stats={hero.stats} variant="card" />
+        </div>
+        <WhereItSitsMap lat={hero.lat} lng={hero.lng} title={hero.title} />
       </div>
     </section>
+  );
+}
+
+/**
+ * A short "where it sits" map under the review cards — just the property pin,
+ * no transit chips. Deliberately squat (a wide band, not a tall map) so it
+ * orients without pushing the decision actions off-screen. Renders nothing
+ * when the cluster has no coordinates.
+ */
+function WhereItSitsMap({
+  lat,
+  lng,
+  title,
+}: {
+  lat: number | null;
+  lng: number | null;
+  title: string;
+}) {
+  if (lat == null || lng == null) {
+    return null;
+  }
+  return (
+    <MountWhenVisible
+      className="h-[200px] w-full shrink-0 overflow-hidden rounded-[6px] border border-line"
+      placeholder={<div className="h-full w-full bg-[#c9d3dc]" />}
+    >
+      <MapView lat={lat} lng={lng} title={title} />
+    </MountWhenVisible>
   );
 }
 
@@ -525,14 +563,14 @@ function HeroPhoto({
 
   if (photoCount === 0) {
     return (
-      <div className="flex aspect-[4/3] w-full items-center justify-center rounded-[6px] bg-[#c9d3dc]">
+      <div className="flex h-full min-h-[460px] w-full shrink-0 items-center justify-center rounded-[6px] bg-[#c9d3dc]">
         <span className="text-[12px] text-slate">No photos</span>
       </div>
     );
   }
 
   return (
-    <div className="group relative aspect-[4/3] w-full select-none overflow-hidden rounded-[6px] bg-[#c9d3dc]">
+    <div className="group relative h-full min-h-[460px] w-full shrink-0 select-none overflow-hidden rounded-[6px] bg-[#c9d3dc]">
       <div className="h-full w-full overflow-hidden" ref={emblaRef}>
         <div className="flex h-full touch-pan-y">
           {photos.map((src, i) => (
@@ -816,7 +854,7 @@ function RightRail({
   pendingAction?: DesktopReviewPendingAction;
 }) {
   return (
-    <aside className="-mr-2 flex min-h-0 w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pr-2">
+    <aside className="flex w-[280px] shrink-0 flex-col gap-4">
       <TodayPanel today={today} />
       <PortalsPanel matchPct={matchPct} portals={portals} />
       <DecisionActions
@@ -1069,6 +1107,8 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
       { label: "Council tax", value: "C", sub: "band" },
       { label: "Size", value: "712", unit: "sq ft" },
     ],
+    lat: 51.5503,
+    lng: -0.1642,
   },
   matchPct: "98%",
   portals: [

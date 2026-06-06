@@ -1016,7 +1016,18 @@ function buildHero(card: ReviewCard): DesktopReviewData["hero"] {
     priceUnit: "/mo",
     signals: toPills(card.features),
     stats: toStatCells(card),
+    lat: parseCoord(card.cluster.lat),
+    lng: parseCoord(card.cluster.lng),
   };
+}
+
+/** Parse a stored coordinate string into a finite number, or null. */
+function parseCoord(value: string | null): number | null {
+  if (value == null) {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 const FLAT_PREFIX_RE = /^(?:flat|unit|apartment|apt)\s+\w+\s+/i;

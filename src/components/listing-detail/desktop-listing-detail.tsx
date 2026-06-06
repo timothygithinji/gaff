@@ -68,7 +68,6 @@ import { PriceBlock } from "../ui/patterns/price-block";
 import { CostsCard } from "./costs";
 import { GalleryLightbox } from "./gallery-lightbox";
 import { MapCommute } from "./map-commute";
-import { PropertyFactsCard } from "./property-facts";
 
 type Outcome = "keep" | "skip" | "shortlist";
 
@@ -364,7 +363,6 @@ function MainColumn({ data }: { data: ListingDetailPayload }) {
         postcode={headline.postcode ?? cluster.postcode}
         stationRoutes={data.stationRoutes}
       />
-      <PropertyFactsCard agent={data.agentExtras} facts={data.propertyFacts} />
     </section>
   );
 }

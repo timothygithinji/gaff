@@ -225,16 +225,3 @@ export function PropertyFacts(props: Props) {
     </section>
   );
 }
-
-/** Desktop InfoColumn variant — bordered card. */
-export function PropertyFactsCard(props: Props) {
-  if (!hasAnything(props)) {
-    return null;
-  }
-  return (
-    <article className="flex flex-col gap-3.5 rounded-md border border-line bg-card p-6">
-      <SectionLabel>What the agent disclosed</SectionLabel>
-      <PropertyFactsBody {...props} />
-    </article>
-  );
-}

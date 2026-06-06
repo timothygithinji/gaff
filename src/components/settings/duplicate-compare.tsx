@@ -151,13 +151,16 @@ const ROLES: { role: MergeRole; label: string }[] = [
 
 /** Fill for the currently-selected role button (maritime palette). */
 function activeRoleClass(role: MergeRole): string {
+  // navy/slate flip light in dark mode, so pair them with `text-ground`
+  // (which flips too) rather than a hardcoded white. Copper stays mid-tone
+  // in both schemes, so white reads fine on it.
   if (role === "keep") {
-    return "bg-navy text-white";
+    return "bg-navy text-ground";
   }
   if (role === "merge") {
     return "bg-copper text-white";
   }
-  return "bg-slate/70 text-white";
+  return "bg-slate/70 text-ground";
 }
 
 function ColumnHeader({
@@ -181,7 +184,7 @@ function ColumnHeader({
                 "flex-1 px-1.5 py-1 font-semibold text-[10px] uppercase tracking-[0.08em] transition-colors",
                 active
                   ? activeRoleClass(r.role)
-                  : "bg-white text-slate hover:bg-ground"
+                  : "bg-card text-slate hover:bg-ground"
               )}
               key={r.role}
               onClick={() => onSetRole(cluster.clusterId, r.role)}
