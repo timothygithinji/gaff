@@ -149,7 +149,7 @@ export const SYSTEM_PROMPT = `You are a renter's research assistant for UK renta
 
 You receive a JSON payload with three sections:
   - listing: structured fields from the portal (title, address, price, description, key features, deposit, EPC rating, council tax band, sq ft, furnished status, tenant preferences, nearest stations, fees, …).
-  - enrichment: third-party data we've already pulled (broadband from BT Wholesale, commute minutes from Google Routes, amenity counts from OpenStreetMap).
+  - enrichment: third-party data we've already pulled (broadband from BT Wholesale, commute minutes + station walk/transit times from Google Routes, amenity counts from OpenStreetMap).
   - portalSpread: every portal this property is listed on plus the cheapest price.
 
 Your job: call the extract_features tool exactly once with a payload containing:
@@ -169,6 +169,12 @@ THE RELEVANCE BAR — apply to every highlight and watchout before emitting it:
 Grounding:
   - Anchor every item in a number, a structured flag, or a phrase from the description. If you can't ground it, don't emit it.
   - Cite numbers when you have them. "20-min walk to Clapham Junction" beats "good transport". "FTTP 900Mbps available" beats "fast internet". "£250 below median for the outcode" beats "competitively priced".
+
+TRANSPORT — the single most common hallucination, follow exactly:
+  - Station walk/transit times come ONLY from \`enrichment.stationRoutes\` (real Google-routed minutes). To say "X-min walk to <station>", read \`walkMinutes\` for that station from \`enrichment.stationRoutes\`; for "X min to central London" / a named destination, read \`enrichment.commuteMinutes\`.
+  - NEVER derive a walk time from \`listing.nearestStations\` (that's straight-line distance in miles, not minutes) and NEVER repeat a time from the listing description or marketing copy ("moments from the tube", "2-min walk") — those are unverified and routinely wrong.
+  - If \`enrichment.stationRoutes\` is null/empty, do NOT state any walk time to a station. You may still name the nearest station from \`listing.nearestStations\` WITHOUT a time, but only if it's genuinely decision-changing — usually it isn't, so prefer to skip.
+  - Never pair a distance in miles with a time you didn't get from routing (e.g. "5-min walk… 0.6 miles away" is self-contradictory and forbidden).
 
 Real dealbreakers (always surface when actually present):
   - Deposit above 5 weeks' rent (illegal under the Tenant Fees Act 2019) — severity "problem". DO NOT compute this yourself. Use \`listing.legalDepositCap.depositOverCap\` — if it's \`true\` surface the watchout (cite \`listing.deposit\` and \`legalDepositCap.fiveWeeksRent\` in the detail); if it's \`false\` or \`null\` do NOT surface a deposit-cap watchout under any phrasing.
@@ -201,6 +207,19 @@ export type EnrichmentInput = {
 export type AmenitiesInput = {
   withinMeters: number;
   counts: Record<string, number>;
+};
+
+/**
+ * Real Google-Routes walk/transit times to the nearest stations, the
+ * SAME data the UI shows. This is the ONLY trustworthy source of station
+ * times — `listing.nearestStations` carries only the portal's
+ * straight-line distance, and listing copy ("2 min to the tube") is
+ * marketing. The model must cite times from here, never compute its own.
+ */
+export type StationRouteInput = {
+  name: string;
+  walkMinutes: number | null;
+  transitMinutes: number | null;
 };
 
 export type PortalSpreadRow = {
@@ -303,6 +322,12 @@ export type ExtractContext = {
     epcCurrent: string | null;
     epcPotential: string | null;
     commuteMinutes: Record<string, number> | null;
+    /**
+     * Real routed walk/transit times to nearby stations (Google Routes —
+     * same data the UI plots). The ONLY source the model may cite station
+     * times from. Null when station routing hasn't completed yet.
+     */
+    stationRoutes: StationRouteInput[] | null;
     broadband: EnrichmentInput | null;
     amenities: AmenitiesInput | null;
   };

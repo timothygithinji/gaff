@@ -44,8 +44,17 @@ export const HAIKU_4_5_OUTPUT_USD_PER_MTOK = 5.0;
  *     empirical noise in the prod enrichments table. Schema unchanged.
  *     A `feature-filter.ts` denylist applies the same rules at read
  *     time, so the existing v2.0.0 rows benefit without re-running AI.
+ *   - v2.2.0 — transport grounding + deposit hardening. The context now
+ *     carries `enrichment.stationRoutes` (real Google-routed walk/transit
+ *     minutes) and the prompt forbids citing any station/commute time
+ *     that isn't from routed data — killing the "5-min walk … 0.6 miles"
+ *     class of hallucination where the model lifted marketing copy or
+ *     converted a straight-line distance. `feature-filter.ts` also drops
+ *     ANY at/near/below-cap deposit watchout (not just exact-match
+ *     phrasings) unless our computed `depositOverCap` is true. Re-running
+ *     AI is required to populate the new context for existing rows.
  *
  * See `src/lib/ai/prompt.ts` for the prompt text and
  * `src/lib/ai/feature-filter.ts` for the render-time filter.
  */
-export const PROMPT_VERSION = "v2.1.0" as const;
+export const PROMPT_VERSION = "v2.2.0" as const;

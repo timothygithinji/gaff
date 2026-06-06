@@ -63,6 +63,7 @@ import type {
   PortalSpreadRow,
   PromptNearestStation,
   PromptTenantPreferences,
+  StationRouteInput,
 } from "../lib/ai/prompt";
 import { env } from "../lib/env";
 import type { ListingDetail } from "../lib/parsers/types";
@@ -189,6 +190,35 @@ function toCommuteMinutes(
     }
   }
   return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Real routed station walk/transit times for the AI context. This is the
+ * only station-time source the prompt is allowed to cite — see the
+ * TRANSPORT rule in `SYSTEM_PROMPT`. Keep entries with a usable
+ * `walkMinutes` (the field renters care about); drop the rest so the
+ * model never sees a half-empty row it might pad out.
+ */
+function toStationRoutes(
+  raw: typeof schema.enrichments.$inferSelect.stationRoutes
+): StationRouteInput[] | null {
+  if (!Array.isArray(raw)) {
+    return null;
+  }
+  const out: StationRouteInput[] = [];
+  for (const r of raw) {
+    if (!r || typeof r.name !== "string") {
+      continue;
+    }
+    const walk = typeof r.walkMinutes === "number" ? r.walkMinutes : null;
+    const transit =
+      typeof r.transitMinutes === "number" ? r.transitMinutes : null;
+    if (walk == null && transit == null) {
+      continue;
+    }
+    out.push({ name: r.name, walkMinutes: walk, transitMinutes: transit });
+  }
+  return out.length > 0 ? out : null;
 }
 
 /**
@@ -404,6 +434,7 @@ export const enrichAiTask = task({
         epcCurrent: toEpcCurrent(geo?.epc ?? null),
         epcPotential: toEpcPotential(geo?.epc ?? null),
         commuteMinutes: toCommuteMinutes(geo?.commuteMinutes ?? null),
+        stationRoutes: toStationRoutes(geo?.stationRoutes ?? null),
         broadband: toBroadbandInput(geo?.broadband ?? null),
         amenities: toAmenitiesInput(geo?.amenities ?? null),
       },
