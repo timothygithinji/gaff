@@ -26,15 +26,9 @@ import { cn } from "../../lib/utils";
  */
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
 import { FeaturePills, toPills } from "../ui/patterns/feature-pills";
+import { PriceBlock } from "../ui/patterns/price-block";
 import { StatRow } from "../ui/patterns/stat-row";
 import { toStatCells } from "./review-shapers";
-
-function formatPrice(monthly: number | null): string {
-  if (monthly === null) {
-    return "—";
-  }
-  return `£${monthly.toLocaleString("en-GB")}`;
-}
 
 function portalLabel(portal: string): string {
   switch (portal.toLowerCase()) {
@@ -230,12 +224,7 @@ export function MobileReviewCard({
             </h2>
             <p className="text-[12px] text-slate leading-4">{subSpec(card)}</p>
           </div>
-          <div className="flex shrink-0 flex-col items-end">
-            <p className="font-light text-[22px] text-navy leading-[22px] tracking-[-0.02em]">
-              {formatPrice(hl.priceMonthly)}
-            </p>
-            <p className="text-[10px] text-slate leading-3">per month</p>
-          </div>
+          <PriceBlock layout="stacked" priceMonthly={hl.priceMonthly} size="sm" />
         </div>
         <CardTags card={card} />
         <CardStats card={card} />
