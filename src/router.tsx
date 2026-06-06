@@ -1,5 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter as createTanStackRouter } from "@tanstack/react-router";
+import {
+  DefaultErrorComponent,
+  DefaultPendingComponent,
+} from "./components/ui/patterns/route-fallback";
 import { routeTree } from "./routeTree.gen";
 
 /**
@@ -29,6 +33,15 @@ export function getRouter() {
     routeTree,
     scrollRestoration: true,
     defaultPreload: "intent",
+    // Loading UX: show a route's pendingComponent quickly (150ms) once a
+    // loader is genuinely waiting, but hold it on screen for at least
+    // 400ms so a near-instant resolve doesn't flash a skeleton. Routes
+    // without a tailored pendingComponent fall back to these generic
+    // shadcn-Skeleton + error components.
+    defaultPendingMs: 150,
+    defaultPendingMinMs: 400,
+    defaultPendingComponent: DefaultPendingComponent,
+    defaultErrorComponent: DefaultErrorComponent,
     context: { queryClient },
     Wrap: ({ children }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

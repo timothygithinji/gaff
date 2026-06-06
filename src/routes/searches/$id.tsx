@@ -21,6 +21,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { DesktopSearchCreate } from "../../components/search-form/desktop-search-create";
 import {
   DEFAULT_FORM_VALUES,
@@ -30,6 +31,10 @@ import {
   bedOptionFor,
 } from "../../components/search-form/search-form";
 import { Button } from "../../components/ui/button";
+import {
+  SkeletonForm,
+  SkeletonPageHeader,
+} from "../../components/ui/patterns/skeletons";
 import { requireSession } from "../../lib/auth-guard";
 import { findCadenceByCron, findCadenceById } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
@@ -85,8 +90,28 @@ export const Route = createFileRoute("/searches/$id")({
     ]);
     return { search, schedules };
   },
+  pendingComponent: PendingSearchDetail,
   component: EditSearchPage,
 });
+
+/** Loading frame — the edit form's shape (header + field column) in the
+ * desktop shell and the mobile container. */
+function PendingSearchDetail() {
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="mx-auto w-full max-w-[640px] px-10 py-10">
+          <SkeletonPageHeader className="mb-8" />
+          <SkeletonForm fields={6} />
+        </div>
+      </AdminSidebar>
+      <div className="mx-auto min-h-screen max-w-md bg-background px-5 pt-6 pb-24 sm:max-w-2xl lg:hidden">
+        <SkeletonPageHeader className="mb-6" />
+        <SkeletonForm fields={6} />
+      </div>
+    </>
+  );
+}
 
 function EditSearchPage() {
   const params = Route.useParams();

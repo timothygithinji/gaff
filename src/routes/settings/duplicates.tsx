@@ -13,7 +13,11 @@
  */
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
@@ -21,6 +25,7 @@ import { BottomNav } from "../../components/layout/bottom-nav";
 import { DuplicateCompare } from "../../components/settings/duplicate-compare";
 import { SettingsNav } from "../../components/settings/settings-nav";
 import { Button } from "../../components/ui/button";
+import { SkeletonList } from "../../components/ui/patterns/skeletons";
 import { requireSession } from "../../lib/auth-guard";
 import { distanceMetres } from "../../lib/cluster/coords";
 import { duplicatesQueryOptions } from "../../lib/duplicates-query";
@@ -44,6 +49,7 @@ export const Route = createFileRoute("/settings/duplicates")({
   // SSR-painted instead of popping in via a mount-time fetch.
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(duplicatesQueryOptions),
+  pendingComponent: PendingDuplicates,
   component: DuplicatesPage,
 });
 
@@ -78,6 +84,31 @@ function DuplicatesPage() {
   );
 }
 
+/** Loading frame — mirrors {@link DuplicatesPage}: static header + skeleton
+ * rows inside the settings shell (desktop) and the mobile column. */
+function PendingDuplicates() {
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="flex w-full gap-10 px-10 py-10">
+          <SettingsNav />
+          <div className="flex min-w-0 max-w-[760px] grow flex-col">
+            <Header />
+            <SkeletonList count={3} />
+          </div>
+        </div>
+      </AdminSidebar>
+      <div className="min-h-screen bg-ground pb-28 lg:hidden">
+        <div className="mx-auto w-full max-w-[640px] px-5 pt-5 sm:px-8 sm:pt-8">
+          <Header />
+          <SkeletonList count={3} />
+        </div>
+      </div>
+      <BottomNav />
+    </>
+  );
+}
+
 function Header() {
   return (
     <div className="mb-6 flex flex-col gap-1">
@@ -97,19 +128,11 @@ function Header() {
 }
 
 function DuplicatesList() {
-  const { data, isLoading, isError } = useQuery(duplicatesQueryOptions);
+  // Loader prefetches via `ensureQueryData`; pendingComponent owns the
+  // loading frame and the router errorComponent owns failures.
+  const { data } = useSuspenseQuery(duplicatesQueryOptions);
 
-  if (isLoading) {
-    return <p className="text-slate text-sm">Scanning your clusters…</p>;
-  }
-  if (isError) {
-    return (
-      <p className="text-sm" style={{ color: "#b4472a" }}>
-        Couldn't load suggestions. Try again.
-      </p>
-    );
-  }
-  if (!data || data.length === 0) {
+  if (data.length === 0) {
     return (
       <div className="rounded-lg border border-line bg-white px-5 py-8 text-center">
         <p className="font-medium text-navy text-sm">No duplicates found</p>

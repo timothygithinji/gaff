@@ -20,11 +20,12 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useMutation,
   useQueries,
-  useQuery,
   useQueryClient,
+  useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { BottomNav } from "../components/layout/bottom-nav";
 import { DesktopShortlist } from "../components/shortlist/desktop-shortlist";
 import { MatchCard, usePlanViewing } from "../components/shortlist/match-card";
@@ -47,6 +48,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
+import {
+  SkeletonCard,
+  SkeletonPageHeader,
+  skeletonIds,
+} from "../components/ui/patterns/skeletons";
+import { Skeleton } from "../components/ui/skeleton";
 import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
 import { listingDetailQueryOptions } from "../lib/listing-detail-query";
@@ -93,8 +100,41 @@ export const Route = createFileRoute("/shortlist")({
       context.queryClient.ensureQueryData(pipelineQueryOptions),
       context.queryClient.ensureQueryData(myQueryOptions),
     ]),
+  pendingComponent: PendingShortlist,
   component: ShortlistPage,
 });
+
+/** Loading frame — a kanban of column/card skeletons on desktop, a single
+ * stacked card list on mobile. Mirrors the pipeline layout. */
+function PendingShortlist() {
+  const cols = skeletonIds("col", 4);
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="flex h-full gap-4 overflow-x-auto px-8 py-6">
+          {cols.map((id) => (
+            <div className="flex w-[280px] shrink-0 flex-col gap-2.5" key={id}>
+              <Skeleton className="h-4 w-32" />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ))}
+        </div>
+      </AdminSidebar>
+      <div className="mx-auto min-h-screen max-w-md bg-background px-4 pt-6 pb-24 sm:max-w-2xl lg:hidden">
+        <div className="px-1 pb-4">
+          <SkeletonPageHeader />
+        </div>
+        <div className="flex flex-col gap-3">
+          {skeletonIds("card", 3).map((id) => (
+            <SkeletonCard key={id} />
+          ))}
+        </div>
+        <BottomNav />
+      </div>
+    </>
+  );
+}
 
 const PIPELINE_TAB_ID = "pipeline";
 
@@ -165,14 +205,6 @@ function totalPipelineCount(columns: PipelineColumns): number {
   );
 }
 
-const EMPTY_COLUMNS: PipelineColumns = {
-  shortlisted: [],
-  contacted: [],
-  viewing_booked: [],
-  offer_made: [],
-  archived: [],
-};
-
 /**
  * Pure, optimistic version of a pipeline move: pull the card out of
  * whichever column currently holds it and drop it into `to`, stamping
@@ -225,9 +257,10 @@ function ShortlistPage() {
   const qc = useQueryClient();
   const { memberCount, otherMembers, members, currentUserId } = useHousehold();
 
-  const { data: pipeline } = useQuery(pipelineQueryOptions);
-  const { data: mine = [] } = useQuery(myQueryOptions);
-  const columns: PipelineColumns = pipeline ?? EMPTY_COLUMNS;
+  // Loader prefetches both via `ensureQueryData`; the pendingComponent owns
+  // the loading frame, so these are always populated here.
+  const { data: columns } = useSuspenseQuery(pipelineQueryOptions);
+  const { data: mine } = useSuspenseQuery(myQueryOptions);
 
   // Clear the unread-matches badge on first paint — the user landed on
   // the screen that supersedes /matches, so anything new is "seen". On

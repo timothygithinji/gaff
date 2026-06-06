@@ -13,12 +13,17 @@
  */
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { BottomNav } from "../components/layout/bottom-nav";
 import { Button } from "../components/ui/button";
+import { SkeletonList } from "../components/ui/patterns/skeletons";
 import { requireSession } from "../lib/auth-guard";
 import { deferralsQueryOptions } from "../lib/deferrals-query";
 import { queryKeys } from "../lib/query-keys";
@@ -34,6 +39,7 @@ export const Route = createFileRoute("/deferred")({
   },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(deferralsQueryOptions),
+  pendingComponent: PendingDeferred,
   component: DeferredPage,
 });
 
@@ -65,6 +71,28 @@ function DeferredPage() {
   );
 }
 
+/** Loading frame — mirrors {@link DeferredPage}: static header + a list of
+ * skeleton rows in both the desktop and mobile shells. */
+function PendingDeferred() {
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="mx-auto w-full max-w-[760px] px-8 py-10">
+          <Header />
+          <SkeletonList count={4} />
+        </div>
+      </AdminSidebar>
+      <div className="min-h-screen bg-ground pb-28 lg:hidden">
+        <div className="mx-auto w-full max-w-[640px] px-5 pt-5 sm:px-8 sm:pt-8">
+          <Header />
+          <SkeletonList count={4} />
+        </div>
+      </div>
+      <BottomNav />
+    </>
+  );
+}
+
 function Header() {
   return (
     <div className="mb-6 flex flex-col gap-1">
@@ -84,19 +112,12 @@ function Header() {
 }
 
 function DeferredList() {
-  const { data, isLoading, isError } = useQuery(deferralsQueryOptions);
+  // Loader prefetches via `ensureQueryData`, so the data is present by the
+  // time we render; the route's pendingComponent owns the loading frame and
+  // the router's errorComponent owns failures.
+  const { data } = useSuspenseQuery(deferralsQueryOptions);
 
-  if (isLoading) {
-    return <p className="text-slate text-sm">Loading parked listings…</p>;
-  }
-  if (isError) {
-    return (
-      <p className="text-sm" style={{ color: "#b4472a" }}>
-        Couldn't load deferred listings. Try again.
-      </p>
-    );
-  }
-  if (!data || data.length === 0) {
+  if (data.length === 0) {
     return (
       <div className="rounded-lg border border-line bg-white px-5 py-8 text-center">
         <p className="font-medium text-navy text-sm">Nothing deferred</p>

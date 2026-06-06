@@ -16,10 +16,16 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import type { ScheduleObject } from "@trigger.dev/core/v3";
 import { useEffect, useState } from "react";
+import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { BottomNav } from "../../components/layout/bottom-nav";
 import { DesktopSearches } from "../../components/searches/desktop-searches";
 import { subline } from "../../components/searches/desktop-searches";
 import { PageShell } from "../../components/ui/patterns/page-shell";
+import {
+  SkeletonCard,
+  SkeletonPageHeader,
+  skeletonIds,
+} from "../../components/ui/patterns/skeletons";
 import { requireSession } from "../../lib/auth-guard";
 import { findCadenceByCron } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
@@ -62,8 +68,41 @@ export const Route = createFileRoute("/searches/")({
       context.queryClient.ensureQueryData(portfolioQueryOptions),
       context.queryClient.ensureQueryData(schedulesQueryOptions),
     ]),
+  pendingComponent: PendingSearches,
   component: SearchesIndexPage,
 });
+
+/** Loading frame — a header + card grid in both shells, mirroring the
+ * saved-searches layout. */
+function PendingSearches() {
+  const cards = skeletonIds("search", 4);
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="mx-auto w-full max-w-[1100px] px-10 py-10">
+          <SkeletonPageHeader className="mb-8" />
+          <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
+            {cards.map((id) => (
+              <SkeletonCard key={id} />
+            ))}
+          </div>
+        </div>
+      </AdminSidebar>
+
+      <PageShell className="pb-28" variant="mobile">
+        <div className="px-5 pt-2 pb-3.5">
+          <SkeletonPageHeader />
+        </div>
+        <div className="space-y-3 px-5">
+          {cards.map((id) => (
+            <SkeletonCard key={id} />
+          ))}
+        </div>
+        <BottomNav />
+      </PageShell>
+    </>
+  );
+}
 
 function cadenceLabelMap(schedules: ScheduleObject[]): Map<string, string> {
   const out = new Map<string, string>();

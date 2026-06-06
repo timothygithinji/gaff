@@ -31,6 +31,8 @@ import { z } from "zod";
 import { CompareColumn } from "../components/compare/compare-column";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { Button } from "../components/ui/button";
+import { skeletonIds } from "../components/ui/patterns/skeletons";
+import { Skeleton } from "../components/ui/skeleton";
 import { requireSession } from "../lib/auth-guard";
 import { listingDetailQueryOptions } from "../lib/listing-detail-query";
 import type { getListingDetail } from "../server/functions/listing-detail";
@@ -58,8 +60,38 @@ export const Route = createFileRoute("/compare")({
       await context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.b));
     }
   },
+  pendingComponent: PendingCompare,
   component: ComparePage,
 });
+
+/** Loading frame — two side-by-side column skeletons on desktop, one on
+ * mobile, mirroring the compare layout. */
+function PendingCompare() {
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="grid grid-cols-2 gap-6 px-6 pt-9 pb-12 lg:px-10">
+          <CompareColumnSkeleton />
+          <CompareColumnSkeleton />
+        </div>
+      </AdminSidebar>
+      <div className="mx-auto min-h-screen max-w-md bg-background px-4 pt-6 pb-16 sm:max-w-2xl lg:hidden">
+        <CompareColumnSkeleton />
+      </div>
+    </>
+  );
+}
+
+function CompareColumnSkeleton() {
+  return (
+    <div className="flex flex-col gap-3.5">
+      <Skeleton className="aspect-[4/3] w-full rounded-2xl" />
+      {skeletonIds("cmp", 5).map((id) => (
+        <Skeleton className="h-16 w-full rounded-xl" key={id} />
+      ))}
+    </div>
+  );
+}
 
 function ComparePage() {
   const { a, b } = Route.useSearch();

@@ -54,6 +54,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
+import {
+  SkeletonPageHeader,
+  skeletonIds,
+} from "../../components/ui/patterns/skeletons";
+import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import {
   householdQueryOptions,
@@ -78,8 +83,55 @@ export const Route = createFileRoute("/settings/household")({
   },
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(householdQueryOptions),
+  pendingComponent: PendingHousehold,
   component: HouseholdSettingsPage,
 });
+
+/** Loading frame — header + member-row skeletons in the settings shell
+ * (desktop) and the mobile column. */
+function PendingHousehold() {
+  const rows = skeletonIds("member", 2);
+  return (
+    <>
+      <AdminSidebar mode="desktop-only">
+        <div className="flex w-full gap-10 px-10 py-10">
+          <SettingsNav />
+          <div className="flex min-w-0 max-w-[640px] grow flex-col gap-6">
+            <SkeletonPageHeader />
+            <div className="flex flex-col gap-3">
+              {rows.map((id) => (
+                <MemberRowSkeleton key={id} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </AdminSidebar>
+      <div className="min-h-screen bg-ground pb-28 lg:hidden">
+        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-5 pt-5 sm:px-8 sm:pt-8">
+          <SkeletonPageHeader />
+          <div className="flex flex-col gap-3">
+            {rows.map((id) => (
+              <MemberRowSkeleton key={id} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <BottomNav />
+    </>
+  );
+}
+
+function MemberRowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-line bg-card p-3.5">
+      <Skeleton className="size-10 shrink-0 rounded-full" />
+      <div className="flex flex-1 flex-col gap-2">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-24" />
+      </div>
+    </div>
+  );
+}
 
 /** Fixed-navy + copper surfaces pin literal hex so they don't flip in
  * the dark scene (per globals.css dark-mode gotcha). */

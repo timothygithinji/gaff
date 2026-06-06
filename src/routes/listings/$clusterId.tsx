@@ -106,6 +106,9 @@ export const Route = createFileRoute("/listings/$clusterId")({
     context.queryClient.ensureQueryData(
       listingDetailQueryOptions(params.clusterId)
     ),
+  // Reuse the bespoke shell skeleton as the loader's pending frame (it
+  // already renders both the desktop and mobile shells).
+  pendingComponent: ListingDetailSkeleton,
   component: ListingDetailPage,
 });
 

@@ -189,8 +189,24 @@ export const Route = createFileRoute("/")({
       ),
       context.queryClient.ensureQueryData(reviewSearchesQueryOptions),
     ]),
+  pendingComponent: PendingReview,
   component: ReviewPage,
 });
+
+/** Loader pending frame — reuses the bespoke desktop + mobile review
+ * skeletons (both shadcn-Skeleton based) so a cold/slow load paints the
+ * real three-column shape rather than the generic fallback. */
+function PendingReview() {
+  return (
+    <>
+      <DesktopReviewSkeleton />
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 sm:max-w-2xl lg:hidden">
+        <MobileReviewSkeleton />
+        <BottomNav />
+      </div>
+    </>
+  );
+}
 
 function ReviewPage() {
   const qc = useQueryClient();
