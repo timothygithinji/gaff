@@ -48,11 +48,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
-import {
-  SkeletonCard,
-  SkeletonPageHeader,
-  skeletonIds,
-} from "../components/ui/patterns/skeletons";
+import { skeletonIds } from "../components/ui/patterns/skeletons";
 import { Skeleton } from "../components/ui/skeleton";
 import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
@@ -104,35 +100,90 @@ export const Route = createFileRoute("/shortlist")({
   component: ShortlistPage,
 });
 
-/** Loading frame — a kanban of column/card skeletons on desktop, a single
- * stacked card list on mobile. Mirrors the pipeline layout. */
+/** Per-column card counts for the loading frame — staggered so the board
+ * reads naturally rather than as a uniform grid. */
+const PENDING_COLUMNS = [
+  { key: "shortlisted", count: 3 },
+  { key: "contacted", count: 2 },
+  { key: "viewing_booked", count: 2 },
+  { key: "offer_made", count: 1 },
+];
+
+/**
+ * Loading frame — mirrors the live Shortlist: the desktop header
+ * (eyebrow + title + square tab strip), the "Add a listing" button, and
+ * the four-column kanban of compact cards; the mobile header + stage-tab
+ * strip + stacked card list.
+ */
 function PendingShortlist() {
-  const cols = skeletonIds("col", 4);
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="flex h-full gap-4 overflow-x-auto px-8 py-6">
-          {cols.map((id) => (
-            <div className="flex w-[280px] shrink-0 flex-col gap-2.5" key={id}>
-              <Skeleton className="h-4 w-32" />
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ))}
+        <header className="flex items-end justify-between gap-4 px-10 pt-7 pb-4.5">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-3 w-44" />
+            <Skeleton className="h-10 w-44" />
+          </div>
+          <div className="flex gap-1.5">
+            {skeletonIds("tab", 4).map((id) => (
+              <Skeleton className="h-9 w-20 rounded-md" key={id} />
+            ))}
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-10 pt-2 pb-6">
+          <Skeleton className="h-9 w-32 rounded-md" />
+          <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
+            {PENDING_COLUMNS.map((col) => (
+              <div
+                className="flex w-[280px] shrink-0 flex-col gap-2.5"
+                key={col.key}
+              >
+                <div className="flex items-center gap-2 pb-1">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="size-5 rounded-full" />
+                </div>
+                {skeletonIds(col.key, col.count).map((id) => (
+                  <KanbanCardSkeleton key={id} />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </AdminSidebar>
-      <div className="mx-auto min-h-screen max-w-md bg-background px-4 pt-6 pb-24 sm:max-w-2xl lg:hidden">
-        <div className="px-1 pb-4">
-          <SkeletonPageHeader />
+
+      <div className="mx-auto min-h-screen max-w-md bg-background px-5 pb-24 sm:max-w-2xl lg:hidden">
+        <header className="flex flex-col gap-2 pt-6 pb-4.5">
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-7 w-40" />
+        </header>
+        <Skeleton className="mb-4 h-9 w-full rounded-md" />
+        <div className="mb-4 flex gap-2">
+          {skeletonIds("mtab", 4).map((id) => (
+            <Skeleton className="h-7 w-20 rounded-full" key={id} />
+          ))}
         </div>
-        <div className="flex flex-col gap-3">
-          {skeletonIds("card", 3).map((id) => (
-            <SkeletonCard key={id} />
+        <div className="flex flex-col gap-2.5">
+          {skeletonIds("mcard", 4).map((id) => (
+            <KanbanCardSkeleton key={id} />
           ))}
         </div>
         <BottomNav />
       </div>
     </>
+  );
+}
+
+/** Compact pipeline card skeleton — small thumbnail + two text lines,
+ * matching the kanban's resting (compact) card. */
+function KanbanCardSkeleton() {
+  return (
+    <div className="flex gap-3 rounded-md border border-line bg-card px-3.5 py-3">
+      <Skeleton className="size-12 shrink-0 rounded-sm" />
+      <div className="flex min-w-0 grow flex-col gap-1.5 pt-0.5">
+        <Skeleton className="h-3.5 w-3/4" />
+        <Skeleton className="h-2.5 w-1/2" />
+      </div>
+    </div>
   );
 }
 
