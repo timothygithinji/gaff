@@ -16,7 +16,6 @@
  * literal hex so they don't flip in the dark scene.
  */
 import {
-  Alert02Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
   Cancel01Icon,
@@ -28,7 +27,6 @@ import {
   MapsLocation01Icon,
   MinusSignIcon,
   PlusSignIcon,
-  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "@tanstack/react-router";
@@ -59,6 +57,11 @@ import { AdminSidebar } from "../layout/admin-sidebar";
 import { PortalLogo } from "../portal-logo";
 import { Button } from "../ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
+import {
+  FeatureList,
+  highlightsToPills,
+  watchoutsToPills,
+} from "../ui/patterns/feature-pills";
 import { CostsCard } from "./costs";
 import { GalleryLightbox } from "./gallery-lightbox";
 import { MapView, type RouteTimes, type TransitPoint } from "./map-view";
@@ -387,67 +390,16 @@ function AiCard({
           {summary}
         </p>
       ) : null}
-      <div className="grid grid-cols-2 gap-x-6 px-6 pb-5">
-        {highlights.map((item, idx) => (
-          <SignalRow
-            icon={Tick02Icon}
-            item={item}
-            key={`h:${item.label}:${idx}`}
-            tone="success"
-          />
-        ))}
-        {watchouts.map((item, idx) => (
-          <SignalRow
-            icon={Alert02Icon}
-            item={item}
-            key={`w:${item.label}:${idx}`}
-            tone={item.severity === "problem" ? "destructive" : "warning"}
-          />
-        ))}
+      <div className="px-6 pb-5">
+        <FeatureList
+          items={[
+            ...highlightsToPills(highlights),
+            ...watchoutsToPills(watchouts),
+          ]}
+          variant="grid"
+        />
       </div>
     </article>
-  );
-}
-
-function signalToneClass(tone: "success" | "warning" | "destructive"): string {
-  if (tone === "success") {
-    return "text-success";
-  }
-  if (tone === "destructive") {
-    return "text-destructive";
-  }
-  return "text-warning";
-}
-
-function SignalRow({
-  icon,
-  item,
-  tone,
-}: {
-  icon: typeof Tick02Icon;
-  item: { label: string; detail?: string | null };
-  tone: "success" | "warning" | "destructive";
-}) {
-  const toneClass = signalToneClass(tone);
-  return (
-    <div className="flex items-start gap-2.5 py-2.5">
-      <HugeiconsIcon
-        className={cn("mt-px shrink-0", toneClass)}
-        icon={icon}
-        size={16}
-        strokeWidth={1.8}
-      />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <p className="font-medium text-[13px] text-foreground leading-4">
-          {item.label}
-        </p>
-        {item.detail ? (
-          <p className="text-[11px] text-slate-2 leading-[14px]">
-            {item.detail}
-          </p>
-        ) : null}
-      </div>
-    </div>
   );
 }
 

@@ -94,4 +94,13 @@ describe("FeatureList (detailed rows)", () => {
     );
     expect(html).toContain("Reading the description…");
   });
+
+  it("grid variant lays out two columns with no card border", () => {
+    const html = renderToStaticMarkup(
+      <FeatureList items={toPills(FEATURES)} variant="grid" />
+    );
+    expect(html).toContain("grid-cols-2");
+    expect(html).not.toContain("border-line");
+    expect(html).toContain("South-facing garden");
+  });
 });

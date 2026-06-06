@@ -143,18 +143,45 @@ export function FeaturePills({
   );
 }
 
+function FeatureRow({ item, dense }: { item: Pill; dense: boolean }) {
+  const tone = SEVERITY[item.severity];
+  return (
+    <div className={cn("flex items-start gap-2.5", dense ? "py-2.5" : "py-3.5")}>
+      <HugeiconsIcon
+        className={cn("mt-px shrink-0", tone.text)}
+        icon={tone.icon}
+        size={16}
+        strokeWidth={1.8}
+      />
+      <div className="flex min-w-0 grow basis-0 flex-col gap-0.5">
+        <p className="font-medium text-[13px] text-foreground leading-4">
+          {item.label}
+        </p>
+        {item.detail ? (
+          <p className="text-[11px] text-slate-2 leading-[14px]">{item.detail}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 /**
- * Detailed rows in a bordered card — label + optional `detail` sentence,
- * severity-tinted icon. Used by listing-detail (one call per section, so the
- * caller can keep the "What stands out" / "In the small print" split).
+ * Detailed rows — label + optional `detail` sentence, severity-tinted icon.
+ * Two presentations over one row renderer:
+ *   - `variant="list"` (default) — bordered card, single column, hairline
+ *     dividers (mobile listing-detail's "what stands out" / "small print").
+ *   - `variant="grid"` — two-column, no border (the caller's card supplies
+ *     chrome), no dividers (desktop combined AI card).
  * Renders the empty hint when there's nothing yet (enrichment pending).
  */
 export function FeatureList({
   items,
   emptyHint,
+  variant = "list",
 }: {
   items: Pill[];
   emptyHint?: string;
+  variant?: "list" | "grid";
 }) {
   if (items.length === 0) {
     return emptyHint ? (
@@ -163,37 +190,25 @@ export function FeatureList({
       </div>
     ) : null;
   }
+  if (variant === "grid") {
+    return (
+      <div className="grid grid-cols-2 gap-x-6">
+        {items.map((item, idx) => (
+          <FeatureRow dense item={item} key={`${item.severity}:${item.label}:${idx}`} />
+        ))}
+      </div>
+    );
+  }
   return (
     <ul className="flex flex-col rounded-md border border-line bg-card px-4">
-      {items.map((item, idx) => {
-        const tone = SEVERITY[item.severity];
-        return (
-          <li
-            className={cn(
-              "flex items-start gap-2.5 py-3.5",
-              idx < items.length - 1 && "border-mist border-b"
-            )}
-            key={`${item.severity}:${item.label}:${idx}`}
-          >
-            <HugeiconsIcon
-              className={cn("mt-px shrink-0", tone.text)}
-              icon={tone.icon}
-              size={16}
-              strokeWidth={1.8}
-            />
-            <div className="flex grow basis-0 flex-col gap-0.5">
-              <p className="font-medium text-[13px] text-foreground leading-4">
-                {item.label}
-              </p>
-              {item.detail ? (
-                <p className="text-[11px] text-slate-2 leading-[14px]">
-                  {item.detail}
-                </p>
-              ) : null}
-            </div>
-          </li>
-        );
-      })}
+      {items.map((item, idx) => (
+        <li
+          className={cn(idx < items.length - 1 && "border-mist border-b")}
+          key={`${item.severity}:${item.label}:${idx}`}
+        >
+          <FeatureRow dense={false} item={item} />
+        </li>
+      ))}
     </ul>
   );
 }
