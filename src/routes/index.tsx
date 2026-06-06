@@ -45,6 +45,7 @@ import {
 import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
+import { toStatCells } from "../components/review/review-shapers";
 import { Skeleton } from "../components/ui/skeleton";
 import { useIsMobile } from "../hooks/use-mobile";
 import { requireSession } from "../lib/auth-guard";
@@ -55,6 +56,7 @@ import {
 import { outcodeLocationLabel } from "../lib/outcode-areas";
 import { propertyKindLabel } from "../lib/property-kind";
 import { queryKeys } from "../lib/query-keys";
+import { deferCluster } from "../server/functions/deferrals";
 import {
   type ReviewCard,
   type ReviewQueue,
@@ -72,7 +74,7 @@ import { listSearches } from "../server/functions/searches";
 // written before B1 collapsed Keep + Shortlist. The UI only ever writes
 // "shortlist" or "skip" now.
 type SwipeOutcome = "shortlist" | "skip";
-type PendingAction = SwipeOutcome | "undo" | null;
+type PendingAction = SwipeOutcome | "undo" | "defer" | null;
 
 // `searchId` filter and the explicit `clusterId` selection both live
 // in the URL so refresh + back-button preserve them and the filter is
@@ -330,6 +332,64 @@ function ReviewPage() {
     },
   });
 
+  // Defer: snooze a half-filled listing for the whole household. Same
+  // optimistic queue-drop + card-advance as a swipe (it leaves the queue
+  // now), but it's not a review verdict so we don't bump today's stats.
+  const defer = useMutation({
+    mutationFn: (args: { clusterId: string; searchId: string; days: number }) =>
+      deferCluster({
+        data: { clusterId: args.clusterId, days: args.days },
+      }),
+    onMutate: async (args) => {
+      setPendingAction("defer");
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ["review", "next"] }),
+        qc.cancelQueries({ queryKey: ["review", "queue"] }),
+      ]);
+      const previousCard = qc.getQueryData<ReviewCard | null>(
+        cardOpts.queryKey
+      );
+      const previousQueue = qc.getQueryData<ReviewQueue | null>(
+        queueOpts.queryKey
+      );
+      const nextItem = applyOptimisticQueueDrop(
+        qc,
+        queueOpts.queryKey,
+        previousQueue,
+        args.clusterId
+      );
+      applyOptimisticCardSwap(
+        qc,
+        cardOpts.queryKey,
+        searchId,
+        nextItem,
+        previousQueue
+      );
+      return { previousCard, previousQueue };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.previousCard !== undefined) {
+        qc.setQueryData<ReviewCard | null>(cardOpts.queryKey, ctx.previousCard);
+      }
+      if (ctx?.previousQueue !== undefined) {
+        qc.setQueryData<ReviewQueue | null>(
+          queueOpts.queryKey,
+          ctx.previousQueue
+        );
+      }
+      setError(e.message ?? "Couldn't defer");
+    },
+    onSettled: () => {
+      setPendingAction(null);
+      qc.invalidateQueries({ queryKey: ["review", "next"] });
+      qc.invalidateQueries({ queryKey: ["review", "queue"] });
+      qc.invalidateQueries({ queryKey: ["deferrals"] });
+      if (clusterId) {
+        navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: null }) });
+      }
+    },
+  });
+
   const pending = pendingAction !== null;
 
   const doSkip = useCallback(() => {
@@ -360,6 +420,20 @@ function ReviewPage() {
     }
     undo.mutate();
   }, [pending, undo]);
+
+  const doDefer = useCallback(
+    (days: number) => {
+      if (!card || pending) {
+        return;
+      }
+      defer.mutate({
+        clusterId: card.cluster.id,
+        searchId: card.searchId,
+        days,
+      });
+    },
+    [card, pending, defer]
+  );
 
   const doOpenDetail = useCallback(() => {
     if (!card) {
@@ -425,6 +499,10 @@ function ReviewPage() {
   useHotkey("Z", doUndo, {
     enabled: reviewKeysEnabled,
     meta: { category: "Review", description: "Undo last swipe" },
+  });
+  useHotkey("D", () => doDefer(5), {
+    enabled: reviewKeysEnabled,
+    meta: { category: "Review", description: "Defer listing (5 days)" },
   });
   useHotkey("I", doOpenDetail, {
     enabled: reviewKeysEnabled,
@@ -502,6 +580,7 @@ function ReviewPage() {
         doSkip,
         doShortlist,
         doUndo,
+        doDefer,
         doOpenDetail,
         setLightboxOpen,
         navigate,
@@ -521,6 +600,7 @@ function ReviewPage() {
         doSkip,
         doShortlist,
         doUndo,
+        doDefer,
         doOpenDetail,
       })}
     </>
@@ -547,6 +627,7 @@ function renderMobileReview(args: {
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
+  doDefer: (days: number) => void;
   doOpenDetail: () => void;
 }) {
   const filtering = args.filterCount > 0;
@@ -592,6 +673,7 @@ function renderMobileReview(args: {
           doSkip: args.doSkip,
           doShortlist: args.doShortlist,
           doUndo: args.doUndo,
+          doDefer: args.doDefer,
           doOpenDetail: args.doOpenDetail,
         })
       )}
@@ -710,6 +792,7 @@ function renderDesktopHero(args: {
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
+  doDefer: (days: number) => void;
   doOpenDetail: () => void;
   setLightboxOpen: (open: boolean) => void;
   navigate: Navigate;
@@ -722,6 +805,7 @@ function renderDesktopHero(args: {
         })}
         disabled={args.pending}
         filters={args.filters}
+        onDefer={args.doDefer}
         onFiltersChange={args.setFilters}
         onLightboxOpenChange={args.setLightboxOpen}
         onOpenDetail={args.doOpenDetail}
@@ -763,6 +847,7 @@ function renderMobileHero(args: {
   doSkip: () => void;
   doShortlist: () => void;
   doUndo: () => void;
+  doDefer: (days: number) => void;
   doOpenDetail: () => void;
 }) {
   if (args.card) {
@@ -779,6 +864,7 @@ function renderMobileHero(args: {
         <ActionButtons
           clusterId={args.card.cluster.id}
           disabled={args.pending}
+          onDefer={args.doDefer}
           onShortlist={args.doShortlist}
           onSkip={args.doSkip}
           onUndo={args.doUndo}
@@ -892,7 +978,7 @@ function buildHero(card: ReviewCard): DesktopReviewData["hero"] {
     price: formatPrice(hl.priceMonthly),
     priceUnit: "/mo",
     signals: buildSignals(card.features),
-    stats: buildStats(card),
+    stats: toStatCells(card),
   };
 }
 
@@ -971,63 +1057,6 @@ function buildSignals(
  * size prefers the listing's floor area and falls back to the EPC's.
  * Cells that aren't enriched yet read "—" so the grid keeps its rhythm.
  */
-function buildStats(card: ReviewCard): DesktopReviewData["hero"]["stats"] {
-  const station = card.nearestStation;
-  const transport =
-    station?.walkMinutes != null
-      ? {
-          label: "Transport",
-          value: `${station.walkMinutes}`,
-          unit: "min",
-          sub: station.name ?? undefined,
-        }
-      : { label: "Transport", value: "—", sub: station?.name ?? undefined };
-  return [
-    transport,
-    buildEpcStat(card.epcRating),
-    {
-      label: "Council tax",
-      value: card.councilTaxBand ?? "—",
-      sub: card.councilTaxBand ? "band" : undefined,
-    },
-    buildSizeStat(card),
-  ];
-}
-
-/**
- * EPC stat cell, tinted by band: A–C reads as good (green), D neutral,
- * E–G bad (red). "—" when the building's band isn't known.
- */
-function buildEpcStat(
-  rating: string | undefined
-): DesktopReviewData["hero"]["stats"][number] {
-  if (!rating) {
-    return { label: "EPC", value: "—", tone: "neutral" };
-  }
-  const band = rating.trim().toUpperCase().charAt(0);
-  let tone: "good" | "bad" | "neutral" = "neutral";
-  if ("ABC".includes(band)) {
-    tone = "good";
-  } else if ("EFG".includes(band)) {
-    tone = "bad";
-  }
-  return { label: "EPC", value: rating, tone };
-}
-
-/**
- * Size stat cell — the listing's floor area in sq ft, falling back to the
- * EPC certificate's total floor area when the portal didn't publish one.
- */
-function buildSizeStat(
-  card: ReviewCard
-): DesktopReviewData["hero"]["stats"][number] {
-  const sqft = card.headlineListing.sizeSqFt ?? card.epcFloorAreaSqFt ?? null;
-  if (sqft == null) {
-    return { label: "Size", value: "—" };
-  }
-  return { label: "Size", value: sqft.toLocaleString("en-GB"), unit: "sq ft" };
-}
-
 /**
  * "Today" tally. Partner-resolved counts ("by <name>", "both kept") need a
  * cross-member feed we don't surface yet, so the three cells read the

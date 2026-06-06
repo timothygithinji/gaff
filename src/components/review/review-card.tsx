@@ -25,6 +25,8 @@ import { cn } from "../../lib/utils";
  * Presentation only — consumes the same `ReviewCard` the route hands in.
  */
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
+import { StatRow } from "../ui/patterns/stat-row";
+import { toStatCells } from "./review-shapers";
 
 function formatPrice(monthly: number | null): string {
   if (monthly === null) {
@@ -289,53 +291,10 @@ function CardTags({ card }: { card: ReviewCardData }) {
 }
 
 function CardStats({ card }: { card: ReviewCardData }) {
-  const { commuteMinutes, epcRating } = card;
-  const commute = commuteMinutes == null ? "—" : `${commuteMinutes}`;
-  const epc = epcRating ?? "—";
+  // Same Transport · EPC · Council · Size set + tone as the desktop hero.
   return (
-    <div className="mx-[18px] mt-[18px] flex border-mist border-t pt-[18px]">
-      <StatCell
-        label="Commute"
-        position="first"
-        unit={commuteMinutes == null ? undefined : "min"}
-        value={commute}
-      />
-      <StatCell label="EPC" position="last" value={epc} />
-    </div>
-  );
-}
-
-function StatCell({
-  label,
-  value,
-  unit,
-  position,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  position: "first" | "mid" | "last";
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-1 flex-col gap-1",
-        position === "first" && "border-mist border-r pr-3.5",
-        position === "mid" && "border-mist border-r px-3.5",
-        position === "last" && "pl-3.5"
-      )}
-    >
-      <span className='text-[9px] text-slate uppercase leading-3 tracking-[0.14em]'>
-        {label}
-      </span>
-      <div className="flex items-baseline gap-[3px]">
-        <span className="font-medium text-[18px] text-navy leading-[22px]">
-          {value}
-        </span>
-        {unit ? (
-          <span className="text-[11px] text-slate leading-[14px]">{unit}</span>
-        ) : null}
-      </div>
+    <div className="mx-[18px] mt-[18px]">
+      <StatRow stats={toStatCells(card)} variant="bare" />
     </div>
   );
 }

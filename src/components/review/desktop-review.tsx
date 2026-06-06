@@ -33,6 +33,7 @@ import {
   BathtubIcon,
   BedIcon,
   Cancel01Icon,
+  Clock01Icon,
   InformationCircleIcon,
   Loading03Icon,
   Tick02Icon,
@@ -56,7 +57,9 @@ import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { PortalLogo } from "../portal-logo";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
+import { type StatCell, StatRow } from "../ui/patterns/stat-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { DeferMenu } from "./defer-menu";
 import {
   EMPTY_QUEUE_FILTERS,
   QueueFilter,
@@ -102,19 +105,8 @@ export type DesktopReviewSignal = {
   warn: boolean;
 };
 
-export type DesktopReviewStatCell = {
-  label: string;
-  value: string;
-  /** Small unit suffix beside the value, e.g. "min" / "·72". */
-  unit?: string;
-  /** Sub-line under the value, e.g. "vs LDN". */
-  sub?: string;
-  /**
-   * Colour the value: "good" (green) / "bad" (red/copper) / "neutral"
-   * (default navy). Drives the EPC-band highlighting.
-   */
-  tone?: "good" | "bad" | "neutral";
-};
+/** The review hero's stat cells use the shared {@link StatCell} shape. */
+export type DesktopReviewStatCell = StatCell;
 
 export type DesktopReviewPortalPrice = {
   portal: string;
@@ -173,12 +165,19 @@ export type DesktopReviewData = {
  * Which action is mid-flight. Drives the Keep / Veto spinners so the user
  * gets feedback the moment they trigger shortlist/skip/undo.
  */
-export type DesktopReviewPendingAction = "skip" | "shortlist" | "undo" | null;
+export type DesktopReviewPendingAction =
+  | "skip"
+  | "shortlist"
+  | "undo"
+  | "defer"
+  | null;
 
 type Props = {
   data?: DesktopReviewData;
   onSkip?: () => void;
   onShortlist?: () => void;
+  /** Snooze the listing for `days` (it re-scrapes + re-surfaces later). */
+  onDefer?: (days: number) => void;
   onOpenDetail?: () => void;
   /** Repoint the hero to a queued cluster. `null` = back to top of queue. */
   onSelectCluster?: (clusterId: string | null) => void;
@@ -199,6 +198,7 @@ export function DesktopReview({
   data = DESKTOP_REVIEW_PLACEHOLDER,
   onSkip,
   onShortlist,
+  onDefer,
   onOpenDetail,
   onSelectCluster,
   onLightboxOpenChange,
@@ -226,6 +226,7 @@ export function DesktopReview({
         <RightRail
           disabled={disabled}
           matchPct={data.matchPct}
+          onDefer={onDefer}
           onOpenDetail={onOpenDetail}
           onShortlist={onShortlist}
           onSkip={onSkip}
@@ -439,7 +440,7 @@ function MainColumn({
       />
       <div className="flex items-stretch gap-[18px]">
         <WhatStandsOutCard signals={hero.signals} />
-        <NumbersCard stats={hero.stats} />
+        <StatRow stats={hero.stats} variant="card" />
       </div>
     </section>
   );
@@ -810,80 +811,6 @@ function WhatStandsOutCard({ signals }: { signals: DesktopReviewSignal[] }) {
   );
 }
 
-/** Value colour for a stat cell's tone. Neutral keeps the default navy. */
-function statToneClass(tone: DesktopReviewStatCell["tone"]): string {
-  if (tone === "good") {
-    return "text-success";
-  }
-  if (tone === "bad") {
-    return "text-destructive";
-  }
-  return "text-navy";
-}
-
-const NUMBERS_GRID_COLS: Record<number, string> = {
-  1: "grid-cols-1",
-  2: "grid-cols-2",
-  3: "grid-cols-3",
-  4: "grid-cols-4",
-};
-
-function NumbersCard({ stats }: { stats: DesktopReviewStatCell[] }) {
-  // Square off the layout: 4 cells read as a tidy 2×2 (the card is only
-  // half the centre column, so 4-in-a-row would cramp), fewer sit in a
-  // single row. Avoids the old 3-up grid's lopsided 3 + 1 wrap.
-  const cols = stats.length === 4 ? 2 : Math.min(Math.max(stats.length, 1), 4);
-  return (
-    <article className="flex flex-1 flex-col rounded-[6px] border border-line bg-paper p-[18px]">
-      <div className="pb-3">
-        <Eyebrow>The numbers</Eyebrow>
-      </div>
-      {/* Left hairline on every cell that isn't first in its row keeps the
-          column rhythm. */}
-      <div
-        className={cn(
-          "grid flex-1 gap-x-3 gap-y-4",
-          NUMBERS_GRID_COLS[cols] ?? "grid-cols-2"
-        )}
-      >
-        {stats.map((cell, i) => (
-          <div
-            className={cn(
-              "flex flex-col gap-1",
-              i % cols !== 0 && "border-mist border-l pl-3"
-            )}
-            key={cell.label}
-          >
-            <span className='font-semibold text-[9px] text-slate uppercase leading-3 tracking-[0.12em]'>
-              {cell.label}
-            </span>
-            <div className="flex items-baseline gap-[3px]">
-              <span
-                className={cn(
-                  "font-medium text-[20px] leading-6",
-                  statToneClass(cell.tone)
-                )}
-              >
-                {cell.value}
-              </span>
-              {cell.unit ? (
-                <span className="text-[10px] text-slate leading-3">
-                  {cell.unit}
-                </span>
-              ) : null}
-            </div>
-            {cell.sub ? (
-              <span className="text-[10px] text-slate leading-3">
-                {cell.sub}
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </article>
-  );
-}
-
 /* ---------------- Right rail ---------------- */
 
 function RightRail({
@@ -892,6 +819,7 @@ function RightRail({
   today,
   onSkip,
   onShortlist,
+  onDefer,
   onOpenDetail,
   disabled,
   pendingAction,
@@ -901,6 +829,7 @@ function RightRail({
   today: DesktopReviewData["today"];
   onSkip?: () => void;
   onShortlist?: () => void;
+  onDefer?: (days: number) => void;
   onOpenDetail?: () => void;
   disabled?: boolean;
   pendingAction?: DesktopReviewPendingAction;
@@ -911,6 +840,7 @@ function RightRail({
       <PortalsPanel matchPct={matchPct} portals={portals} />
       <ActionStack
         disabled={disabled}
+        onDefer={onDefer}
         onOpenDetail={onOpenDetail}
         onShortlist={onShortlist}
         onSkip={onSkip}
@@ -995,18 +925,21 @@ function PortalRow({ portal }: { portal: DesktopReviewPortalPrice }) {
 function ActionStack({
   onShortlist,
   onSkip,
+  onDefer,
   onOpenDetail,
   disabled,
   pendingAction,
 }: {
   onShortlist?: () => void;
   onSkip?: () => void;
+  onDefer?: (days: number) => void;
   onOpenDetail?: () => void;
   disabled?: boolean;
   pendingAction?: DesktopReviewPendingAction;
 }) {
   const keepBusy = pendingAction === "shortlist";
   const vetoBusy = pendingAction === "skip";
+  const deferBusy = pendingAction === "defer";
   return (
     <div className="flex flex-col gap-2">
       <button
@@ -1049,6 +982,36 @@ function ActionStack({
           onClick={onOpenDetail}
         />
       </div>
+      {/* Defer — for half-filled listings where a veto would be premature.
+          Opens the 3/5/7-day picker; "D" defers with the 5-day default. */}
+      {onDefer ? (
+        <DeferMenu
+          onDefer={onDefer}
+          side="top"
+          trigger={
+            <button
+              aria-busy={deferBusy || undefined}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-[6px] border border-line bg-paper p-3.5 text-[12px] text-navy transition-opacity",
+                disabled
+                  ? "cursor-not-allowed opacity-40"
+                  : "hover:opacity-90 active:scale-[0.99]"
+              )}
+              disabled={disabled}
+              type="button"
+            >
+              <HugeiconsIcon
+                className={deferBusy ? "animate-spin" : undefined}
+                icon={deferBusy ? Loading03Icon : Clock01Icon}
+                size={14}
+                strokeWidth={1.8}
+              />
+              <span>Defer — need more info</span>
+              <ActionKbd>D</ActionKbd>
+            </button>
+          }
+        />
+      ) : null}
     </div>
   );
 }
