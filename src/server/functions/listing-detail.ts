@@ -863,18 +863,42 @@ export const getListingDetail = createServerFn({ method: "GET" })
       };
     });
 
-    // Step 4: photos for the headline listing.
+    // Step 4: photos — pooled across EVERY listing in the cluster. The same
+    // home on two portals carries two galleries; showing only the headline
+    // listing's dropped the other portal's photos entirely (often the
+    // better set). Lead with the headline listing's photos, then the rest
+    // in price order, deduped by resolved URL and re-sequenced into one
+    // gallery. (Cross-portal copies of an identical image usually have
+    // distinct URLs, so some near-duplicates can remain — acceptable; the
+    // win is not losing a whole portal's photos.)
     const photoRows = await db
       .select()
       .from(listingPhotos)
-      .where(eq(listingPhotos.listingId, headlineListing.id))
+      .where(
+        inArray(
+          listingPhotos.listingId,
+          sortedListings.map((l) => l.id)
+        )
+      )
       .orderBy(listingPhotos.position);
 
-    const photos: ListingDetailPhoto[] = photoRows.map((p) => ({
-      url: resolvePhotoUrl(p),
-      r2Key: p.r2Key,
-      position: p.position,
-    }));
+    const listingRank = new Map(sortedListings.map((l, i) => [l.id, i]));
+    const orderedPhotoRows = [...photoRows].sort((a, b) => {
+      const ra = listingRank.get(a.listingId) ?? 0;
+      const rb = listingRank.get(b.listingId) ?? 0;
+      return ra === rb ? a.position - b.position : ra - rb;
+    });
+
+    const seenPhotoUrls = new Set<string>();
+    const photos: ListingDetailPhoto[] = [];
+    for (const p of orderedPhotoRows) {
+      const url = resolvePhotoUrl(p);
+      if (seenPhotoUrls.has(url)) {
+        continue;
+      }
+      seenPhotoUrls.add(url);
+      photos.push({ url, r2Key: p.r2Key, position: photos.length });
+    }
 
     // Step 5: floorplan URL — first available across listings.
     let floorplanUrl: string | null = null;
