@@ -27,11 +27,21 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { BottomNav } from "../components/layout/bottom-nav";
+import {
+  EMPTY_QUEUE_FILTERS,
+  QueueFilter,
+  type QueueFilterable,
+  type QueueFilters,
+  activeFilterCount,
+  matchesQueueFilters,
+  queueFilterOptions,
+} from "../components/review/queue-filter";
 import { DesktopShortlist } from "../components/shortlist/desktop-shortlist";
 import { MatchCard, usePlanViewing } from "../components/shortlist/match-card";
 import { MatchRow } from "../components/shortlist/match-row";
 import { PipelineKanban } from "../components/shortlist/pipeline-kanban";
 import { PipelineMobile } from "../components/shortlist/pipeline-mobile";
+import { outcodeOf } from "../components/shortlist/pipeline-shared";
 import {
   SortDropdown,
   type SortKey,
@@ -257,6 +267,55 @@ function totalPipelineCount(columns: PipelineColumns): number {
 }
 
 /**
+ * Project a pipeline card onto the shape the shared queue filter reads.
+ * Pipeline cards carry beds / baths / kind / postcode / price / portal
+ * spread; the enrichment-derived facets (furnishing, move-in, council tax,
+ * EPC, commute, broadband) aren't on the card, so they map to null and the
+ * filter auto-hides those sections — same self-gating contract as Review.
+ */
+function pipelineFilterable(card: PipelineCard): QueueFilterable {
+  return {
+    beds: card.headline.bedrooms,
+    bathrooms: card.headline.bathrooms,
+    furnished: null,
+    availableInDays: null,
+    outcode: outcodeOf(card.headline.postcode) || null,
+    propertyKind: card.headline.propertyKind,
+    councilTaxBand: null,
+    epcBand: null,
+    commuteMinutes: null,
+    fttp: null,
+    portalCount: card.portalSpread.length,
+    priceValue: card.headline.priceMonthly,
+  };
+}
+
+const BOARD_FILTER_STATUSES: PipelineStatus[] = [
+  "shortlisted",
+  "contacted",
+  "viewing_booked",
+  "offer_made",
+];
+
+/** Filter every column's cards by the active queue filters. Returns the
+ * input untouched when no facet is active (cheap path + stable identity). */
+function filterColumns(
+  columns: PipelineColumns,
+  filters: QueueFilters
+): PipelineColumns {
+  if (activeFilterCount(filters) === 0) {
+    return columns;
+  }
+  const out = {} as PipelineColumns;
+  for (const status of PIPELINE_STATUSES) {
+    out[status] = columns[status].filter((c) =>
+      matchesQueueFilters(pipelineFilterable(c), filters)
+    );
+  }
+  return out;
+}
+
+/**
  * Pure, optimistic version of a pipeline move: pull the card out of
  * whichever column currently holds it and drop it into `to`, stamping
  * the new status / reason / mover so the kanban repaints on the next
@@ -367,6 +426,7 @@ function ShortlistPage() {
 
   const [activeTab, setActiveTab] = useState<string>(PIPELINE_TAB_ID);
   const [sort, setSort] = useState<SortKey>("cheapest");
+  const [filters, setFilters] = useState<QueueFilters>(EMPTY_QUEUE_FILTERS);
   const [addUrlValue, setAddUrlValue] = useState("");
   const [addUrlError, setAddUrlError] = useState<string | null>(null);
   const [addUrlOpen, setAddUrlOpen] = useState(false);
@@ -525,11 +585,35 @@ function ShortlistPage() {
     me?.name
   );
 
+  // Facet options derive from the whole board (so a filter offers values
+  // that exist somewhere), while the visible columns are the filtered set.
+  const filterOptions = useMemo(
+    () =>
+      queueFilterOptions(
+        BOARD_FILTER_STATUSES.flatMap((s) => columns[s]).map(pipelineFilterable)
+      ),
+    [columns]
+  );
+  const filteredColumns = useMemo(
+    () => filterColumns(columns, filters),
+    [columns, filters]
+  );
+  const filterControl = (
+    <QueueFilter
+      filters={filters}
+      onChange={setFilters}
+      options={filterOptions}
+    />
+  );
+
   const pipelineKanban = (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="shrink-0 px-1">{addByUrl}</div>
+      <div className="flex shrink-0 items-center justify-between gap-3 px-1">
+        {addByUrl}
+        {filterControl}
+      </div>
       <PipelineKanban
-        columns={columns}
+        columns={filteredColumns}
         onArchive={(clusterId, reason) =>
           moveMutation.mutate({
             clusterId,
@@ -603,11 +687,16 @@ function ShortlistPage() {
           />
         ) : null}
 
-        {isPipeline ? <div className="px-4 pb-3">{addByUrl}</div> : null}
+        {isPipeline ? (
+          <div className="flex items-center justify-between gap-3 px-4 pb-3">
+            {addByUrl}
+            {filterControl}
+          </div>
+        ) : null}
 
         {isPipeline ? (
           <PipelineMobile
-            columns={columns}
+            columns={filteredColumns}
             memberCount={memberCount}
             onArchive={(clusterId, reason) =>
               moveMutation.mutate({

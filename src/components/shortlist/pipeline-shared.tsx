@@ -9,6 +9,7 @@ import type {
   PipelineArchivedReason,
   PipelineStatus,
 } from "../../lib/pipeline-status";
+import { propertyKindLabel } from "../../lib/property-kind";
 import { cn } from "../../lib/utils";
 import type {
   PipelineCard,
@@ -162,6 +163,10 @@ export function outcodeOf(postcode: string | null): string {
 
 export function metaLine(card: PipelineCard): string {
   const parts: string[] = [];
+  const kind = propertyKindLabel(card.headline.propertyKind);
+  if (kind) {
+    parts.push(kind);
+  }
   const outcode = outcodeOf(card.headline.postcode);
   if (outcode) {
     parts.push(outcode);

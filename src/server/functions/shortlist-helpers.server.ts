@@ -21,6 +21,7 @@ import {
   swipes,
   user,
 } from "../../../db/schema";
+import { classifyPropertyKind } from "../../lib/property-kind";
 import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
 import type { MutualMatch, ShortlistMember } from "./shortlist";
@@ -136,6 +137,10 @@ export async function hydrateClusterSummary(
       bedrooms: headlineListing.bedrooms,
       bathrooms: headlineListing.bathrooms,
       propertyType: headlineListing.propertyType,
+      propertyKind: classifyPropertyKind(
+        headlineListing.propertyType,
+        headlineListing.title
+      ),
       postcode: headlineListing.postcode,
       photoUrl,
       portal: headlineListing.portal,

@@ -51,6 +51,11 @@ import {
   resolveEpc,
 } from "../../lib/epc";
 import {
+  HOUSE_SHARE_PATTERN,
+  type PropertyKind,
+  classifyPropertyKind,
+} from "../../lib/property-kind";
+import {
   type ActiveSearch,
   type ClusterTargetEnrichment,
   clusterPassesSearch,
@@ -787,8 +792,7 @@ function bathroomsWithinBand(
  * (and would leak retirement schemes) into the feed unfiltered.
  */
 const EXCLUSION_PATTERNS = {
-  house_share:
-    "house\\s*share|flat\\s*share|room\\s+in\\s+a?\\s*shared|shared\\s+(?:accommodation|flat|house|room|living|apartment)",
+  house_share: HOUSE_SHARE_PATTERN,
   student: "student",
   retirement: "retirement|over\\s*55|over\\s*60|mccarthy|churchill",
 } as const;
@@ -834,42 +838,14 @@ function passesExclusions(
   return true;
 }
 
-/** Coarse property kind for the review-queue Type facet. */
-export type PropertyKind = "flat" | "house" | "studio" | "share" | "other";
-
-const HOUSE_SHARE_RE = new RegExp(EXCLUSION_PATTERNS.house_share, "i");
-const STUDIO_RE = /studio/i;
-const FLAT_RE = /\b(?:flat|apartment|maisonette)\b/i;
-const HOUSE_RE =
-  /\b(?:house|bungalow|cottage|terrace[d]?|detached|semi|mews|town\s*house)\b/i;
-
-/**
- * Bucket a listing into a coarse kind for the queue's Type filter. Shares
- * are detected with the same pattern the exclusions backstop uses (see
- * {@link EXCLUSION_PATTERNS}) so an ad-hoc "hide shares" toggle and the
- * search-level `house_share` exclusion classify identically. Tested
- * share → studio → flat → house so the specific labels win over a generic
- * "house" hiding in the title.
- */
-export function classifyPropertyKind(
-  propertyType: string | null,
-  title: string
-): PropertyKind {
-  const hay = `${propertyType ?? ""} ${title}`;
-  if (HOUSE_SHARE_RE.test(hay)) {
-    return "share";
-  }
-  if (STUDIO_RE.test(hay)) {
-    return "studio";
-  }
-  if (FLAT_RE.test(hay)) {
-    return "flat";
-  }
-  if (HOUSE_RE.test(hay)) {
-    return "house";
-  }
-  return "other";
-}
+// Property-kind classification (type, regexes, classifier) lives in the
+// client-safe `src/lib/property-kind.ts` so the pipeline + review screens
+// share one source of truth without dragging this server module into the
+// client bundle. Re-exported for existing `./review` importers.
+export {
+  classifyPropertyKind,
+  type PropertyKind,
+} from "../../lib/property-kind";
 
 
 /**

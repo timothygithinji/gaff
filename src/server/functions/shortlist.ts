@@ -32,6 +32,7 @@ import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import { swipes, userState, vMutualMatches } from "../../../db/schema";
+import type { PropertyKind } from "../../lib/property-kind";
 import {
   hydrateClusterSummary,
   requireHouseholdScope,
@@ -59,6 +60,10 @@ export type ShortlistHeadline = {
   bedrooms: number | null;
   bathrooms: number | null;
   propertyType: string | null;
+  /** Coarse kind (flat / house / studio / share / other) classified from
+   * {@link propertyType} + title — drives the card subtitle and the
+   * pipeline Type filter, mirroring the review queue. */
+  propertyKind: PropertyKind;
   postcode: string | null;
   photoUrl: string | null;
   portal: string;
