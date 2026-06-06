@@ -13,6 +13,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import useEmblaCarousel from "embla-carousel-react";
 import { useEffect } from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
+import { useEmblaWheelGestures } from "../../hooks/use-embla-wheel-gestures";
 import type { ListingDetailPhoto } from "../../server/functions/listing-detail";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 
@@ -37,6 +38,7 @@ export function GalleryLightbox({
     watchDrag: canPaginate,
   });
   const index = useEmblaSelectedIndex(emblaApi, startIndex);
+  useEmblaWheelGestures(emblaApi);
 
   // Re-sync to the clicked photo each time the lightbox opens.
   useEffect(() => {

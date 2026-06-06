@@ -1,6 +1,7 @@
 import useEmblaCarousel from "embla-carousel-react";
 import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
+import { useEmblaWheelGestures } from "../../hooks/use-embla-wheel-gestures";
 import { sizedPhoto } from "../../lib/photo-size";
 import { cn } from "../../lib/utils";
 /**
@@ -80,6 +81,7 @@ export function MobileReviewCard({
   const fresh = card.freshnessLabel;
   const [emblaRef, emblaApi] = useEmblaCarousel({ align: "start" });
   const photoIndex = useEmblaSelectedIndex(emblaApi);
+  useEmblaWheelGestures(emblaApi);
 
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);

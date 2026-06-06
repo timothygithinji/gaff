@@ -44,6 +44,7 @@ import {
   useState,
 } from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
+import { useEmblaWheelGestures } from "../../hooks/use-embla-wheel-gestures";
 import { useIsMobile } from "../../hooks/use-mobile";
 import { outcodeLocationLabel } from "../../lib/outcode-areas";
 import { sizedPhoto } from "../../lib/photo-size";
@@ -483,6 +484,7 @@ function HeroPhoto({
     watchDrag: canPaginate,
   });
   const index = useEmblaSelectedIndex(emblaApi);
+  useEmblaWheelGestures(emblaApi);
 
   // New card → snap back to the first photo without animation.
   // biome-ignore lint/correctness/useExhaustiveDependencies: photos is the intentional re-run trigger.
@@ -626,6 +628,7 @@ function PhotoLightbox({
     watchDrag: canPaginate,
   });
   const index = useEmblaSelectedIndex(emblaApi, startIndex);
+  useEmblaWheelGestures(emblaApi);
 
   useEffect(() => {
     if (open && emblaApi) {

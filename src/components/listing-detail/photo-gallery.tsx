@@ -14,6 +14,7 @@
 import useEmblaCarousel from "embla-carousel-react";
 import { useState } from "react";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
+import { useEmblaWheelGestures } from "../../hooks/use-embla-wheel-gestures";
 import { sizedPhoto } from "../../lib/photo-size";
 import type { ListingDetailPhoto } from "../../server/functions/listing-detail";
 import { GalleryLightbox } from "./gallery-lightbox";
@@ -33,6 +34,7 @@ export function PhotoGallery({ photos, alt }: Props) {
     watchDrag: photos.length > 1,
   });
   const index = useEmblaSelectedIndex(emblaApi);
+  useEmblaWheelGestures(emblaApi);
 
   const openAt = (i: number) => {
     setLightboxStart(i);

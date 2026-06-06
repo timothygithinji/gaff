@@ -34,6 +34,7 @@ import useEmblaCarousel from "embla-carousel-react";
 import { useCallback, useState } from "react";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { useEmblaSelectedIndex } from "../../hooks/use-embla-selected-index";
+import { useEmblaWheelGestures } from "../../hooks/use-embla-wheel-gestures";
 import {
   type ListingFromOrigin,
   resolveFromOrigin,
@@ -173,6 +174,7 @@ function HeroGallery({ data }: { data: ListingDetailPayload }) {
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
   const selectedIndex = useEmblaSelectedIndex(emblaApi);
+  useEmblaWheelGestures(emblaApi);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxStart, setLightboxStart] = useState(0);
   const openLightbox = useCallback((i: number) => {
