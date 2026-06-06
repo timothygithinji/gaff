@@ -1,4 +1,8 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Vitest is intentionally kept separate from `vite.config.ts` — the
 // TanStack Start + Cloudflare Workers Vite plugins try to spin up a
@@ -23,5 +27,13 @@ export default defineConfig({
     environment: "node",
     globals: false,
     pool: "threads",
+  },
+  // Mirror the `@/` → `src` alias from vite.config.ts so server-rendered
+  // component tests can import primitives that follow the ui/ convention
+  // (`import { cn } from "@/lib/utils"`).
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
 });

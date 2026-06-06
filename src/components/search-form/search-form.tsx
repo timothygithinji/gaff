@@ -21,11 +21,16 @@
  * Sub-components remain plain controlled inputs (`value` + `onChange`).
  */
 import { useForm, useStore } from "@tanstack/react-form";
-import { type ReactNode, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { z } from "zod";
 import type { Portal } from "../../lib/cost-estimate";
 import type { SearchLocation } from "../../lib/search-location";
 import { cn } from "../../lib/utils";
+import {
+  Section,
+  SectionCard,
+  type SectionVariant,
+} from "../ui/patterns/section-card";
 import {
   BATH_OPTIONS,
   BED_OPTIONS,
@@ -196,6 +201,8 @@ export function SearchForm({
     minPrice <= maxPrice;
 
   const isDesktop = layout === "desktop";
+  // Desktop sections are bordered cards; mobile is edge-to-edge bare.
+  const sectionVariant: SectionVariant = isDesktop ? "card" : "bare";
 
   const headline = (
     <div className="flex flex-col gap-1.5">
@@ -227,7 +234,7 @@ export function SearchForm({
   );
 
   const postcodes = (
-    <SectionCard bare={!isDesktop} title="Postcodes">
+    <SectionCard variant={sectionVariant} title="Postcodes">
       <p className="-mt-1 text-[12px] text-slate">
         Include what you want, kill what you don't.
       </p>
@@ -259,7 +266,7 @@ export function SearchForm({
   );
 
   const priceSize = (
-    <SectionCard bare={!isDesktop} title="Price & size">
+    <SectionCard variant={sectionVariant} title="Price & size">
       {/* On desktop the beds/baths wrapper collapses to `contents`, so
           rent, beds, and baths sit as three equal columns in one row;
           on mobile rent stacks above the beds/baths row. */}
@@ -311,7 +318,7 @@ export function SearchForm({
 
   const propertyType = (
     <Section
-      bare={!isDesktop}
+      variant={sectionVariant}
       subtitle="Tap to add — leave empty for any."
       title="Property type"
     >
@@ -327,7 +334,7 @@ export function SearchForm({
   );
 
   const furnishing = (
-    <Section bare={!isDesktop} title="Furnishing">
+    <Section variant={sectionVariant} title="Furnishing">
       <form.Field name="furnished">
         {(field) => (
           <FurnishedPicker
@@ -341,7 +348,7 @@ export function SearchForm({
 
   const mustHaves = (
     <Section
-      bare={!isDesktop}
+      variant={sectionVariant}
       subtitle="Hard filters at scrape time — anything without these is hidden."
       title="Must-haves"
     >
@@ -358,7 +365,7 @@ export function SearchForm({
 
   const hide = (
     <Section
-      bare={!isDesktop}
+      variant={sectionVariant}
       subtitle="Listing types to skip entirely."
       title="Hide"
     >
@@ -374,7 +381,7 @@ export function SearchForm({
   );
 
   const commute = (
-    <SectionCard bare={!isDesktop} title="Commute to">
+    <SectionCard variant={sectionVariant} title="Commute to">
       <p className="-mt-1 text-[12px] text-slate">
         Specific places you need to reach — office, family, anywhere.
       </p>
@@ -390,7 +397,7 @@ export function SearchForm({
   );
 
   const transport = (
-    <SectionCard bare={!isDesktop} title="Transport nearby">
+    <SectionCard variant={sectionVariant} title="Transport nearby">
       <p className="-mt-1 text-[12px] text-slate">
         How close to the nearest tube, train, bus, or tram you need to be.
       </p>
@@ -406,7 +413,7 @@ export function SearchForm({
   );
 
   const portalsBlock = (
-    <SectionCard bare={!isDesktop} title="Portals to watch">
+    <SectionCard variant={sectionVariant} title="Portals to watch">
       <form.Field name="portals" validators={{ onChange: portalsSchema }}>
         {(field) => (
           <PortalToggles
@@ -419,7 +426,7 @@ export function SearchForm({
   );
 
   const rescrape = (
-    <SectionCard bare={!isDesktop} title="Re-scrape">
+    <SectionCard variant={sectionVariant} title="Re-scrape">
       <form.Field name="cadenceId">
         {(field) => (
           <CadencePicker
@@ -529,62 +536,3 @@ export function SearchForm({
 
 /* ---------------- Section layout helpers ---------------- */
 
-function SectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="font-semibold text-[17px] text-navy leading-[22px]">
-      {children}
-    </h2>
-  );
-}
-
-/**
- * A grouped form section. On desktop it's a bordered white card; on
- * mobile (`bare`) it's a padded column with no card chrome (matching
- * Paper's edge-to-edge mobile sections).
- */
-function SectionCard({
-  title,
-  titleRight,
-  bare,
-  children,
-}: {
-  title: string;
-  titleRight?: ReactNode;
-  bare?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      className={cn(
-        "flex flex-col gap-3.5",
-        bare ? "px-5" : "rounded-lg border border-line bg-paper p-6"
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <SectionTitle>{title}</SectionTitle>
-        {titleRight}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Section({
-  title,
-  subtitle,
-  bare,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  bare?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section className={cn("flex flex-col gap-2.5", bare && "px-5")}>
-      <SectionTitle>{title}</SectionTitle>
-      {subtitle ? <p className="-mt-1.5 text-[12px] text-slate">{subtitle}</p> : null}
-      {children}
-    </section>
-  );
-}
