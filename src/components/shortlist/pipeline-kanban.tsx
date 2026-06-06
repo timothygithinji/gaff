@@ -40,7 +40,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PIPELINE_ARCHIVED_REASONS,
   type PipelineArchivedReason,
@@ -69,11 +69,17 @@ import {
   useAuditLine,
 } from "./pipeline-shared";
 
-/** Shared easing for the compact ⇄ enlarged hover morph (FLIP layout). */
+/**
+ * Shared spring for the compact ⇄ enlarged hover morph (FLIP layout). A
+ * lightly-damped spring reads smoother than a fixed-duration tween — it
+ * eases in and settles organically. `bounce` is kept low so the card
+ * (and the siblings it pushes) settles without a distracting wobble.
+ */
 const MORPH_TRANSITION = {
-  duration: 0.26,
-  ease: [0.22, 1, 0.36, 1] as const,
-};
+  type: "spring",
+  duration: 0.5,
+  bounce: 0.12,
+} as const;
 
 /** Columns Paper renders on the desktop board (Archived lives in ⋯). */
 const BOARD_STATUSES: PipelineStatus[] = [
@@ -191,6 +197,27 @@ function Column({
   "onOpenCluster" | "onMove" | "onArchive" | "onHoverCluster" | "disabled"
 >) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled });
+  // While the column is scrolling, suppress hover-expansion: a card
+  // growing under the cursor mid-scroll shifts everything below it and
+  // makes the scroll lurch ("jumps an item"). We re-enable shortly after
+  // the wheel/track settles; a deliberate mouse move then re-expands.
+  const [scrolling, setScrolling] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (idleTimer.current) {
+        clearTimeout(idleTimer.current);
+      }
+    },
+    []
+  );
+  function handleScroll() {
+    setScrolling(true);
+    if (idleTimer.current) {
+      clearTimeout(idleTimer.current);
+    }
+    idleTimer.current = setTimeout(() => setScrolling(false), 180);
+  }
   return (
     <section
       className={cn(
@@ -207,7 +234,10 @@ function Column({
           <StageCountPill count={cards.length} status={status} />
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1"
+        onScroll={handleScroll}
+      >
         {cards.length === 0 ? (
           <EmptyColumn hint={EMPTY_HINTS[status]} isOver={isOver} />
         ) : (
@@ -220,6 +250,7 @@ function Column({
               onHoverCluster={onHoverCluster}
               onMove={onMove}
               onOpenCluster={onOpenCluster}
+              suppressed={scrolling}
             />
           ))
         )}
@@ -251,8 +282,12 @@ function Card({
   onArchive,
   onHoverCluster,
   disabled,
+  suppressed,
 }: {
   card: PipelineCard;
+  /** Column is scrolling — hold the card compact so it can't shift the
+   * scroll under the cursor. */
+  suppressed?: boolean;
 } & Pick<
   Props,
   "onOpenCluster" | "onMove" | "onArchive" | "onHoverCluster" | "disabled"
@@ -262,19 +297,39 @@ function Card({
     disabled,
   });
   const [hovered, setHovered] = useState(false);
+  // Collapse the moment a scroll starts; the pointer is parked over a
+  // card, so we also wait for a fresh mouse move (not just the lingering
+  // hover) before expanding again — otherwise it pops the instant the
+  // scroll settles.
+  useEffect(() => {
+    if (suppressed) {
+      setHovered(false);
+    }
+  }, [suppressed]);
   // Don't expand mid-drag — the lifted DragOverlay already shows the
   // enlarged preview, and a morphing source card fights the drag.
-  const expanded = hovered && !isDragging;
+  const expanded = hovered && !isDragging && !suppressed;
 
-  function handleEnter() {
+  function arm() {
+    if (suppressed) {
+      return;
+    }
     setHovered(true);
-    onHoverCluster?.(card.clusterId);
+  }
+  function handleEnter() {
+    arm();
+    if (!suppressed) {
+      onHoverCluster?.(card.clusterId);
+    }
   }
 
   return (
     <motion.article
       className={cn(
-        "group relative overflow-hidden rounded-md border border-line bg-card transition-shadow",
+        // shrink-0: cards are flex children of the column; without it a
+        // full column compresses each card below its content (the photo
+        // then bleeds past the overflow-hidden box).
+        "group relative shrink-0 overflow-hidden rounded-md border border-line bg-card transition-shadow",
         expanded &&
           "shadow-[0px_1px_2px_0px_rgba(15,42,63,0.04),0px_12px_32px_-8px_rgba(15,42,63,0.12)]",
         isDragging && "opacity-40"
@@ -284,6 +339,7 @@ function Card({
       onFocus={handleEnter}
       onMouseEnter={handleEnter}
       onMouseLeave={() => setHovered(false)}
+      onMouseMove={arm}
       ref={setNodeRef}
       transition={{ layout: MORPH_TRANSITION }}
       {...attributes}
@@ -378,10 +434,10 @@ function CardBody({
         <AnimatePresence initial={false}>
           {expanded ? (
             <motion.div
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              initial={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              initial={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.28, ease: "easeOut", delay: 0.04 }}
             >
               <StatusFootnote audit={audit} card={card} />
             </motion.div>
