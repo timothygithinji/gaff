@@ -760,6 +760,55 @@ export const matchNotifications = pgTable(
   ]
 );
 
+/**
+ * Manual "not a duplicate" dismissals for the merge-suggestions tool.
+ *
+ * `listDuplicateSuggestions` unions the household's clusters into proposed
+ * duplicate groups; when a human says two of those clusters are NOT the
+ * same home, we persist the unordered pair here so the union-find skips
+ * that edge on every future scan (the suggestion stops coming back). The
+ * pair is stored lo/hi (lexicographic) so (A,B) and (B,A) collapse to one
+ * row. FKs cascade, so merging or removing either cluster drops the stale
+ * dismissal automatically.
+ */
+export const clusterMergeDismissals = pgTable(
+  "cluster_merge_dismissals",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    clusterIdLo: text("cluster_id_lo")
+      .notNull()
+      .references(() => propertyClusters.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    clusterIdHi: text("cluster_id_hi")
+      .notNull()
+      .references(() => propertyClusters.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    dismissedByUserId: text("dismissed_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    dismissedAt: timestamp("dismissed_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("cluster_merge_dismissals_pair_uniq").on(
+      t.householdId,
+      t.clusterIdLo,
+      t.clusterIdHi
+    ),
+    index("cluster_merge_dismissals_household_idx").on(t.householdId),
+  ]
+);
+
 export const scrapeRuns = pgTable("scrape_runs", {
   id: text("id").primaryKey(),
   searchId: text("search_id")

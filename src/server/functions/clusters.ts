@@ -12,15 +12,21 @@
  *   mergeClusters — collapse a group into one survivor cluster, re-pointing
  *     listings + swipes + pipeline + notifications (swipe conflicts resolve
  *     skip-wins) and deleting the absorbed clusters. One atomic db.batch.
+ *   dismissDuplicateSuggestion — record a "these are NOT the same home"
+ *     verdict for a group; persists the unordered cluster pairs so the
+ *     union-find skips those edges and the suggestion stops coming back.
  *
- * Both are household-scoped: you can only see/merge clusters that have at
- * least one listing belonging to one of your household's searches.
+ * All three are household-scoped: you can only see/merge/dismiss clusters
+ * that have at least one listing belonging to one of your household's
+ * searches.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { eq, inArray, sql } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import {
+  clusterMergeDismissals,
   listings,
   matchNotifications,
   propertyClusters,
@@ -152,8 +158,21 @@ function clustersAreDuplicates(a: ClusterAgg, b: ClusterAgg): boolean {
   return priceMatch || coordMatch;
 }
 
-/** Union-find the household's clusters into proposed duplicate groups. */
-function groupDuplicates(aggs: Map<string, ClusterAgg>): string[][] {
+/** Canonical key for an unordered cluster pair (lo|hi, lexicographic). */
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/**
+ * Union-find the household's clusters into proposed duplicate groups.
+ * `dismissed` holds pair keys a human has flagged as "not a duplicate" —
+ * those edges are skipped, so a dismissed pair never re-groups (and in a
+ * 3+ group, dismissing one edge cleanly splits the rest).
+ */
+function groupDuplicates(
+  aggs: Map<string, ClusterAgg>,
+  dismissed: Set<string>
+): string[][] {
   const list = [...aggs.values()];
   const parent = new Map(list.map((a) => [a.id, a.id]));
   const find = (x: string): string => {
@@ -169,7 +188,12 @@ function groupDuplicates(aggs: Map<string, ClusterAgg>): string[][] {
     for (let j = i + 1; j < list.length; j++) {
       const a = list[i];
       const b = list[j];
-      if (a && b && clustersAreDuplicates(a, b)) {
+      if (
+        a &&
+        b &&
+        !dismissed.has(pairKey(a.id, b.id)) &&
+        clustersAreDuplicates(a, b)
+      ) {
         parent.set(find(a.id), find(b.id));
       }
     }
@@ -210,6 +234,21 @@ async function loadHouseholdClusterRows(
     .then((rows) =>
       rows.filter((r): r is CandidateRow => r.clusterId != null)
     );
+}
+
+/** The household's dismissed pairs, as canonical `lo|hi` pair keys. */
+async function loadDismissedPairs(
+  db: Db,
+  householdId: string
+): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      lo: clusterMergeDismissals.clusterIdLo,
+      hi: clusterMergeDismissals.clusterIdHi,
+    })
+    .from(clusterMergeDismissals)
+    .where(eq(clusterMergeDismissals.householdId, householdId));
+  return new Set(rows.map((r) => pairKey(r.lo, r.hi)));
 }
 
 export type DuplicateClusterSummary = {
@@ -265,8 +304,11 @@ export const listDuplicateSuggestions = createServerFn({ method: "GET" })
   .handler(async (): Promise<DuplicateGroup[]> => {
     const { householdId } = await requireHouseholdScope();
     const db = getDb();
-    const rows = await loadHouseholdClusterRows(db, householdId);
-    const groups = groupDuplicates(aggregate(rows));
+    const [rows, dismissed] = await Promise.all([
+      loadHouseholdClusterRows(db, householdId),
+      loadDismissedPairs(db, householdId),
+    ]);
+    const groups = groupDuplicates(aggregate(rows), dismissed);
     return groups.map((ids) => {
       const summaries = ids.map((id) => summarise(id, rows));
       // Suggest the cluster with the most listings as the survivor.
@@ -279,6 +321,89 @@ export const listDuplicateSuggestions = createServerFn({ method: "GET" })
       );
       return { suggestedSurvivorId: survivor.clusterId, clusters: summaries };
     });
+  });
+
+/**
+ * Guard: every `clusterIds` entry must have at least one listing belonging
+ * to one of this household's searches. Throws `cluster_not_in_household`
+ * otherwise. Shared by merge + dismiss so neither can touch a stranger's
+ * clusters by guessing IDs.
+ */
+async function assertClustersInHousehold(
+  db: Db,
+  householdId: string,
+  clusterIds: string[]
+): Promise<void> {
+  const hhSearches = await db
+    .select({ id: searches.id })
+    .from(searches)
+    .where(eq(searches.householdId, householdId));
+  const hhSearchIds = new Set(hhSearches.map((s) => s.id));
+  const involvedListings = await db
+    .select({ clusterId: listings.clusterId, searchId: listings.searchId })
+    .from(listings)
+    .where(inArray(listings.clusterId, clusterIds));
+  for (const id of clusterIds) {
+    const ok = involvedListings.some(
+      (l) =>
+        l.clusterId === id && l.searchId != null && hhSearchIds.has(l.searchId)
+    );
+    if (!ok) {
+      throw new Error("cluster_not_in_household");
+    }
+  }
+}
+
+const dismissSchema = z.object({
+  clusterIds: z.array(z.string().trim().min(1)).min(2),
+});
+
+/**
+ * Mark a suggested duplicate group as "not the same home". Persists every
+ * unordered pair among `clusterIds` so the union-find in
+ * `listDuplicateSuggestions` skips those edges forever — the group stops
+ * being suggested. Idempotent (onConflictDoNothing on the pair).
+ */
+export const dismissDuplicateSuggestion = createServerFn({ method: "POST" })
+  .inputValidator(dismissSchema)
+  .handler(async ({ data }): Promise<{ ok: true; dismissed: number }> => {
+    const { householdId, currentUserId } = await requireHouseholdScope();
+    const db = getDb();
+    const ids = [...new Set(data.clusterIds)];
+    if (ids.length < 2) {
+      return { ok: true, dismissed: 0 };
+    }
+    await assertClustersInHousehold(db, householdId, ids);
+
+    const rows: (typeof clusterMergeDismissals.$inferInsert)[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = ids[i];
+        const b = ids[j];
+        if (!(a && b)) {
+          continue;
+        }
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        rows.push({
+          id: nanoid(),
+          householdId,
+          clusterIdLo: lo,
+          clusterIdHi: hi,
+          dismissedByUserId: currentUserId,
+        });
+      }
+    }
+    await db
+      .insert(clusterMergeDismissals)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [
+          clusterMergeDismissals.householdId,
+          clusterMergeDismissals.clusterIdLo,
+          clusterMergeDismissals.clusterIdHi,
+        ],
+      });
+    return { ok: true, dismissed: rows.length };
   });
 
 const mergeSchema = z.object({
@@ -304,26 +429,7 @@ export const mergeClusters = createServerFn({ method: "POST" })
 
       // Authorisation: every involved cluster must have at least one
       // listing belonging to one of THIS household's searches.
-      const hhSearches = await db
-        .select({ id: searches.id })
-        .from(searches)
-        .where(eq(searches.householdId, householdId));
-      const hhSearchIds = new Set(hhSearches.map((s) => s.id));
-      const involvedListings = await db
-        .select({ clusterId: listings.clusterId, searchId: listings.searchId })
-        .from(listings)
-        .where(inArray(listings.clusterId, involved));
-      for (const id of involved) {
-        const ok = involvedListings.some(
-          (l) =>
-            l.clusterId === id &&
-            l.searchId != null &&
-            hhSearchIds.has(l.searchId)
-        );
-        if (!ok) {
-          throw new Error("cluster_not_in_household");
-        }
-      }
+      await assertClustersInHousehold(db, householdId, involved);
 
       const absorbedSet = new Set(absorbed);
       const [sw, pp, nt] = await Promise.all([

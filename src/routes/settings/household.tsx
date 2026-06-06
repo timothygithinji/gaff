@@ -32,7 +32,6 @@ import {
   Copy01Icon,
   Mail01Icon,
   Tick02Icon,
-  UserGroup03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -44,6 +43,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { BottomNav } from "../../components/layout/bottom-nav";
+import { SettingsNav } from "../../components/settings/settings-nav";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -319,51 +319,6 @@ function DesktopHousehold({
         </ul>
       </div>
     </div>
-  );
-}
-
-/** Settings sub-nav (Paper left rail). Only Household is a real route;
- * the rest are placeholders Paper draws for the eventual settings IA, so
- * they render as inert muted labels. */
-const SETTINGS_PLACEHOLDERS = [
-  "Profile",
-  "Notifications",
-  "Billing",
-  "Data & export",
-] as const;
-
-function SettingsNav() {
-  return (
-    <nav
-      aria-label="Settings"
-      className="flex w-60 shrink-0 flex-col gap-0.5"
-    >
-      <p className="pb-3 font-normal text-[11px] text-slate uppercase tracking-[0.14em]">
-        Settings
-      </p>
-      <Link
-        className="flex items-center gap-2.5 rounded-md border border-navy bg-card px-3.5 py-2.5 font-semibold text-[13px] text-navy"
-        to="/settings/household"
-      >
-        <HugeiconsIcon icon={UserGroup03Icon} size={14} strokeWidth={1.5} />
-        Household
-      </Link>
-      <Link
-        className="flex items-center gap-2.5 rounded-md px-3.5 py-2.5 text-[13px] text-slate transition-colors hover:bg-ground/60 hover:text-navy"
-        to="/settings/duplicates"
-      >
-        Merge duplicates
-      </Link>
-      {SETTINGS_PLACEHOLDERS.map((label) => (
-        <span
-          aria-disabled
-          className="cursor-default px-3.5 py-2.5 text-[13px] text-slate"
-          key={label}
-        >
-          {label}
-        </span>
-      ))}
-    </nav>
   );
 }
 

@@ -18,20 +18,18 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { BottomNav } from "../../components/layout/bottom-nav";
+import { DuplicateCompare } from "../../components/settings/duplicate-compare";
+import { SettingsNav } from "../../components/settings/settings-nav";
 import { Button } from "../../components/ui/button";
 import { requireSession } from "../../lib/auth-guard";
 import { distanceMetres } from "../../lib/cluster/coords";
+import { duplicatesQueryOptions } from "../../lib/duplicates-query";
 import {
   type DuplicateClusterSummary,
   type DuplicateGroup,
-  listDuplicateSuggestions,
+  dismissDuplicateSuggestion,
   mergeClusters,
 } from "../../server/functions/clusters";
-
-const duplicatesQueryOptions = {
-  queryKey: ["clusters", "duplicates"] as const,
-  queryFn: () => listDuplicateSuggestions(),
-};
 
 export const Route = createFileRoute("/settings/duplicates")({
   head: () => ({ meta: [{ title: "Merge duplicates · Gaff" }] }),
@@ -48,9 +46,12 @@ function DuplicatesPage() {
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="mx-auto w-full max-w-[760px] px-8 py-10">
-          <Header />
-          <DuplicatesList />
+        <div className="flex w-full gap-10 px-10 py-10">
+          <SettingsNav />
+          <div className="flex min-w-0 max-w-[760px] grow flex-col">
+            <Header />
+            <DuplicatesList />
+          </div>
         </div>
       </AdminSidebar>
 
@@ -160,10 +161,24 @@ function evidenceLabel(
   return parts.length ? parts.join(" · ") : null;
 }
 
+/** Drop a resolved group (merged or dismissed) from the cached list so the
+ * card disappears immediately, before the refetch lands. */
+function dropGroup(
+  prev: DuplicateGroup[] | undefined,
+  group: DuplicateGroup
+): DuplicateGroup[] | undefined {
+  if (!prev) {
+    return prev;
+  }
+  const ids = new Set(group.clusters.map((c) => c.clusterId));
+  return prev.filter((g) => !g.clusters.every((c) => ids.has(c.clusterId)));
+}
+
 function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
   const qc = useQueryClient();
   const [survivor, setSurvivor] = useState(group.suggestedSurvivorId);
   const [error, setError] = useState<string | null>(null);
+  const [showCompare, setShowCompare] = useState(false);
 
   const merge = useMutation({
     mutationFn: () =>
@@ -175,13 +190,34 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
             .filter((id) => id !== survivor),
         },
       }),
+    onMutate: () =>
+      qc.setQueryData(duplicatesQueryOptions.queryKey, (prev?: DuplicateGroup[]) =>
+        dropGroup(prev, group)
+      ),
     onError: (e: Error) => setError(e.message ?? "Merge failed"),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["clusters", "duplicates"] });
+      qc.invalidateQueries({ queryKey: duplicatesQueryOptions.queryKey });
       qc.invalidateQueries({ queryKey: ["review"] });
       qc.invalidateQueries({ queryKey: ["shortlist"] });
     },
   });
+
+  const dismiss = useMutation({
+    mutationFn: () =>
+      dismissDuplicateSuggestion({
+        data: { clusterIds: group.clusters.map((c) => c.clusterId) },
+      }),
+    onMutate: () =>
+      qc.setQueryData(duplicatesQueryOptions.queryKey, (prev?: DuplicateGroup[]) =>
+        dropGroup(prev, group)
+      ),
+    onError: (e: Error) => setError(e.message ?? "Couldn't dismiss"),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: duplicatesQueryOptions.queryKey });
+    },
+  });
+
+  const busy = merge.isPending || dismiss.isPending;
 
   return (
     <div className="rounded-lg border border-line bg-white p-4">
@@ -229,23 +265,50 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
         })}
       </div>
 
+      {showCompare ? (
+        <DuplicateCompare
+          clusterIds={group.clusters.map((c) => c.clusterId)}
+        />
+      ) : null}
+
       {error ? (
         <p className="mt-3 text-xs" style={{ color: "#b4472a" }}>
           {error}
         </p>
       ) : null}
 
-      <div className="mt-3 flex justify-end">
-        <Button
-          disabled={merge.isPending}
-          onClick={() => {
-            setError(null);
-            merge.mutate();
-          }}
-          size="sm"
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button
+          aria-expanded={showCompare}
+          className="font-medium text-[13px] text-slate transition-colors hover:text-navy"
+          onClick={() => setShowCompare((v) => !v)}
+          type="button"
         >
-          {merge.isPending ? "Merging…" : "Merge into one"}
-        </Button>
+          {showCompare ? "Hide comparison" : "Compare side by side"}
+        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              dismiss.mutate();
+            }}
+            size="sm"
+            variant="ghost"
+          >
+            {dismiss.isPending ? "Dismissing…" : "Not duplicates"}
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              merge.mutate();
+            }}
+            size="sm"
+          >
+            {merge.isPending ? "Merging…" : "Merge into one"}
+          </Button>
+        </div>
       </div>
     </div>
   );
