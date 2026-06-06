@@ -57,6 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
+import { PriceBlock } from "../../components/ui/patterns/price-block";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
@@ -116,13 +117,6 @@ export const Route = createFileRoute("/listings/$clusterId")({
     ),
   component: ListingDetailPage,
 });
-
-function formatPrice(monthly: number | null): string {
-  if (monthly === null) {
-    return "—";
-  }
-  return `£${monthly.toLocaleString("en-GB")}`;
-}
 
 function listedAgoLabel(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -376,12 +370,11 @@ function ListingDetailPage() {
                 <p className="text-[12px] text-slate leading-4">{locality}</p>
               ) : null}
             </div>
-            <div className="flex shrink-0 flex-col items-end">
-              <span className="font-light text-[26px] text-foreground leading-[26px] tracking-[-0.02em]">
-                {formatPrice(headline.priceMonthly)}
-              </span>
-              <span className="text-[10px] text-slate leading-3">per month</span>
-            </div>
+            <PriceBlock
+              layout="stacked"
+              priceMonthly={headline.priceMonthly}
+              size="md"
+            />
           </div>
           <button
             className="mt-1 self-start text-[12px] text-copper underline-offset-2 hover:underline"

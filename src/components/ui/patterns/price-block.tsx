@@ -2,8 +2,9 @@
  * The monthly-rent headline, shared by review and listing detail. Owns the
  * `formatPrice` helper that was copy-pasted into review-card and
  * desktop-listing-detail, and the price type scale:
- *   - `size="lg"` — 40px detail-page hero
- *   - `size="md"` — 22px card headline
+ *   - `size="lg"` — 40px desktop detail hero
+ *   - `size="md"` — 26px mobile detail header
+ *   - `size="sm"` — 22px review card headline
  *
  * `layout="inline"` keeps the period suffix on the price baseline (detail
  * page); `layout="stacked"` drops it underneath, right-aligned (review card).
@@ -17,11 +18,12 @@ export function formatPrice(monthly: number | null | undefined): string {
   return `£${monthly.toLocaleString("en-GB")}`;
 }
 
-type PriceSize = "lg" | "md";
+type PriceSize = "lg" | "md" | "sm";
 
 const SIZE: Record<PriceSize, string> = {
-  lg: "text-[40px] leading-10 tracking-[-0.025em]",
-  md: "text-[22px] leading-[22px] tracking-[-0.02em]",
+  lg: "text-[40px] leading-10 tracking-[-0.025em]", // desktop detail hero
+  md: "text-[26px] leading-[26px] tracking-[-0.02em]", // mobile detail header
+  sm: "text-[22px] leading-[22px] tracking-[-0.02em]", // review card headline
 };
 
 export function PriceBlock({
