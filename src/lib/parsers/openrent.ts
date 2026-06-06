@@ -276,14 +276,22 @@ function buildOpenrentSummary(args: {
   };
 }
 
+// The property-type segment is non-greedy and allows spaces/hyphens so
+// multi-word types ("Terraced House", "Semi-Detached House") parse — a
+// single-word `[A-Za-z]+` broke the whole match and left beds/price/type
+// null, letting £4k 4-beds slip past the queue's null-keep backstop.
 const TITLE_RE =
-  /^(?:.+?)\s*-\s*(\d+)\s*Bed\s*([A-Za-z]+),\s*(.+?),\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*-\s*To Rent[^£]*?£([\d,]+(?:\.\d+)?)\s*(?:p\/m|pm|pcm)/i;
+  /^(?:.+?)\s*-\s*(\d+)\s*Bed\s*([A-Za-z][A-Za-z\s-]*?),\s*(.+?),\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*-\s*To Rent[^£]*?£([\d,]+(?:\.\d+)?)\s*(?:p\/m|pm|pcm)/i;
 // Studios have no "N Bed" segment ("… - Studio Flat, Street, N3 - To Rent
 // … £965.00 p/m"), so TITLE_RE never matches and beds/price/type were left
 // null — letting sub-band studios slip past the queue's null-keep backstop.
 // Captures (type, street, postcode, price); beds is fixed at 0.
 const TITLE_STUDIO_RE =
   /^(?:.+?)\s*-\s*Studio\s+([A-Za-z]+),\s*(.+?),\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*-\s*To Rent[^£]*?£([\d,]+(?:\.\d+)?)\s*(?:p\/m|pm|pcm)/i;
+// "Room in a Shared Flat/House" detail titles — likewise no "N Bed"
+// segment. Captures (type, street, postcode, price); beds is fixed at 1.
+const TITLE_ROOM_RE =
+  /^(?:.+?)\s*-\s*(Room\s+in\s+a\s+Shared\s+[A-Za-z]+),\s*(.+?),\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*-\s*To Rent[^£]*?£([\d,]+(?:\.\d+)?)\s*(?:p\/m|pm|pcm)/i;
 
 const LAT_RE = /data-lat=["'](-?\d+\.\d+)["']/;
 const LNG_RE = /data-lng=["'](-?\d+\.\d+)["']/;
@@ -589,19 +597,27 @@ export function parseOpenrentDetail(html: string): ListingDetail {
 
   const titleMatch = titleText.match(TITLE_RE);
   const studioMatch = titleMatch ? null : titleText.match(TITLE_STUDIO_RE);
+  const roomMatch =
+    titleMatch || studioMatch ? null : titleText.match(TITLE_ROOM_RE);
   const latMatch = html.match(LAT_RE);
   const lngMatch = html.match(LNG_RE);
 
-  if (!titleMatch && !studioMatch && !(latMatch && lngMatch) && !id) {
+  if (
+    !titleMatch &&
+    !studioMatch &&
+    !roomMatch &&
+    !(latMatch && lngMatch) &&
+    !id
+  ) {
     throw new Error(
       "OpenRent detail: neither title pattern nor lat/lng nor canonical id found — wrong page?"
     );
   }
 
-  // Two title shapes: "… - N Bed Type, Street, PC - To Rent … £X" and the
-  // studio variant ("… - Studio Flat, Street, PC - …"), which carries no
-  // "N Bed" segment and so means 0 bedrooms. Fall back to a postcode scrape
-  // when neither matches.
+  // Three title shapes: "… - N Bed Type, Street, PC - To Rent … £X", the
+  // studio variant ("… - Studio Flat, …", 0 beds), and the shared-room
+  // variant ("… - Room in a Shared Flat, …", 1 bed). The latter two carry
+  // no "N Bed" segment. Fall back to a postcode scrape when none matches.
   let beds: number | undefined;
   let propertyType: string | undefined;
   let street: string | undefined;
@@ -609,7 +625,7 @@ export function parseOpenrentDetail(html: string): ListingDetail {
   let rent: number | undefined;
   if (titleMatch) {
     beds = toNumber(titleMatch[1]);
-    propertyType = titleMatch[2];
+    propertyType = titleMatch[2]?.trim();
     street = titleMatch[3];
     postcode = titleMatch[4];
     rent = toNumber(titleMatch[5]);
@@ -619,6 +635,12 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     street = studioMatch[2];
     postcode = studioMatch[3];
     rent = toNumber(studioMatch[4]);
+  } else if (roomMatch) {
+    beds = 1;
+    propertyType = roomMatch[1]?.trim();
+    street = roomMatch[2];
+    postcode = roomMatch[3];
+    rent = toNumber(roomMatch[4]);
   }
 
   const lat = latMatch ? toNumber(latMatch[1]) : undefined;
@@ -652,10 +674,10 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     titleText.replace(STRIP_OPENRENT_SUFFIX_RE, "").trim() ||
     `OpenRent listing ${id ?? ""}`;
   let titleOut = ogTitle || titleFromHtml;
-  if (street && studioMatch) {
-    titleOut = `${propertyType ?? "Studio"} — ${street}`;
-  } else if (street && titleMatch) {
+  if (street && titleMatch) {
     titleOut = `${beds ?? "?"} bed ${propertyType ?? "property"} — ${street}`;
+  } else if (street && (studioMatch || roomMatch)) {
+    titleOut = `${propertyType ?? "property"} — ${street}`;
   }
 
   const url = id
