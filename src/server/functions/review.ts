@@ -28,11 +28,12 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { tasks } from "@trigger.dev/sdk";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import {
+  clusterDeferrals,
   enrichments,
   listingPhotos,
   listings,
@@ -1111,7 +1112,7 @@ async function loadRankedQueueClusterIds(
     return { clusterIds: [], activeSearches };
   }
 
-  const [mySwipes, householdSkips] = await Promise.all([
+  const [mySwipes, householdSkips, deferred] = await Promise.all([
     db
       .select({ clusterId: swipes.clusterId })
       .from(swipes)
@@ -1131,11 +1132,25 @@ async function loadRankedQueueClusterIds(
           inArray(swipes.clusterId, ranked)
         )
       ),
+    // Household-wide defers: hide a cluster while its snooze is live. The
+    // sweep deletes rows once deferUntil passes, but gate on time too so a
+    // just-expired row never lingers in the queue exclusion.
+    db
+      .select({ clusterId: clusterDeferrals.clusterId })
+      .from(clusterDeferrals)
+      .where(
+        and(
+          eq(clusterDeferrals.householdId, householdId),
+          gt(clusterDeferrals.deferUntil, sql`now()`),
+          inArray(clusterDeferrals.clusterId, ranked)
+        )
+      ),
   ]);
   const mySwipedSet = new Set(mySwipes.map((s) => s.clusterId));
   const skipSet = new Set(householdSkips.map((s) => s.clusterId));
+  const deferredSet = new Set(deferred.map((s) => s.clusterId));
   const clusterIds = ranked.filter(
-    (cid) => !(mySwipedSet.has(cid) || skipSet.has(cid))
+    (cid) => !(mySwipedSet.has(cid) || skipSet.has(cid) || deferredSet.has(cid))
   );
 
   return { clusterIds, activeSearches };

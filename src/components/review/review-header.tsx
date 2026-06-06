@@ -13,6 +13,7 @@
  */
 import { Link } from "@tanstack/react-router";
 import { useHousehold } from "../../lib/household-context";
+import { DeferredHeaderLink } from "./deferred-link";
 
 type Props = {
   /** Pre-composed search pill text (e.g. "North London · 2-bed"). */
@@ -45,13 +46,16 @@ export function ReviewHeader({ searchPill, leftToday }: Props) {
           </span>
         </div>
       </div>
-      <div className="flex flex-col items-end gap-0.5">
-        <span className="font-light text-[22px] text-navy leading-none">
-          {leftToday}
-        </span>
-        <span className="font-semibold text-[9px] text-slate uppercase tracking-[0.14em]">
-          To review
-        </span>
+      <div className="flex items-center gap-3">
+        <DeferredHeaderLink />
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="font-light text-[22px] text-navy leading-none">
+            {leftToday}
+          </span>
+          <span className="font-semibold text-[9px] text-slate uppercase tracking-[0.14em]">
+            To review
+          </span>
+        </div>
       </div>
     </header>
   );

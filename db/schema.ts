@@ -809,6 +809,56 @@ export const clusterMergeDismissals = pgTable(
   ]
 );
 
+/**
+ * Household "defer this listing" snoozes for the review queue.
+ *
+ * Some listings reach the queue half-filled by the agent (no EPC, no
+ * photos, price TBC) — vetoing then is premature, you just lack the info.
+ * A defer hides the cluster from EVERY member's review queue until
+ * `deferUntil`, and a daily sweep (`process-deferrals`) re-scrapes the
+ * cluster's listings ~a day before it re-surfaces so fresher data is
+ * waiting when it comes back. One active defer per (household, cluster);
+ * re-deferring overwrites the window and clears `rescrapedAt`. The sweep
+ * stamps `rescrapedAt` so it never re-fires the scrape, and deletes rows
+ * once `deferUntil` has passed (the cluster is back in the queue by then).
+ * FKs cascade — merge or remove a cluster and its defer goes with it.
+ */
+export const clusterDeferrals = pgTable(
+  "cluster_deferrals",
+  {
+    id: text("id").primaryKey(),
+    householdId: text("household_id")
+      .notNull()
+      .references(() => households.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    clusterId: text("cluster_id")
+      .notNull()
+      .references(() => propertyClusters.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    deferredByUserId: text("deferred_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    /** When the cluster re-enters every member's review queue. */
+    deferUntil: timestamp("defer_until").notNull(),
+    /** Stamped by the sweep once it has re-fired the detail scrape, so the
+     * re-scrape fires at most once per defer window. */
+    rescrapedAt: timestamp("rescraped_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("cluster_deferrals_household_cluster_uniq").on(
+      t.householdId,
+      t.clusterId
+    ),
+    index("cluster_deferrals_defer_until_idx").on(t.deferUntil),
+  ]
+);
+
 export const scrapeRuns = pgTable("scrape_runs", {
   id: text("id").primaryKey(),
   searchId: text("search_id")

@@ -13,6 +13,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ShortlistRouteImport } from './routes/shortlist'
 import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DeferredRouteImport } from './routes/deferred'
 import { Route as CompareRouteImport } from './routes/compare'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
@@ -41,6 +42,11 @@ const MatchesRoute = MatchesRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeferredRoute = DeferredRouteImport.update({
+  id: '/deferred',
+  path: '/deferred',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CompareRoute = CompareRouteImport.update({
@@ -92,6 +98,7 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/compare': typeof CompareRoute
+  '/deferred': typeof DeferredRoute
   '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/compare': typeof CompareRoute
+  '/deferred': typeof DeferredRoute
   '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/compare': typeof CompareRoute
+  '/deferred': typeof DeferredRoute
   '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
   '/shortlist': typeof ShortlistRoute
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/compare'
+    | '/deferred'
     | '/login'
     | '/matches'
     | '/shortlist'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/compare'
+    | '/deferred'
     | '/login'
     | '/matches'
     | '/shortlist'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/compare'
+    | '/deferred'
     | '/login'
     | '/matches'
     | '/shortlist'
@@ -186,6 +198,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompareRoute: typeof CompareRoute
+  DeferredRoute: typeof DeferredRoute
   LoginRoute: typeof LoginRoute
   MatchesRoute: typeof MatchesRoute
   ShortlistRoute: typeof ShortlistRoute
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/deferred': {
+      id: '/deferred'
+      path: '/deferred'
+      fullPath: '/deferred'
+      preLoaderRoute: typeof DeferredRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/compare': {
@@ -298,6 +318,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompareRoute: CompareRoute,
+  DeferredRoute: DeferredRoute,
   LoginRoute: LoginRoute,
   MatchesRoute: MatchesRoute,
   ShortlistRoute: ShortlistRoute,

@@ -13,11 +13,17 @@
  *
  * Presentation only — bubbles the same callbacks the route wired.
  */
-import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Clock01Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useHouseholdOptional } from "../../lib/household-context";
+import { DeferMenu } from "./defer-menu";
 
-export type ActionButtonsPending = "shortlist" | "skip" | "undo" | null;
+export type ActionButtonsPending =
+  | "shortlist"
+  | "skip"
+  | "undo"
+  | "defer"
+  | null;
 
 type Props = {
   clusterId: string;
@@ -26,6 +32,8 @@ type Props = {
   onUndo: () => void;
   onSkip: () => void;
   onShortlist: () => void;
+  /** Snooze the listing for `days` (it re-scrapes + re-surfaces later). */
+  onDefer: (days: number) => void;
 };
 
 export function ActionButtons({
@@ -34,6 +42,7 @@ export function ActionButtons({
   onUndo,
   onSkip,
   onShortlist,
+  onDefer,
 }: Props) {
   const household = useHouseholdOptional();
   const partner = household?.otherMembers[0];
@@ -84,10 +93,34 @@ export function ActionButtons({
         )}
       </button>
 
+      <DeferMenu
+        onDefer={onDefer}
+        trigger={
+          <button
+            aria-busy={pendingAction === "defer" || undefined}
+            aria-label="Defer — need more info"
+            className="flex size-[50px] shrink-0 items-center justify-center rounded-full border border-line bg-paper text-slate transition-colors hover:bg-mist disabled:opacity-50"
+            disabled={disabled}
+            type="button"
+          >
+            {pendingAction === "defer" ? (
+              <HugeiconsIcon
+                className="animate-spin"
+                icon={Loading03Icon}
+                size={18}
+                strokeWidth={1.8}
+              />
+            ) : (
+              <HugeiconsIcon icon={Clock01Icon} size={19} strokeWidth={1.6} />
+            )}
+          </button>
+        }
+      />
+
       <button
         aria-busy={pendingAction === "shortlist" || undefined}
         aria-label="Shortlist"
-        className="flex h-14 flex-1 items-center justify-center gap-2 rounded-[32px] bg-primary font-medium text-[13px] text-white tracking-[0.04em] transition-opacity hover:opacity-95 disabled:opacity-50"
+        className="flex h-14 min-w-0 flex-1 items-center justify-center gap-2 truncate rounded-[32px] bg-primary font-medium text-[13px] text-white tracking-[0.04em] transition-opacity hover:opacity-95 disabled:opacity-50"
         disabled={disabled}
         onClick={onShortlist}
         type="button"
