@@ -232,7 +232,7 @@ function UserAvatar() {
         <DropdownMenuGroup>
           <DropdownMenuItem render={<Link to="/settings/household" />}>
             <HugeiconsIcon icon={UserSettings01Icon} size={14} />
-            Household settings
+            Settings
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
