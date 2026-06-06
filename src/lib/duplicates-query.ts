@@ -7,9 +7,10 @@
  * key → one fetch → the badge and the page never disagree.
  */
 import { listDuplicateSuggestions } from "../server/functions/clusters";
+import { queryKeys } from "./query-keys";
 
 export const duplicatesQueryOptions = {
-  queryKey: ["clusters", "duplicates"] as const,
+  queryKey: queryKeys.duplicates(),
   queryFn: () => listDuplicateSuggestions(),
   staleTime: 30_000,
 };

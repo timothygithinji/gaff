@@ -15,12 +15,9 @@
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { queryKeys } from "../../lib/query-keys";
+import { listingDetailQueryOptions } from "../../lib/listing-detail-query";
 import { cn } from "../../lib/utils";
-import {
-  type ListingDetailPayload,
-  getListingDetail,
-} from "../../server/functions/listing-detail";
+import type { ListingDetailPayload } from "../../server/functions/listing-detail";
 
 type Props = { clusterIds: string[] };
 
@@ -61,11 +58,7 @@ const FIELDS: Field[] = [
 
 export function DuplicateCompare({ clusterIds }: Props) {
   const results = useQueries({
-    queries: clusterIds.map((id) => ({
-      queryKey: queryKeys.listingDetail(id),
-      queryFn: () => getListingDetail({ data: { clusterId: id } }),
-      staleTime: 15_000,
-    })),
+    queries: clusterIds.map((id) => listingDetailQueryOptions(id)),
   });
 
   if (results.some((r) => r.isLoading)) {

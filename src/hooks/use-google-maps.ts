@@ -18,6 +18,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { queryKeys } from "../lib/query-keys";
 import { getMapsKey } from "../server/functions/config";
 
 // Minimal typing for the bits of `window.google` we touch. The full
@@ -102,7 +103,7 @@ function loadScript(apiKey: string): Promise<void> {
 
 export function useGoogleMaps(): GoogleMapsStatus {
   const { data: apiKey } = useQuery({
-    queryKey: ["maps-key"],
+    queryKey: queryKeys.mapsKey(),
     queryFn: () => getMapsKey(),
     staleTime: Number.POSITIVE_INFINITY,
   });

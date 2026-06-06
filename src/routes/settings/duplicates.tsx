@@ -24,6 +24,7 @@ import { Button } from "../../components/ui/button";
 import { requireSession } from "../../lib/auth-guard";
 import { distanceMetres } from "../../lib/cluster/coords";
 import { duplicatesQueryOptions } from "../../lib/duplicates-query";
+import { queryKeys } from "../../lib/query-keys";
 import {
   type DuplicateClusterSummary,
   type DuplicateGroup,
@@ -39,6 +40,10 @@ export const Route = createFileRoute("/settings/duplicates")({
       "/settings/duplicates"
     );
   },
+  // Prefetch in the loader (parity with /deferred) so the list is
+  // SSR-painted instead of popping in via a mount-time fetch.
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(duplicatesQueryOptions),
   component: DuplicatesPage,
 });
 
@@ -190,15 +195,28 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
             .filter((id) => id !== survivor),
         },
       }),
-    onMutate: () =>
-      qc.setQueryData(duplicatesQueryOptions.queryKey, (prev?: DuplicateGroup[]) =>
-        dropGroup(prev, group)
-      ),
-    onError: (e: Error) => setError(e.message ?? "Merge failed"),
+    onMutate: async () => {
+      setError(null);
+      await qc.cancelQueries({ queryKey: queryKeys.duplicates() });
+      const previous = qc.getQueryData<DuplicateGroup[]>(
+        duplicatesQueryOptions.queryKey
+      );
+      qc.setQueryData(
+        duplicatesQueryOptions.queryKey,
+        (prev?: DuplicateGroup[]) => dropGroup(prev, group)
+      );
+      return { previous };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        qc.setQueryData(duplicatesQueryOptions.queryKey, ctx.previous);
+      }
+      setError(e.message ?? "Merge failed");
+    },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: duplicatesQueryOptions.queryKey });
-      qc.invalidateQueries({ queryKey: ["review"] });
-      qc.invalidateQueries({ queryKey: ["shortlist"] });
+      qc.invalidateQueries({ queryKey: queryKeys.duplicates() });
+      qc.invalidateQueries({ queryKey: queryKeys.review() });
+      qc.invalidateQueries({ queryKey: queryKeys.shortlist() });
     },
   });
 
@@ -207,13 +225,26 @@ function DuplicateGroupCard({ group }: { group: DuplicateGroup }) {
       dismissDuplicateSuggestion({
         data: { clusterIds: group.clusters.map((c) => c.clusterId) },
       }),
-    onMutate: () =>
-      qc.setQueryData(duplicatesQueryOptions.queryKey, (prev?: DuplicateGroup[]) =>
-        dropGroup(prev, group)
-      ),
-    onError: (e: Error) => setError(e.message ?? "Couldn't dismiss"),
+    onMutate: async () => {
+      setError(null);
+      await qc.cancelQueries({ queryKey: queryKeys.duplicates() });
+      const previous = qc.getQueryData<DuplicateGroup[]>(
+        duplicatesQueryOptions.queryKey
+      );
+      qc.setQueryData(
+        duplicatesQueryOptions.queryKey,
+        (prev?: DuplicateGroup[]) => dropGroup(prev, group)
+      );
+      return { previous };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        qc.setQueryData(duplicatesQueryOptions.queryKey, ctx.previous);
+      }
+      setError(e.message ?? "Couldn't dismiss");
+    },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: duplicatesQueryOptions.queryKey });
+      qc.invalidateQueries({ queryKey: queryKeys.duplicates() });
     },
   });
 

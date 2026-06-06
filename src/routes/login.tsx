@@ -17,6 +17,7 @@ import { TextField } from "../components/text-field";
 import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { redirectIfSignedIn } from "../lib/auth-guard";
+import { queryKeys } from "../lib/query-keys";
 
 const SearchSchema = z.object({
   next: z.string().optional(),
@@ -60,7 +61,7 @@ function LoginPage() {
       }),
     onSuccess: async () => {
       // Drop any stale household cache from a previous session.
-      queryClient.removeQueries({ queryKey: ["household"] });
+      queryClient.removeQueries({ queryKey: queryKeys.household() });
       // Re-runs every route's beforeLoad against the fresh cookie.
       await router.invalidate();
       await navigate({ to: next ?? "/" });

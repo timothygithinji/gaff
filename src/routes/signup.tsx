@@ -17,6 +17,7 @@ import { TextField } from "../components/text-field";
 import { Button } from "../components/ui/button";
 import { authClient } from "../lib/auth-client";
 import { redirectIfSignedIn } from "../lib/auth-guard";
+import { queryKeys } from "../lib/query-keys";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({ meta: [{ title: "Sign up · Gaff" }] }),
@@ -62,7 +63,7 @@ function SignupPage() {
         );
       }),
     onSuccess: async () => {
-      queryClient.removeQueries({ queryKey: ["household"] });
+      queryClient.removeQueries({ queryKey: queryKeys.household() });
       await router.invalidate();
       await navigate({ to: "/" });
     },

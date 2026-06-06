@@ -6,9 +6,10 @@
  * One query key → one fetch → the count and the list never disagree.
  */
 import { listDeferrals } from "../server/functions/deferrals";
+import { queryKeys } from "./query-keys";
 
 export const deferralsQueryOptions = {
-  queryKey: ["deferrals", "list"] as const,
+  queryKey: queryKeys.deferralsList(),
   queryFn: () => listDeferrals(),
   staleTime: 30_000,
 };

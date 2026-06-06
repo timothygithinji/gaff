@@ -44,6 +44,21 @@ import {
   updateSearch,
 } from "../../server/functions/searches";
 
+// Shared query options so the loader prefetch and the component's
+// `useSuspenseQuery` can't drift (same key, same staleTime). 30s matches
+// the searches-list / schedules screens.
+const searchQueryOptions = (id: string) => ({
+  queryKey: queryKeys.search(id),
+  queryFn: () => getSearch({ data: { id } }),
+  staleTime: 30_000,
+});
+
+const schedulesQueryOptions = {
+  queryKey: queryKeys.schedules(),
+  queryFn: () => listSchedules(),
+  staleTime: 30_000,
+};
+
 export const Route = createFileRoute("/searches/$id")({
   head: (ctx) => {
     const data = ctx.loaderData as { search: SearchRow } | undefined;
@@ -65,15 +80,8 @@ export const Route = createFileRoute("/searches/$id")({
   },
   loader: async ({ params, context }) => {
     const [search, schedules] = await Promise.all([
-      context.queryClient.ensureQueryData({
-        queryKey: queryKeys.search(params.id),
-        queryFn: () => getSearch({ data: { id: params.id } }),
-      }),
-      context.queryClient.ensureQueryData({
-        queryKey: queryKeys.schedules(),
-        queryFn: () => listSchedules(),
-        staleTime: 30_000,
-      }),
+      context.queryClient.ensureQueryData(searchQueryOptions(params.id)),
+      context.queryClient.ensureQueryData(schedulesQueryOptions),
     ]);
     return { search, schedules };
   },
@@ -86,14 +94,8 @@ function EditSearchPage() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const { data: search } = useSuspenseQuery({
-    queryKey: queryKeys.search(params.id),
-    queryFn: () => getSearch({ data: { id: params.id } }),
-  });
-  const { data: schedules } = useSuspenseQuery({
-    queryKey: queryKeys.schedules(),
-    queryFn: () => listSchedules(),
-  });
+  const { data: search } = useSuspenseQuery(searchQueryOptions(params.id));
+  const { data: schedules } = useSuspenseQuery(schedulesQueryOptions);
 
   const initial = toFormValues(search, schedules);
 

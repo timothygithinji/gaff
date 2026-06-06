@@ -14,9 +14,11 @@
  * keyboard sensors). Each card carries a hover ⋯ menu for explicit
  * move / archive so the board works without dragging too.
  *
- * The FIRST card in a column renders large (full-width photo + meta);
- * the rest render compact (48px thumbnail + two lines), matching Paper's
- * lead-card rhythm.
+ * Every card rests compact (48px thumbnail + two lines). On hover/focus
+ * it morphs — via `motion`'s shared `layout` animation — into the
+ * enlarged lead layout (full-width photo banner + meta + status
+ * footnote), then back out. The FLIP morph tweens the row→column change
+ * smoothly rather than snapping between the two layouts.
  */
 import {
   DndContext,
@@ -37,6 +39,7 @@ import {
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import {
   PIPELINE_ARCHIVED_REASONS,
@@ -63,9 +66,14 @@ import {
   StageCountPill,
   formatPrice,
   metaLine,
-  outcodeOf,
   useAuditLine,
 } from "./pipeline-shared";
+
+/** Shared easing for the compact ⇄ enlarged hover morph (FLIP layout). */
+const MORPH_TRANSITION = {
+  duration: 0.26,
+  ease: [0.22, 1, 0.36, 1] as const,
+};
 
 /** Columns Paper renders on the desktop board (Archived lives in ⋯). */
 const BOARD_STATUSES: PipelineStatus[] = [
@@ -88,6 +96,8 @@ type Props = {
   onOpenCluster: (clusterId: string) => void;
   onMove: (clusterId: string, to: PipelineStatus) => void;
   onArchive: (clusterId: string, reason: PipelineArchivedReason) => void;
+  /** Hover/focus a card → warm its listing-detail payload (optional). */
+  onHoverCluster?: (clusterId: string) => void;
   disabled?: boolean;
 };
 
@@ -109,6 +119,7 @@ export function PipelineKanban({
   onOpenCluster,
   onMove,
   onArchive,
+  onHoverCluster,
   disabled,
 }: Props) {
   const [activeCard, setActiveCard] = useState<PipelineCard | null>(null);
@@ -143,13 +154,14 @@ export function PipelineKanban({
       onDragStart={handleDragStart}
       sensors={sensors}
     >
-      <div className="flex h-full min-h-0 gap-4 overflow-x-auto pb-2">
+      <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto pb-2">
         {BOARD_STATUSES.map((status) => (
           <Column
             cards={columns[status]}
             disabled={disabled}
             key={status}
             onArchive={onArchive}
+            onHoverCluster={onHoverCluster}
             onMove={onMove}
             onOpenCluster={onOpenCluster}
             status={status}
@@ -169,11 +181,15 @@ function Column({
   onOpenCluster,
   onMove,
   onArchive,
+  onHoverCluster,
   disabled,
 }: {
   status: PipelineStatus;
   cards: PipelineCard[];
-} & Pick<Props, "onOpenCluster" | "onMove" | "onArchive" | "disabled">) {
+} & Pick<
+  Props,
+  "onOpenCluster" | "onMove" | "onArchive" | "onHoverCluster" | "disabled"
+>) {
   const { setNodeRef, isOver } = useDroppable({ id: status, disabled });
   return (
     <section
@@ -195,13 +211,13 @@ function Column({
         {cards.length === 0 ? (
           <EmptyColumn hint={EMPTY_HINTS[status]} isOver={isOver} />
         ) : (
-          cards.map((card, idx) => (
+          cards.map((card) => (
             <Card
               card={card}
               disabled={disabled}
               key={card.clusterId}
-              lead={idx === 0}
               onArchive={onArchive}
+              onHoverCluster={onHoverCluster}
               onMove={onMove}
               onOpenCluster={onOpenCluster}
             />
@@ -230,37 +246,54 @@ function EmptyColumn({ hint, isOver }: { hint: string; isOver: boolean }) {
 
 function Card({
   card,
-  lead,
   onOpenCluster,
   onMove,
   onArchive,
+  onHoverCluster,
   disabled,
 }: {
   card: PipelineCard;
-  lead: boolean;
-} & Pick<Props, "onOpenCluster" | "onMove" | "onArchive" | "disabled">) {
+} & Pick<
+  Props,
+  "onOpenCluster" | "onMove" | "onArchive" | "onHoverCluster" | "disabled"
+>) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: card.clusterId,
     disabled,
   });
+  const [hovered, setHovered] = useState(false);
+  // Don't expand mid-drag — the lifted DragOverlay already shows the
+  // enlarged preview, and a morphing source card fights the drag.
+  const expanded = hovered && !isDragging;
+
+  function handleEnter() {
+    setHovered(true);
+    onHoverCluster?.(card.clusterId);
+  }
+
   return (
-    <article
+    <motion.article
       className={cn(
-        "group relative rounded-md border border-line bg-card transition-shadow hover:shadow-[0px_1px_2px_0px_rgba(15,42,63,0.04),0px_12px_32px_-8px_rgba(15,42,63,0.12)]",
+        "group relative overflow-hidden rounded-md border border-line bg-card transition-shadow",
+        expanded &&
+          "shadow-[0px_1px_2px_0px_rgba(15,42,63,0.04),0px_12px_32px_-8px_rgba(15,42,63,0.12)]",
         isDragging && "opacity-40"
       )}
+      layout
+      onBlur={() => setHovered(false)}
+      onFocus={handleEnter}
+      onMouseEnter={handleEnter}
+      onMouseLeave={() => setHovered(false)}
       ref={setNodeRef}
+      transition={{ layout: MORPH_TRANSITION }}
       {...attributes}
       {...listeners}
     >
-      {lead ? (
-        <LeadCardBody card={card} onOpen={() => onOpenCluster(card.clusterId)} />
-      ) : (
-        <CompactCardBody
-          card={card}
-          onOpen={() => onOpenCluster(card.clusterId)}
-        />
-      )}
+      <CardBody
+        card={card}
+        expanded={expanded}
+        onOpen={() => onOpenCluster(card.clusterId)}
+      />
       <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 data-[open]:opacity-100">
         <CardMenu
           card={card}
@@ -269,26 +302,48 @@ function Card({
           onMove={onMove}
         />
       </div>
-    </article>
+    </motion.article>
   );
 }
 
-function LeadCardBody({
+/**
+ * One card body that morphs between the compact row (thumbnail-left) and
+ * the enlarged lead layout (full-bleed photo on top) as `expanded`
+ * flips. `motion`'s `layout` does the FLIP: the photo grows and slides
+ * up, the text reflows, and the status footnote fades in. The button
+ * carries no padding so the expanded photo can sit flush to the card
+ * edges — spacing lives on the thumbnail margin / text block instead.
+ */
+function CardBody({
   card,
+  expanded,
   onOpen,
 }: {
   card: PipelineCard;
+  expanded: boolean;
   onOpen: () => void;
 }) {
   const meta = metaLine(card);
   const audit = useAuditLine(card);
   return (
-    <button
-      className="flex w-full flex-col overflow-hidden rounded-md text-left"
+    <motion.button
+      className={cn(
+        "flex w-full text-left",
+        expanded ? "flex-col" : "flex-row items-center"
+      )}
+      layout
       onClick={onOpen}
+      transition={{ layout: MORPH_TRANSITION }}
       type="button"
     >
-      <div className="h-[110px] w-full shrink-0 overflow-hidden bg-mist">
+      <motion.div
+        className={cn(
+          "shrink-0 overflow-hidden bg-mist",
+          expanded ? "h-[124px] w-full" : "m-3 size-12 rounded-md"
+        )}
+        layout
+        transition={{ layout: MORPH_TRANSITION }}
+      >
         {card.headline.photoUrl ? (
           // biome-ignore lint/nursery/noImgElement: TanStack Start; no Image component.
           <img
@@ -298,8 +353,15 @@ function LeadCardBody({
             src={card.headline.photoUrl}
           />
         ) : null}
-      </div>
-      <div className="flex flex-col gap-2 px-3.5 py-3">
+      </motion.div>
+      <motion.div
+        className={cn(
+          "flex min-w-0 grow flex-col",
+          expanded ? "gap-1.5 px-3.5 pt-2.5 pb-3" : "gap-0.5 py-3 pr-3.5"
+        )}
+        layout="position"
+        transition={{ layout: MORPH_TRANSITION }}
+      >
         <div className="flex items-baseline justify-between gap-2.5">
           <span className="min-w-0 grow truncate font-semibold text-[13px] text-navy leading-4">
             {card.headline.addressRaw}
@@ -309,49 +371,24 @@ function LeadCardBody({
           </span>
         </div>
         {meta ? (
-          <span className="text-[11px] text-slate leading-[14px]">{meta}</span>
+          <span className="truncate text-[11px] text-slate leading-[14px]">
+            {meta}
+          </span>
         ) : null}
-        <StatusFootnote audit={audit} card={card} />
-      </div>
-    </button>
-  );
-}
-
-function CompactCardBody({
-  card,
-  onOpen,
-}: {
-  card: PipelineCard;
-  onOpen: () => void;
-}) {
-  const audit = useAuditLine(card);
-  const sub = [formatPrice(card.headline.priceMonthly), outcodeOf(card.headline.postcode), audit]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <button
-      className="flex w-full gap-3 rounded-md px-3.5 py-3 text-left"
-      onClick={onOpen}
-      type="button"
-    >
-      <div className="size-12 shrink-0 overflow-hidden rounded-sm bg-mist">
-        {card.headline.photoUrl ? (
-          // biome-ignore lint/nursery/noImgElement: TanStack Start; no Image component.
-          <img
-            alt={card.headline.addressRaw}
-            className="h-full w-full object-cover"
-            loading="lazy"
-            src={card.headline.photoUrl}
-          />
-        ) : null}
-      </div>
-      <div className="flex min-w-0 grow flex-col gap-0.5">
-        <span className="truncate font-semibold text-[12px] text-navy leading-4">
-          {card.headline.addressRaw}
-        </span>
-        <span className="truncate text-[10px] text-slate leading-3">{sub}</span>
-      </div>
-    </button>
+        <AnimatePresence initial={false}>
+          {expanded ? (
+            <motion.div
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <StatusFootnote audit={audit} card={card} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </motion.div>
+    </motion.button>
   );
 }
 

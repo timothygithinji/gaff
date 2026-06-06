@@ -161,7 +161,9 @@ const reviewTodayStatsQueryOptions = (searchId: string | null) =>
 const reviewSearchesQueryOptions = {
   queryKey: queryKeys.searches(),
   queryFn: () => listSearches(),
-  staleTime: 60_000,
+  // 30s to match the Searches screens — same key, so a divergent stale
+  // window here would mean the two screens disagree on freshness.
+  staleTime: 30_000,
 };
 
 export const Route = createFileRoute("/")({

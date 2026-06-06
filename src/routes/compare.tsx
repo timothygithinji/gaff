@@ -32,18 +32,12 @@ import { CompareColumn } from "../components/compare/compare-column";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { Button } from "../components/ui/button";
 import { requireSession } from "../lib/auth-guard";
-import { queryKeys } from "../lib/query-keys";
-import { getListingDetail } from "../server/functions/listing-detail";
+import { listingDetailQueryOptions } from "../lib/listing-detail-query";
+import type { getListingDetail } from "../server/functions/listing-detail";
 
 const compareSearchSchema = z.object({
   a: z.string().min(1).optional(),
   b: z.string().min(1).optional(),
-});
-
-const listingDetailQuery = (clusterId: string) => ({
-  queryKey: queryKeys.listingDetail(clusterId),
-  queryFn: () => getListingDetail({ data: { clusterId } }),
-  staleTime: 15_000,
 });
 
 export const Route = createFileRoute("/compare")({
@@ -58,10 +52,10 @@ export const Route = createFileRoute("/compare")({
   loaderDeps: ({ search }) => ({ a: search.a, b: search.b }),
   loader: async ({ context, deps }) => {
     if (deps.a) {
-      await context.queryClient.ensureQueryData(listingDetailQuery(deps.a));
+      await context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.a));
     }
     if (deps.b) {
-      await context.queryClient.ensureQueryData(listingDetailQuery(deps.b));
+      await context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.b));
     }
   },
   component: ComparePage,
@@ -83,8 +77,8 @@ function CompareBody({
   clusterBId: string;
 }) {
   const navigate = useNavigate();
-  const { data: a } = useSuspenseQuery(listingDetailQuery(clusterAId));
-  const { data: b } = useSuspenseQuery(listingDetailQuery(clusterBId));
+  const { data: a } = useSuspenseQuery(listingDetailQueryOptions(clusterAId));
+  const { data: b } = useSuspenseQuery(listingDetailQueryOptions(clusterBId));
 
   return (
     <>

@@ -15,6 +15,8 @@
  * a v2.1 add — the schema column exists, but the UI for editing notes
  * isn't wired here yet.
  */
+import { Add01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useMutation,
   useQueries,
@@ -34,15 +36,30 @@ import {
   type SortKey,
 } from "../components/shortlist/sort-dropdown";
 import { type ShortlistTab, ShortlistTabs } from "../components/shortlist/tabs";
+import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
 import { requireSession } from "../lib/auth-guard";
 import { useHousehold } from "../lib/household-context";
-import type {
-  PipelineArchivedReason,
-  PipelineStatus,
+import { listingDetailQueryOptions } from "../lib/listing-detail-query";
+import {
+  PIPELINE_STATUSES,
+  type PipelineArchivedReason,
+  type PipelineStatus,
 } from "../lib/pipeline-status";
 import { queryKeys } from "../lib/query-keys";
 import {
+  type PipelineCard,
   type PipelineColumns,
+  type PipelineLastMovedBy,
   addListingByUrl,
   listPipeline,
   setPipelineStatus,
@@ -148,6 +165,61 @@ function totalPipelineCount(columns: PipelineColumns): number {
   );
 }
 
+const EMPTY_COLUMNS: PipelineColumns = {
+  shortlisted: [],
+  contacted: [],
+  viewing_booked: [],
+  offer_made: [],
+  archived: [],
+};
+
+/**
+ * Pure, optimistic version of a pipeline move: pull the card out of
+ * whichever column currently holds it and drop it into `to`, stamping
+ * the new status / reason / mover so the kanban repaints on the next
+ * frame instead of waiting for the server round-trip + refetch. The
+ * authoritative ordering lands on the `onSettled` invalidate. Returns
+ * the input untouched when the card isn't found (nothing to move).
+ */
+function moveCardOptimistically(
+  columns: PipelineColumns,
+  clusterId: string,
+  to: PipelineStatus,
+  archivedReason: PipelineArchivedReason | undefined,
+  movedBy: PipelineLastMovedBy
+): PipelineColumns {
+  let moving: PipelineCard | undefined;
+  const next: PipelineColumns = {
+    shortlisted: [],
+    contacted: [],
+    viewing_booked: [],
+    offer_made: [],
+    archived: [],
+  };
+  for (const status of PIPELINE_STATUSES) {
+    for (const card of columns[status]) {
+      if (card.clusterId === clusterId) {
+        moving = card;
+      } else {
+        next[status].push(card);
+      }
+    }
+  }
+  if (!moving) {
+    return columns;
+  }
+  // Freshly-moved card is the newest in its column — prepend so it reads
+  // at the top until the refetch confirms the server's ordering.
+  next[to].unshift({
+    ...moving,
+    status: to,
+    archivedReason: to === "archived" ? (archivedReason ?? null) : null,
+    lastMovedAt: new Date(),
+    lastMovedBy: movedBy,
+  });
+  return next;
+}
+
 function ShortlistPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -155,21 +227,20 @@ function ShortlistPage() {
 
   const { data: pipeline } = useQuery(pipelineQueryOptions);
   const { data: mine = [] } = useQuery(myQueryOptions);
-  const columns: PipelineColumns = pipeline ?? {
-    shortlisted: [],
-    contacted: [],
-    viewing_booked: [],
-    offer_made: [],
-    archived: [],
-  };
+  const columns: PipelineColumns = pipeline ?? EMPTY_COLUMNS;
 
   // Clear the unread-matches badge on first paint — the user landed on
-  // the screen that supersedes /matches, so anything new is "seen". We
-  // fire-and-forget; no consumer cares about the result.
+  // the screen that supersedes /matches, so anything new is "seen". On
+  // success we invalidate the badge query so the bottom-nav / sidebar
+  // count clears on the action, not just when its staleTime lapses.
   useState(() => {
-    markMatchesSeen().catch(() => {
-      // ignore; the badge will still clear on next refresh
-    });
+    markMatchesSeen()
+      .then(() => {
+        qc.invalidateQueries({ queryKey: queryKeys.matchesUnread() });
+      })
+      .catch(() => {
+        // ignore; the badge will still clear on next refresh
+      });
     return null;
   });
 
@@ -214,6 +285,8 @@ function ShortlistPage() {
   const [sort, setSort] = useState<SortKey>("cheapest");
   const [addUrlValue, setAddUrlValue] = useState("");
   const [addUrlError, setAddUrlError] = useState<string | null>(null);
+  const [addUrlOpen, setAddUrlOpen] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<{
     clusterId: string;
     to: PipelineStatus;
@@ -222,6 +295,10 @@ function ShortlistPage() {
   const me = members.find((m) => m.userId === currentUserId);
 
   // Mutation: move a card to a different stage (or archive with reason).
+  // Optimistic — mirrors the Review screen's swipe: snapshot the board,
+  // move the card in-cache so the kanban repaints immediately, roll back
+  // on error, then invalidate the whole shortlist family on settle (the
+  // move can also shift the "Yours" / per-member tabs).
   const moveMutation = useMutation({
     mutationFn: (input: {
       clusterId: string;
@@ -237,12 +314,39 @@ function ShortlistPage() {
             : {}),
         },
       }),
-    onMutate: (input) => {
+    onMutate: async (input) => {
+      setMoveError(null);
       setPendingMove({ clusterId: input.clusterId, to: input.to });
+      await qc.cancelQueries({ queryKey: queryKeys.shortlist() });
+      const previous = qc.getQueryData<PipelineColumns>(
+        queryKeys.shortlistPipeline()
+      );
+      if (previous) {
+        const movedBy: PipelineLastMovedBy = me
+          ? { userId: me.userId, name: me.name }
+          : null;
+        qc.setQueryData<PipelineColumns>(
+          queryKeys.shortlistPipeline(),
+          moveCardOptimistically(
+            previous,
+            input.clusterId,
+            input.to,
+            input.archivedReason,
+            movedBy
+          )
+        );
+      }
+      return { previous };
+    },
+    onError: (e: Error, _input, ctx) => {
+      if (ctx?.previous) {
+        qc.setQueryData(queryKeys.shortlistPipeline(), ctx.previous);
+      }
+      setMoveError(e.message ?? "Couldn't move that card. Try again.");
     },
     onSettled: () => {
       setPendingMove(null);
-      qc.invalidateQueries({ queryKey: queryKeys.shortlistPipeline() });
+      qc.invalidateQueries({ queryKey: queryKeys.shortlist() });
     },
   });
 
@@ -253,8 +357,9 @@ function ShortlistPage() {
     onSuccess: () => {
       setAddUrlError(null);
       setAddUrlValue("");
+      setAddUrlOpen(false);
       setActiveTab(PIPELINE_TAB_ID);
-      qc.invalidateQueries({ queryKey: queryKeys.shortlistPipeline() });
+      qc.invalidateQueries({ queryKey: queryKeys.shortlist() });
     },
     onError: (e: Error) => {
       setAddUrlError(
@@ -274,12 +379,22 @@ function ShortlistPage() {
           setAddUrlError(null);
         }
       }}
+      onOpenChange={(next) => {
+        setAddUrlOpen(next);
+        if (!next) {
+          // Reset the field + error when the modal is dismissed so the
+          // next open starts clean.
+          setAddUrlValue("");
+          setAddUrlError(null);
+        }
+      }}
       onSubmit={() => {
         const url = addUrlValue.trim();
         if (url) {
           addUrlMutation.mutate(url);
         }
       }}
+      open={addUrlOpen}
       pending={addUrlMutation.isPending}
       value={addUrlValue}
     />
@@ -309,6 +424,13 @@ function ShortlistPage() {
     });
   }
 
+  // Cards navigate to detail imperatively (no `<Link>`), so the router's
+  // intent-preload never fires. Warm the detail payload on hover/focus
+  // so the click that follows is instant.
+  function prefetchCluster(clusterId: string) {
+    qc.prefetchQuery(listingDetailQueryOptions(clusterId));
+  }
+
   const otherForLabel = otherMembers[0];
   const partnerLabel = otherForLabel ? firstNameOf(otherForLabel) : null;
   const isPipeline = activeTab === PIPELINE_TAB_ID || memberCount <= 1;
@@ -320,11 +442,10 @@ function ShortlistPage() {
   );
 
   const pipelineKanban = (
-    <div className="flex flex-col gap-4">
-      <div className="px-1">{addByUrl}</div>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="shrink-0 px-1">{addByUrl}</div>
       <PipelineKanban
         columns={columns}
-        disabled={moveMutation.isPending}
         onArchive={(clusterId, reason) =>
           moveMutation.mutate({
             clusterId,
@@ -332,6 +453,7 @@ function ShortlistPage() {
             archivedReason: reason,
           })
         }
+        onHoverCluster={prefetchCluster}
         onMove={(clusterId, to) => moveMutation.mutate({ clusterId, to })}
         onOpenCluster={openCluster}
       />
@@ -340,6 +462,15 @@ function ShortlistPage() {
 
   return (
     <>
+      {moveError ? (
+        <div
+          aria-live="polite"
+          className="fixed top-4 right-4 z-50 max-w-sm rounded-md bg-foreground px-4 py-3 text-primary-foreground text-sm shadow-lg"
+        >
+          {moveError}
+        </div>
+      ) : null}
+
       <DesktopShortlist
         activeTab={activeTab}
         bodySlot={isPipeline ? pipelineKanban : undefined}
@@ -393,7 +524,6 @@ function ShortlistPage() {
         {isPipeline ? (
           <PipelineMobile
             columns={columns}
-            disabled={moveMutation.isPending}
             memberCount={memberCount}
             onArchive={(clusterId, reason) =>
               moveMutation.mutate({
@@ -435,50 +565,87 @@ function ShortlistPage() {
 }
 
 /**
- * "Add by URL" bar above the pipeline. Paste a Rightmove/Zoopla/OpenRent
- * listing URL → scrapes it and drops it straight into Shortlisted.
+ * "Add a listing" — a trigger button that opens a modal. Paste a
+ * Rightmove/Zoopla/OpenRent listing URL → scrapes it and drops it
+ * straight into Shortlisted. The parent owns the field/error/pending
+ * state and the open flag so the mutation's `onSuccess` can close it.
  */
 function AddByUrlForm({
   value,
   error,
   pending,
+  open,
   onChange,
+  onOpenChange,
   onSubmit,
 }: {
   value: string;
   error: string | null;
   pending: boolean;
+  open: boolean;
   onChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSubmit();
-        }}
-      >
-        <input
-          aria-label="Listing URL"
-          className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          inputMode="url"
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Paste a Rightmove / Zoopla / OpenRent listing URL…"
-          type="url"
-          value={value}
-        />
-        <button
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 font-medium text-[#eef1f4] text-sm disabled:opacity-50"
-          disabled={pending || value.trim().length === 0}
-          type="submit"
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogTrigger
+        render={
+          <Button className="gap-2" variant="outline">
+            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.5} />
+            Add a listing
+          </Button>
+        }
+      />
+      <DialogContent>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit();
+          }}
         >
-          {pending ? "Adding…" : "Add to pipeline"}
-        </button>
-      </form>
-      {error ? <p className="text-[12px] text-destructive">{error}</p> : null}
-    </div>
+          <DialogHeader>
+            <DialogTitle className="text-navy">Add a listing</DialogTitle>
+            <DialogDescription>
+              Paste a Rightmove, Zoopla or OpenRent listing URL — we'll scrape
+              it and drop it straight into your pipeline.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <input
+              aria-label="Listing URL"
+              className="min-w-0 flex-1 rounded-md border border-border bg-card px-3 py-2 text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              inputMode="url"
+              onChange={(e) => onChange(e.target.value)}
+              placeholder="https://www.rightmove.co.uk/properties/…"
+              type="url"
+              value={value}
+            />
+            {error ? (
+              <p className="text-[12px] text-destructive">{error}</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <DialogClose
+              render={
+                <Button type="button" variant="ghost">
+                  Cancel
+                </Button>
+              }
+            />
+            <Button
+              disabled={value.trim().length === 0}
+              loading={pending}
+              loadingText="Adding…"
+              type="submit"
+            >
+              Add to pipeline
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

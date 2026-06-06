@@ -15,11 +15,13 @@ import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { BottomNav } from "../components/layout/bottom-nav";
 import { Button } from "../components/ui/button";
 import { requireSession } from "../lib/auth-guard";
 import { deferralsQueryOptions } from "../lib/deferrals-query";
+import { queryKeys } from "../lib/query-keys";
 import {
   type DeferredItem,
   undeferCluster,
@@ -136,20 +138,32 @@ function priceLabel(n: number | null): string {
 
 function DeferredCard({ item }: { item: DeferredItem }) {
   const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
   const undefer = useMutation({
-    mutationFn: () =>
-      undeferCluster({ data: { clusterId: item.clusterId } }),
-    onMutate: () => {
+    mutationFn: () => undeferCluster({ data: { clusterId: item.clusterId } }),
+    onMutate: async () => {
+      setError(null);
+      await qc.cancelQueries({ queryKey: queryKeys.deferrals() });
+      const previous = qc.getQueryData<DeferredItem[]>(
+        deferralsQueryOptions.queryKey
+      );
       qc.setQueryData(
         deferralsQueryOptions.queryKey,
         (prev?: DeferredItem[]) =>
           prev?.filter((d) => d.clusterId !== item.clusterId)
       );
+      return { previous };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        qc.setQueryData(deferralsQueryOptions.queryKey, ctx.previous);
+      }
+      setError(e.message ?? "Couldn't bring that back. Try again.");
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["deferrals"] });
+      qc.invalidateQueries({ queryKey: queryKeys.deferrals() });
       // Bringing it back changes what's in the review queue.
-      qc.invalidateQueries({ queryKey: ["review"] });
+      qc.invalidateQueries({ queryKey: queryKeys.review() });
     },
   });
 
@@ -194,7 +208,7 @@ function DeferredCard({ item }: { item: DeferredItem }) {
         </span>
       </div>
 
-      <div className="flex shrink-0 items-center">
+      <div className="flex shrink-0 flex-col items-end justify-center gap-1">
         <Button
           disabled={undefer.isPending}
           onClick={() => undefer.mutate()}
@@ -203,6 +217,9 @@ function DeferredCard({ item }: { item: DeferredItem }) {
         >
           {undefer.isPending ? "Bringing back…" : "Bring back"}
         </Button>
+        {error ? (
+          <span className="text-[11px] text-destructive">{error}</span>
+        ) : null}
       </div>
     </div>
   );

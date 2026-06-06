@@ -61,6 +61,7 @@ import { PriceBlock } from "../../components/ui/patterns/price-block";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { useHousehold } from "../../lib/household-context";
+import { listingDetailQueryOptions } from "../../lib/listing-detail-query";
 import {
   listingFromOriginSchema,
   resolveFromOrigin,
@@ -68,7 +69,6 @@ import {
 import { queryKeys } from "../../lib/query-keys";
 import {
   type ListingDetailPayload,
-  getListingDetail,
   setClusterAddress,
 } from "../../server/functions/listing-detail";
 import { recordSwipe } from "../../server/functions/review";
@@ -77,15 +77,6 @@ import { recordSwipe } from "../../server/functions/review";
 // writes it (B1 collapsed Keep + Shortlist into one positive outcome).
 // Existing rows still count as "kept" for mutual-match math.
 type SwipeOutcome = "shortlist" | "skip";
-
-const listingDetailQueryOptions = (clusterId: string) =>
-  ({
-    queryKey: queryKeys.listingDetail(clusterId),
-    queryFn: () => getListingDetail({ data: { clusterId } }),
-    // Swipes from other household members can change `partnerSwipes`
-    // without a navigation; re-validate on focus.
-    staleTime: 15_000,
-  }) as const;
 
 const listingDetailSearchSchema = z.object({
   from: listingFromOriginSchema,
@@ -203,9 +194,11 @@ function ListingDetailPage() {
     onSettled: () => {
       setPendingAction(null);
       qc.invalidateQueries({ queryKey: queryOpts.queryKey });
-      // Also invalidate the review queue + shortlist queries; this
-      // listing now has a different presence in those feeds.
-      qc.invalidateQueries({ queryKey: queryKeys.reviewNext() });
+      // Also invalidate the whole review + shortlist families; this
+      // listing now has a different presence in those feeds. Use the
+      // broad prefixes — `reviewNext()` alone would only match the
+      // unscoped card and miss every per-search/per-cluster variant.
+      qc.invalidateQueries({ queryKey: queryKeys.review() });
       qc.invalidateQueries({ queryKey: queryKeys.shortlist() });
     },
   });
