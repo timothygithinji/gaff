@@ -50,6 +50,12 @@ import {
   pickPortalEpcRating,
   resolveEpc,
 } from "../../lib/epc";
+import {
+  type ActiveSearch,
+  type ClusterTargetEnrichment,
+  clusterPassesSearch,
+  searchHasTargets,
+} from "../../lib/queue-targets";
 import { resolvePhotoUrl } from "./photo-url";
 import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
@@ -828,184 +834,6 @@ export function classifyPropertyKind(
   return "other";
 }
 
-/**
- * Approximate minutes-per-mile by travel mode, used to turn a transport
- * target's `maxMinutes` into a reachable straight-line distance. The
- * commute filter has real Google Routes times (`commuteMinutes`) so it's
- * exact; transport targets have only the stop's distance, so this is the
- * honest best-effort — documented as a heuristic, not a routed time.
- */
-const MIN_PER_MILE: Record<string, number> = {
-  walk: 20,
-  cycle: 5,
-  transit: 6,
-  drive: 4,
-};
-
-/** Map a transport target's amenity onto a `nearbyTransit` kind. */
-const AMENITY_KIND: Record<string, "tube" | "rail" | "tram" | "bus"> = {
-  tube_station: "tube",
-  train_station: "rail",
-  bus_stop: "bus",
-  tram_stop: "tram",
-};
-
-type ClusterTargetEnrichment = {
-  commuteMinutes: Record<string, number> | null;
-  /**
-   * Google Routes walk/transit minutes to the nearest few real stations
-   * (Rightmove-sourced — undefined for Zoopla/OpenRent). Authoritative for
-   * the station-time filter; preferred over `nearbyTransit`, whose `kind`
-   * tagging has historically mislabelled bus stops as rail.
-   */
-  stationRoutes: Array<{ walkMinutes: number | null }> | null;
-  nearbyTransit: Array<{
-    kind: string | null;
-    distanceMiles: number;
-    /** Real routed walk minutes (Google), when computed for this stop. */
-    walkMinutes?: number | null;
-  }> | null;
-};
-
-type ActiveSearch = typeof searches.$inferSelect;
-
-/**
- * Smallest reachable minutes to a `nearbyTransit` stop of `kind` — the
- * real routed walk time (`walkMinutes`, Google) when present, else the
- * straight-line {@link MIN_PER_MILE} heuristic. `Infinity` when the
- * cluster carries no stop of that kind.
- */
-function bestStopMinutes(
-  stops: NonNullable<ClusterTargetEnrichment["nearbyTransit"]>,
-  kind: string,
-  mode: string
-): number {
-  let best = Number.POSITIVE_INFINITY;
-  for (const s of stops) {
-    if (s.kind !== kind) {
-      continue;
-    }
-    const minutes =
-      typeof s.walkMinutes === "number"
-        ? s.walkMinutes
-        : s.distanceMiles * (MIN_PER_MILE[mode] ?? 20);
-    if (minutes < best) {
-      best = minutes;
-    }
-  }
-  return best;
-}
-
-/** True when a search carries any commute/transport criteria to filter on. */
-function searchHasTargets(s: ActiveSearch): boolean {
-  return (
-    (Array.isArray(s.commuteTargets) && s.commuteTargets.length > 0) ||
-    (Array.isArray(s.transportTargets) && s.transportTargets.length > 0)
-  );
-}
-
-/**
- * Does a cluster satisfy one search's commute + transport criteria?
- *
- *   - Commute: every target whose Google-Routes time is known must be
- *     within `maxMinutes`. A target with no computed time yet is treated
- *     as passing (enrichment pending — we don't drop a place for not yet
- *     being measured), mirroring the null-edge convention elsewhere.
- *   - Transport: targets are OR-ed — the cluster passes if at least one
- *     requested stop kind is within `maxMinutes`, using the stop's real
- *     routed walk time (`walkMinutes`, Google) when present and the
- *     straight-line {@link MIN_PER_MILE} heuristic only as a fallback. A
- *     swept cluster within reach of none of the kinds fails; one not yet
- *     swept (`nearbyTransit` absent) passes (pending).
- */
-function clusterPassesSearch(
-  search: ActiveSearch,
-  enr: ClusterTargetEnrichment | undefined
-): boolean {
-  for (const t of search.commuteTargets ?? []) {
-    const max = typeof t.maxMinutes === "number" ? t.maxMinutes : null;
-    if (max === null) {
-      continue;
-    }
-    const minutes = enr?.commuteMinutes?.[t.label];
-    if (typeof minutes === "number" && minutes > max) {
-      return false;
-    }
-  }
-  return clusterPassesTransport(search, enr);
-}
-
-/** Station kinds judged on Google `stationRoutes` rather than nearbyTransit. */
-const STATION_KINDS = new Set(["tube", "rail"]);
-
-/**
- * Transport targets are OR-ed: the cluster passes if it's within reach of
- * AT LEAST ONE requested stop kind (e.g. "tube OR train"). Station kinds
- * (tube/rail) are judged on Google Routes walk time from `stationRoutes` —
- * the same source the review card shows — because `nearbyTransit` has
- * historically mislabelled bus stops as 0.03mi "rail", fooling the
- * heuristic. Bus/tram keep `nearbyTransit`. A target we have no data for is
- * "pending" — it neither satisfies nor drops the cluster; only an
- * evaluable-but-unmet set drops it.
- */
-function clusterPassesTransport(
-  search: ActiveSearch,
-  enr: ClusterTargetEnrichment | undefined
-): boolean {
-  const transportTargets = (search.transportTargets ?? []).filter(
-    (t) => Boolean(AMENITY_KIND[t.amenity]) && typeof t.maxMinutes === "number"
-  );
-  if (transportTargets.length === 0) {
-    return true;
-  }
-  const stationWalk = bestStationWalkMinutes(enr?.stationRoutes);
-  const stops = enr?.nearbyTransit;
-  let evaluable = false;
-  let satisfied = false;
-  for (const t of transportTargets) {
-    const kind = AMENITY_KIND[t.amenity];
-    const max = t.maxMinutes as number;
-    if (!kind) {
-      continue;
-    }
-    // Station kinds: Google station routes only; don't fall back to the
-    // unreliable nearbyTransit kinds. Absent (non-Rightmove) → pending.
-    let reach: number | null;
-    if (STATION_KINDS.has(kind)) {
-      reach = stationWalk;
-    } else {
-      reach = stops ? bestStopMinutes(stops, kind, t.mode) : null;
-    }
-    if (reach === null) {
-      continue;
-    }
-    evaluable = true;
-    if (reach <= max) {
-      satisfied = true;
-    }
-  }
-  return !(evaluable && !satisfied);
-}
-
-/**
- * Shortest real Google-routed WALK time across a cluster's `stationRoutes`,
- * or null when none carry a walk time (pending / non-Rightmove). Walk only —
- * a "within 15 min walk" target must not be satisfied by a transit time.
- */
-function bestStationWalkMinutes(
-  stationRoutes: ClusterTargetEnrichment["stationRoutes"] | undefined
-): number | null {
-  if (!Array.isArray(stationRoutes) || stationRoutes.length === 0) {
-    return null;
-  }
-  let best = Number.POSITIVE_INFINITY;
-  for (const s of stationRoutes) {
-    if (typeof s.walkMinutes === "number" && s.walkMinutes < best) {
-      best = s.walkMinutes;
-    }
-  }
-  return Number.isFinite(best) ? best : null;
-}
 
 /**
  * Filter the candidate clusters down to those matching their search's

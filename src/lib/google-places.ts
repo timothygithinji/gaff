@@ -135,7 +135,7 @@ type PlacesNearbyResponse = {
  * {@link TransitKind}. Prefers `primaryType`, then scans `types`.
  * Returns null for places that aren't recognisably public transport.
  */
-function classifyKind(
+export function classifyKind(
   primaryType: string | undefined,
   types: string[] | undefined
 ): TransitKind | null {
