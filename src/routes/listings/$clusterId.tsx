@@ -41,12 +41,12 @@ import { DetailCta } from "../../components/listing-detail/detail-cta";
 import { Fineprint } from "../../components/listing-detail/fineprint";
 import { FloorplanAnalysis } from "../../components/listing-detail/floorplan-analysis";
 import { Highlights } from "../../components/listing-detail/highlights";
+import { MapCommute } from "../../components/listing-detail/map-commute";
 import { PhotoGallery } from "../../components/listing-detail/photo-gallery";
 import { PortalCrossList } from "../../components/listing-detail/portal-cross-list";
 import { PropertyFacts } from "../../components/listing-detail/property-facts";
 import { PublicRecords } from "../../components/listing-detail/public-records";
 import { SmallPrint } from "../../components/listing-detail/small-print";
-import { WhereItSits } from "../../components/listing-detail/where-it-sits";
 import { PlacesAutocompleteInput } from "../../components/places-autocomplete-input";
 import { Button } from "../../components/ui/button";
 import {
@@ -156,8 +156,6 @@ function localityFromPostcode(postcode: string | null): string {
   return `London ${postcode.toUpperCase()}`;
 }
 
-const TRAILING_COMMA_RE = /,\s*$/;
-
 function ListingDetailPage() {
   const { clusterId } = Route.useParams();
   const { from } = Route.useSearch();
@@ -252,7 +250,6 @@ function ListingDetailPage() {
     agentExtras,
     mySwipe,
     partnerSwipes,
-    googleMapsApiKey,
   } = data;
 
   const openAddressDialog = () => {
@@ -263,11 +260,6 @@ function ListingDetailPage() {
   const portalsTrackingLabel = `${portalSpread.length} portal${portalSpread.length === 1 ? "" : "s"} tracking`;
   const title = shortAddressTitle(headline.addressRaw);
   const locality = localityFromPostcode(headline.postcode ?? cluster.postcode);
-  const whereTitle = headline.postcode
-    ? `${title}, ${headline.postcode.split(" ")[0] ?? ""}`
-        .trim()
-        .replace(TRAILING_COMMA_RE, "")
-    : title;
 
   return (
     <>
@@ -406,16 +398,18 @@ function ListingDetailPage() {
           sizeSqFt={fineprint.sizeSqFt}
         />
 
-        {/* "Where it sits" — map + commute */}
-        <WhereItSits
-          apiKey={googleMapsApiKey}
-          commuteMinutes={commuteMinutes}
-          lat={cluster.lat}
-          lng={cluster.lng}
-          nearbyTransit={nearbyTransit}
-          stationRoutes={stationRoutes}
-          title={whereTitle || "Where it sits"}
-        />
+        {/* "Where it sits" — interactive map + commute (shared with desktop) */}
+        <section className="px-5 pb-5">
+          <MapCommute
+            commuteMinutes={commuteMinutes}
+            lat={cluster.lat}
+            lng={cluster.lng}
+            logoToken={data.logoToken}
+            nearbyTransit={nearbyTransit}
+            postcode={headline.postcode ?? cluster.postcode}
+            stationRoutes={stationRoutes}
+          />
+        </section>
 
         {/* "Public records" */}
         <PublicRecords epc={epc} publicRecords={publicRecords} />
