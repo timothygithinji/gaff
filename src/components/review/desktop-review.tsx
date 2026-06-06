@@ -36,7 +36,6 @@ import {
   Clock01Icon,
   InformationCircleIcon,
   Loading03Icon,
-  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useHotkey } from "@tanstack/react-hotkeys";
@@ -57,6 +56,7 @@ import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
 import { PortalLogo } from "../portal-logo";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
+import { type Pill, severityToken } from "../ui/patterns/feature-pills";
 import { type StatCell, StatRow } from "../ui/patterns/stat-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { DeferMenu } from "./defer-menu";
@@ -99,11 +99,6 @@ export type DesktopReviewQueueItem = {
   photo: string;
 };
 
-export type DesktopReviewSignal = {
-  label: string;
-  /** `true` renders the copper "!" watch-out marker instead of a check. */
-  warn: boolean;
-};
 
 /** The review hero's stat cells use the shared {@link StatCell} shape. */
 export type DesktopReviewStatCell = StatCell;
@@ -147,7 +142,7 @@ export type DesktopReviewData = {
     price: string;
     priceUnit: string;
     /** AI "what stands out" signals — highlights (✓) + watch-outs (!). */
-    signals: DesktopReviewSignal[];
+    signals: Pill[];
     /** The numbers cells: commute · EPC · council tax · size. */
     stats: DesktopReviewStatCell[];
   };
@@ -761,7 +756,7 @@ function SignalLabel({ label }: { label: string }) {
   );
 }
 
-function WhatStandsOutCard({ signals }: { signals: DesktopReviewSignal[] }) {
+function WhatStandsOutCard({ signals }: { signals: Pill[] }) {
   const items = signals.slice(0, WHAT_STANDS_OUT_SLOTS);
   return (
     <article className="flex flex-[1.3] flex-col rounded-[6px] border border-line bg-paper p-[18px]">
@@ -777,26 +772,18 @@ function WhatStandsOutCard({ signals }: { signals: DesktopReviewSignal[] }) {
             if (!item) {
               return <li className="h-5" key={`slot-${i}`} />;
             }
+            const tone = severityToken(item.severity);
             return (
               <li
                 className="flex h-5 min-w-0 items-center gap-2"
                 key={item.label}
               >
-                {item.warn ? (
-                  <span
-                    aria-hidden="true"
-                    className="flex size-3.5 shrink-0 items-center justify-center font-bold text-[13px] text-copper leading-none"
-                  >
-                    !
-                  </span>
-                ) : (
-                  <HugeiconsIcon
-                    className="shrink-0 text-navy"
-                    icon={Tick02Icon}
-                    size={14}
-                    strokeWidth={2.4}
-                  />
-                )}
+                <HugeiconsIcon
+                  className={cn("shrink-0", tone.text)}
+                  icon={tone.icon}
+                  size={14}
+                  strokeWidth={2.4}
+                />
                 <SignalLabel label={item.label} />
               </li>
             );
@@ -1288,10 +1275,18 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
     price: "£2,450",
     priceUnit: "/mo",
     signals: [
-      { label: "Separate kitchen, 6.8 m²", warn: false },
-      { label: "Dual-aspect living, west onto Belsize Lane", warn: false },
-      { label: "Bed 1 · 14.2 m² · king-suitable", warn: false },
-      { label: "Bed 2 · 8.1 m² · double only, not king", warn: true },
+      { label: "Separate kitchen, 6.8 m²", severity: "positive", detail: null },
+      {
+        label: "Dual-aspect living, west onto Belsize Lane",
+        severity: "positive",
+        detail: null,
+      },
+      { label: "Bed 1 · 14.2 m² · king-suitable", severity: "positive", detail: null },
+      {
+        label: "Bed 2 · 8.1 m² · double only, not king",
+        severity: "caution",
+        detail: null,
+      },
     ],
     stats: [
       { label: "Transport", value: "8", unit: "min", sub: "Belsize Park" },

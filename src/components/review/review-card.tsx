@@ -25,6 +25,7 @@ import { cn } from "../../lib/utils";
  * Presentation only — consumes the same `ReviewCard` the route hands in.
  */
 import type { ReviewCard as ReviewCardData } from "../../server/functions/review";
+import { FeaturePills, toPills } from "../ui/patterns/feature-pills";
 import { StatRow } from "../ui/patterns/stat-row";
 import { toStatCells } from "./review-shapers";
 
@@ -244,48 +245,14 @@ export function MobileReviewCard({
   );
 }
 
-const MAX_TAGS = 3;
-
 function CardTags({ card }: { card: ReviewCardData }) {
-  const features = card.features;
-  if (!features) {
-    return null;
-  }
-  const highlights = (features.highlights ?? []).map((h) => ({
-    label: h.label,
-    warn: false,
-  }));
-  const watchouts = (features.watchouts ?? []).map((w) => ({
-    label: w.label,
-    warn: true,
-  }));
-  const tags = [...highlights, ...watchouts].slice(0, MAX_TAGS);
-  if (tags.length === 0) {
+  const pills = toPills(card.features);
+  if (pills.length === 0) {
     return null;
   }
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-[18px] pt-3.5">
-      {tags.map((t) =>
-        t.warn ? (
-          <span
-            className="inline-flex items-center gap-1.5 border border-[rgba(215,122,74,0.4)] bg-[rgba(215,122,74,0.1)] px-[9px] py-[5px] text-[11px] text-navy leading-[14px]"
-            key={`warn-${t.label}`}
-          >
-            <span className="font-semibold text-[11px] text-copper leading-none">
-              !
-            </span>
-            {t.label}
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 border border-line bg-mist px-[9px] py-[5px] text-[11px] text-navy leading-[14px]"
-            key={`hl-${t.label}`}
-          >
-            <CheckGlyph />
-            {t.label}
-          </span>
-        )
-      )}
+    <div className="px-[18px] pt-3.5">
+      <FeaturePills items={pills} variant="wrap" />
     </div>
   );
 }
@@ -360,18 +327,3 @@ function CardPortals({ card }: { card: ReviewCardData }) {
   );
 }
 
-/** The crisp 10px check used on highlight tags (matches the Paper SVG). */
-function CheckGlyph() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="shrink-0"
-      height="10"
-      viewBox="0 0 10 10"
-      width="10"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M2 5L4 7L8 3" fill="none" stroke="#0E2235" strokeWidth="1.5" />
-    </svg>
-  );
-}

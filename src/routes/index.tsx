@@ -46,6 +46,7 @@ import { MobileReviewCard } from "../components/review/review-card";
 import { ReviewEmpty } from "../components/review/review-empty";
 import { ReviewHeader } from "../components/review/review-header";
 import { toStatCells } from "../components/review/review-shapers";
+import { toPills } from "../components/ui/patterns/feature-pills";
 import { Skeleton } from "../components/ui/skeleton";
 import { useIsMobile } from "../hooks/use-mobile";
 import { requireSession } from "../lib/auth-guard";
@@ -977,7 +978,7 @@ function buildHero(card: ReviewCard): DesktopReviewData["hero"] {
     subtitle: composeSubtitle(card),
     price: formatPrice(hl.priceMonthly),
     priceUnit: "/mo",
-    signals: buildSignals(card.features),
+    signals: toPills(card.features),
     stats: toStatCells(card),
   };
 }
@@ -1034,22 +1035,6 @@ function composeSubtitle(card: ReviewCard): string {
  * the copper "!" marker. Both come from the v2 features schema; pre-v2 rows
  * lacking these arrays render an empty card (repopulates once re-enriched).
  */
-function buildSignals(
-  features: ReviewCard["features"]
-): DesktopReviewData["hero"]["signals"] {
-  if (!features) {
-    return [];
-  }
-  const out: DesktopReviewData["hero"]["signals"] = [];
-  for (const h of features.highlights ?? []) {
-    out.push({ label: h.label, warn: false });
-  }
-  for (const w of features.watchouts ?? []) {
-    out.push({ label: w.label, warn: true });
-  }
-  // The desktop card lays these out in a fixed 2×3 grid (six slots).
-  return out.slice(0, 6);
-}
 
 /**
  * "The numbers" grid: transport · EPC · council tax · size.

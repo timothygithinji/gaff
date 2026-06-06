@@ -75,6 +75,18 @@ type SeverityToken = {
   chip: string;
 };
 
+/**
+ * Icon + colour for a severity, for callers that render their own layout
+ * (e.g. the desktop review "what stands out" fixed-slot grid) but want the
+ * same 3-state glyph/colour as the chips.
+ */
+export function severityToken(severity: PillSeverity): {
+  icon: typeof Tick02Icon;
+  text: string;
+} {
+  return { icon: SEVERITY[severity].icon, text: SEVERITY[severity].text };
+}
+
 const SEVERITY: Record<PillSeverity, SeverityToken> = {
   positive: {
     icon: Tick02Icon,
