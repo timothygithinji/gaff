@@ -46,6 +46,8 @@ import {
 } from "../lib/parsers";
 import type { ListingSummary, Portal } from "../lib/parsers/types";
 import {
+  type Exclusion,
+  type MustHave,
   RIGHTMOVE_MAX_PAGES,
   RIGHTMOVE_RESULTS_PER_PAGE,
   ZOOPLA_MAX_PAGES,
@@ -108,9 +110,21 @@ type SearchFilters = {
   minPrice: number | null;
   maxPrice: number | null;
   propertyTypes: string[];
+  /** "furnished" | "unfurnished" | null — the two-valued search filter. */
+  furnished: "furnished" | "unfurnished" | null;
+  mustHaves: MustHave[];
+  exclusions: Exclusion[];
   /** User-picked radius in miles. `0` = "this area only". */
   radiusMiles: number;
 };
+
+// NOTE on bathrooms: deliberately NOT threaded into the search URLs.
+// Bathroom counts are missing on a large fraction of listings (~10% null
+// + portals' "0" sentinel), and a portal `baths_min` treats a *missing*
+// count as a non-match — so sending it would drop valid 3-bed flats that
+// simply don't state bathrooms. We enforce the bathroom band at read time
+// instead (queue-targets / review.ts), where the keep-null convention
+// passes unknowns and only drops listings with a KNOWN sub-minimum count.
 
 /**
  * One per-outcode scrape target. `makeUrl(page)` builds the URL for a
@@ -147,6 +161,9 @@ function buildSearchTargets(
     minPrice: search.minPrice,
     maxPrice: search.maxPrice,
     propertyTypes: search.propertyTypes,
+    furnished: search.furnished,
+    mustHaves: search.mustHaves,
+    exclusions: search.exclusions,
     radiusMiles: search.radiusMiles,
   };
   if (portal === "rightmove") {
@@ -861,6 +878,11 @@ export const scrapePortalTask = task({
         minPrice: search.minPrice,
         maxPrice: search.maxPrice,
         propertyTypes: search.propertyTypes,
+        // `text[]` / `text` columns — the create/update server-fn validates
+        // these against the closed sets, so the casts are safe.
+        furnished: search.furnished as "furnished" | "unfurnished" | null,
+        mustHaves: search.mustHaves as MustHave[],
+        exclusions: search.exclusions as Exclusion[],
         // Drizzle `numeric` round-trips as string; parse here so the
         // URL builders can format it numerically.
         radiusMiles: Number(search.radiusMiles),

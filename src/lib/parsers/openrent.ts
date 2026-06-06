@@ -12,7 +12,12 @@
  */
 
 import { type HTMLElement, parse } from "node-html-parser";
-import { decodeEntities, extractPostcode, toNumber } from "./common";
+import {
+  bathroomCount,
+  decodeEntities,
+  extractPostcode,
+  toNumber,
+} from "./common";
 import type {
   Furnished,
   ListingDetail,
@@ -240,7 +245,7 @@ function buildOpenrentSummary(args: {
     ? Number.parseInt((priceMatch[1] ?? "").replace(/,/g, ""), 10)
     : undefined;
 
-  const bathrooms = bathMatch ? toNumber(bathMatch[1]) : undefined;
+  const bathrooms = bathMatch ? bathroomCount(bathMatch[1]) : undefined;
   const bedrooms =
     beds ?? (cardBedsMatch ? toNumber(cardBedsMatch[1]) : undefined);
 

@@ -77,6 +77,22 @@ export function toNumber(v: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Bathroom count, normalised. Portals (Zoopla `numBathrooms`, Rightmove
+ * `bathrooms`, OpenRent card text) emit `0` as their missing-value
+ * sentinel for listings that don't state a bathroom count — but no
+ * rentable property has zero bathrooms. We treat a non-positive count as
+ * unknown (`undefined`) so it round-trips as NULL and is kept (not
+ * dropped) by the band filters, rather than displaying "0 baths" or
+ * being wrongly excluded by a `bathrooms >= 1` filter. A genuine count
+ * (1+) passes through unchanged. Bedrooms are deliberately NOT routed
+ * through this — `0` bedrooms is a valid studio.
+ */
+export function bathroomCount(v: unknown): number | undefined {
+  const n = toNumber(v);
+  return typeof n === "number" && n > 0 ? n : undefined;
+}
+
 /** Coerce an unknown to `string | undefined` (trims, rejects empty). */
 export function coerceString(v: unknown): string | undefined {
   if (typeof v === "string") {

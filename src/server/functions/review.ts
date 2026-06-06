@@ -703,6 +703,25 @@ function listingMatchesBedroomBand() {
   )`;
 }
 
+/**
+ * SQL backstop for the bathroom band. Bathrooms are intentionally NOT
+ * sent to the portal search URLs (a portal `baths_min` treats a missing
+ * count as a non-match, which would drop the many valid listings that
+ * never state bathrooms — see the note in scrape-portal.ts). So this
+ * read-time band is the ONLY place the bathroom filter is enforced. A
+ * null count is kept (unknown ≠ disqualified), matching price/beds; only
+ * a KNOWN sub-minimum (or over-maximum) count is dropped.
+ */
+function listingMatchesBathroomBand() {
+  return sql`(
+    ${listings.bathrooms} IS NULL
+    OR (
+      (${searches.minBathrooms} IS NULL OR ${listings.bathrooms} >= ${searches.minBathrooms})
+      AND (${searches.maxBathrooms} IS NULL OR ${listings.bathrooms} <= ${searches.maxBathrooms})
+    )
+  )`;
+}
+
 /** JS twin of {@link listingWithinSearchBand} for already-fetched rows. */
 function priceWithinBand(
   price: number | null,
@@ -734,6 +753,24 @@ function bedroomsWithinBand(
     return false;
   }
   if (max != null && bedrooms > max) {
+    return false;
+  }
+  return true;
+}
+
+/** JS twin of {@link listingMatchesBathroomBand} for already-fetched rows. */
+function bathroomsWithinBand(
+  bathrooms: number | null,
+  min: number | null,
+  max: number | null
+): boolean {
+  if (bathrooms == null) {
+    return true;
+  }
+  if (min != null && bathrooms < min) {
+    return false;
+  }
+  if (max != null && bathrooms > max) {
     return false;
   }
   return true;
@@ -976,6 +1013,7 @@ async function loadRankedQueueClusterIds(
         inArray(listings.searchId, activeSearchIds),
         listingWithinSearchBand(),
         listingMatchesBedroomBand(),
+        listingMatchesBathroomBand(),
         listingPassesExclusions()
       )
     )
@@ -1123,6 +1161,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
               maxPrice: s.maxPrice,
               minBedrooms: s.minBedrooms,
               maxBedrooms: s.maxBedrooms,
+              minBathrooms: s.minBathrooms,
+              maxBathrooms: s.maxBathrooms,
               exclusions: s.exclusions,
             },
           ] as const
@@ -1136,6 +1176,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       return (
         priceWithinBand(l.priceMonthly, band.minPrice, band.maxPrice) &&
         bedroomsWithinBand(l.bedrooms, band.minBedrooms, band.maxBedrooms) &&
+        bathroomsWithinBand(l.bathrooms, band.minBathrooms, band.maxBathrooms) &&
         passesExclusions(l.propertyType, l.title, band.exclusions)
       );
     });

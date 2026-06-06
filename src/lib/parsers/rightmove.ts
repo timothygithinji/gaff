@@ -8,6 +8,7 @@
  */
 
 import {
+  bathroomCount,
   extractPostcode,
   extractScriptJson,
   probe,
@@ -95,7 +96,7 @@ function parseRightmoveSummary(
     addressRaw: displayAddress,
     postcode: rightmovePostcode(raw),
     bedrooms: toNumber(raw.bedrooms),
-    bathrooms: toNumber(raw.bathrooms),
+    bathrooms: bathroomCount(raw.bathrooms),
     priceMonthly: rightmoveMonthlyPrice(raw),
     propertyType: subtype ?? fullDesc,
     lat: toNumber(location?.latitude),
@@ -763,7 +764,7 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     addressRaw: displayAddress,
     postcode,
     bedrooms: toNumber(pd.bedrooms),
-    bathrooms: toNumber(pd.bathrooms),
+    bathrooms: bathroomCount(pd.bathrooms),
     priceMonthly: rightmoveDetailPrice(prices),
     propertyType,
     lat: toNumber(location.latitude),

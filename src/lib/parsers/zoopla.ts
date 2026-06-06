@@ -15,6 +15,7 @@
  */
 
 import {
+  bathroomCount,
   extractPostcode,
   toNumber,
   coerceString as toStringSafe,
@@ -143,7 +144,7 @@ function parseZooplaSummary(
     addressRaw: address,
     postcode,
     bedrooms: countFromFeatures(raw.features, "bed"),
-    bathrooms: countFromFeatures(raw.features, "bath"),
+    bathrooms: bathroomCount(countFromFeatures(raw.features, "bath")),
     priceMonthly: zooplaSearchPrice(raw),
     propertyType,
     lat: toNumber(raw.latitude),
@@ -597,7 +598,9 @@ export function parseZooplaDetail(html: string): ListingDetail {
     | undefined;
 
   const bedrooms = toNumber(counts?.numBedrooms) ?? toNumber(c.numBedrooms);
-  const bathrooms = toNumber(counts?.numBathrooms) ?? toNumber(c.numBathrooms);
+  const bathrooms = bathroomCount(
+    toNumber(counts?.numBathrooms) ?? toNumber(c.numBathrooms)
+  );
 
   const lat = toNumber(location?.coordinates?.latitude) ?? toNumber(c.latitude);
   const lng =
