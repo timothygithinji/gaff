@@ -21,6 +21,7 @@
  * searches.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { tasks } from "@trigger.dev/sdk";
 import { eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -432,7 +433,7 @@ export const mergeClusters = createServerFn({ method: "POST" })
       await assertClustersInHousehold(db, householdId, involved);
 
       const absorbedSet = new Set(absorbed);
-      const [sw, pp, nt] = await Promise.all([
+      const [sw, pp, nt, clusterRows] = await Promise.all([
         db.select().from(swipes).where(inArray(swipes.clusterId, involved)),
         db
           .select()
@@ -442,6 +443,10 @@ export const mergeClusters = createServerFn({ method: "POST" })
           .select()
           .from(matchNotifications)
           .where(inArray(matchNotifications.clusterId, involved)),
+        db
+          .select()
+          .from(propertyClusters)
+          .where(inArray(propertyClusters.id, involved)),
       ]);
 
       // biome-ignore lint/suspicious/noExplicitAny: heterogeneous drizzle query builders
@@ -544,6 +549,49 @@ export const mergeClusters = createServerFn({ method: "POST" })
         }
       }
 
+      // --- survivor row backfill: the absorbed cluster ROWS are about to be
+      //     deleted, taking their postcode/coords/manual-address-pin/council-
+      //     tax authority with them. The survivor keeps its OWN values, but
+      //     where it's NULL we fold in the first absorbed cluster that has
+      //     one — so merging the cluster that happened to carry the real
+      //     coords into an empty survivor doesn't strand that geo data. ---
+      const survivorRow = clusterRows.find((c) => c.id === survivorClusterId);
+      const absorbedRows = clusterRows.filter((c) => absorbedSet.has(c.id));
+      const patch: Partial<typeof propertyClusters.$inferInsert> = {};
+      let geoFilled = false;
+      if (survivorRow) {
+        for (const f of ["postcode", "lat", "lng", "userAddress"] as const) {
+          if (survivorRow[f] == null) {
+            const donor = absorbedRows.find((a) => a[f] != null);
+            if (donor) {
+              patch[f] = donor[f];
+              if (f !== "userAddress") {
+                geoFilled = true;
+              }
+            }
+          }
+        }
+        // Authority code + name must come from the SAME donor so the name
+        // still matches the code.
+        if (survivorRow.councilTaxAuthorityCode == null) {
+          const donor = absorbedRows.find(
+            (a) => a.councilTaxAuthorityCode != null
+          );
+          if (donor) {
+            patch.councilTaxAuthorityCode = donor.councilTaxAuthorityCode;
+            patch.councilTaxAuthorityName = donor.councilTaxAuthorityName;
+          }
+        }
+      }
+      if (Object.keys(patch).length > 0) {
+        ops.push(
+          db
+            .update(propertyClusters)
+            .set(patch)
+            .where(eq(propertyClusters.id, survivorClusterId))
+        );
+      }
+
       // --- listings (all statuses) then drop the emptied clusters. These
       //     run LAST so the RESTRICT FKs on swipes/pipeline are clear. ---
       ops.push(
@@ -557,6 +605,23 @@ export const mergeClusters = createServerFn({ method: "POST" })
       );
 
       await db.batch(ops as [(typeof ops)[number], ...(typeof ops)[number][]]);
+
+      // If we just gave the survivor its first postcode/coords but it still
+      // has no council-tax authority, re-resolve it. Best-effort: the merge
+      // has already committed, so a trigger hiccup must not fail the call.
+      const survivorHasAuthority =
+        survivorRow?.councilTaxAuthorityCode != null ||
+        patch.councilTaxAuthorityCode != null;
+      if (geoFilled && !survivorHasAuthority) {
+        try {
+          await tasks.trigger("enrich-council-tax", {
+            clusterId: survivorClusterId,
+          });
+        } catch {
+          // Non-fatal: the next scheduled enrichment sweep will pick it up.
+        }
+      }
+
       return { ok: true, merged: absorbed.length };
     }
   );
