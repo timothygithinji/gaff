@@ -15,6 +15,7 @@ import { type HTMLElement, parse } from "node-html-parser";
 import {
   bathroomCount,
   decodeEntities,
+  extractDepositFromText,
   extractPostcode,
   toNumber,
 } from "./common";
@@ -33,7 +34,6 @@ const CARD_BATH_RE = /(\d+)\s*Bath/i;
 const CARD_BED_RE = /(\d+)\s*Bed\b/i;
 const FLOORPLAN_FILENAME_RE = /floor.?plan/i;
 const EPC_RE = /EPC[\s:]+([A-G])\b/i;
-const DEPOSIT_RE = /Deposit[^£]*?£([\d,]+)/i;
 const AVAILABLE_FROM_RE =
   /Available\s+from[^A-Z0-9]*?([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|today|now|immediately)/i;
 const FURNISHED_RE = /\b(Furnished|Unfurnished|Part[- ]?Furnished)\b/i;
@@ -667,7 +667,6 @@ export function parseOpenrentDetail(html: string): ListingDetail {
 
   const bodyText = decodeEntities(root.text.replace(WHITESPACE_RE, " "));
   const epcMatch = bodyText.match(EPC_RE);
-  const depositMatch = bodyText.match(DEPOSIT_RE);
   const availableMatch = bodyText.match(AVAILABLE_FROM_RE);
 
   const facts = readOpenrentFactFields(root);
@@ -711,7 +710,7 @@ export function parseOpenrentDetail(html: string): ListingDetail {
     availableFrom:
       facts.availableFrom ?? (availableMatch ? availableMatch[1] : undefined),
     furnished: facts.furnished ?? openrentFurnished(bodyText),
-    deposit: depositMatch ? toNumber(depositMatch[1]) : undefined,
+    deposit: extractDepositFromText(bodyText),
     photos,
     floorplanUrl,
     agentName: "OpenRent",

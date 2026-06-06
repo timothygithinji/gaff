@@ -21,7 +21,12 @@ import {
   type TransitKind,
   searchNearbyPlaces,
 } from "./google-places";
-import { type TflMode, fetchNearbyTflStations } from "./tfl-stoppoint";
+import {
+  type TflBusStop,
+  type TflMode,
+  fetchNearbyTflBusStops,
+  fetchNearbyTflStations,
+} from "./tfl-stoppoint";
 
 export type { NearbyPlace } from "./google-places";
 
@@ -39,6 +44,14 @@ type GatherOptions = {
 function isRailFamily(p: NearbyPlace): boolean {
   return p.category === "transport" && p.kind !== "bus";
 }
+
+/** A Google bus stop (replaced wholesale by TfL bus stops when available). */
+function isBusStop(p: NearbyPlace): boolean {
+  return p.category === "transport" && p.kind === "bus";
+}
+
+/** Nearest N TfL bus stops to keep — they otherwise swamp the chip list. */
+const BUS_STOP_LIMIT = 6;
 
 /** Pick a legacy `kind` from a station's modes (for amenity matching + fallback). */
 function kindFromModes(modes: TflMode[]): TransitKind {
@@ -73,11 +86,42 @@ export function mergeTflStations(
     category: "transport",
     kind: kindFromModes(s.modes),
     modes: s.modes,
+    ...(s.lines.length > 0 ? { lines: s.lines } : {}),
     lat: s.lat,
     lng: s.lng,
     distanceMiles: s.distanceMiles,
   }));
   return [...kept, ...tflPlaces].sort(
+    (a, b) => a.distanceMiles - b.distanceMiles
+  );
+}
+
+/**
+ * Swap Google's coarse bus stops (generic names, no routes) for TfL's,
+ * which carry the route numbers serving each stop. No-op when TfL has no
+ * bus coverage, so the feature degrades to Google's bus stops rather than
+ * vanishing.
+ */
+export function mergeTflBusStops(
+  places: NearbyPlace[],
+  busStops: TflBusStop[]
+): NearbyPlace[] {
+  if (busStops.length === 0) {
+    return places;
+  }
+  const kept = places.filter((p) => !isBusStop(p));
+  const busPlaces: NearbyPlace[] = busStops
+    .slice(0, BUS_STOP_LIMIT)
+    .map((s) => ({
+      name: s.name,
+      category: "transport" as const,
+      kind: "bus" as const,
+      ...(s.lines.length > 0 ? { lines: s.lines } : {}),
+      lat: s.lat,
+      lng: s.lng,
+      distanceMiles: s.distanceMiles,
+    }));
+  return [...kept, ...busPlaces].sort(
     (a, b) => a.distanceMiles - b.distanceMiles
   );
 }
@@ -94,17 +138,31 @@ export async function fetchTflStations(
   }
 }
 
+/** TfL bus stops within the standard 1-mile radius. Empty on error/outside London. */
+export async function fetchTflBusStops(
+  origin: LatLng,
+  tflAppKey?: string
+): Promise<TflBusStop[]> {
+  try {
+    return await fetchNearbyTflBusStops(origin, TRANSIT_RADIUS_METRES, tflAppKey);
+  } catch {
+    return [];
+  }
+}
+
 /**
- * The combined nearby-places set: Google POIs + buses, with rail-family
- * stations supplied by TfL (carrying `modes`) whenever TfL has coverage.
+ * The combined nearby-places set: Google POIs, with rail-family stations
+ * and bus stops supplied by TfL (carrying `modes` + line/route names)
+ * whenever TfL has coverage.
  */
 export async function gatherNearbyPlaces(
   origin: LatLng,
   opts: GatherOptions
 ): Promise<NearbyPlace[]> {
-  const places = await searchNearbyPlaces(opts.googleKey, origin, {
-    headers: opts.googleHeaders,
-  });
-  const tflStations = await fetchTflStations(origin, opts.tflAppKey);
-  return mergeTflStations(places, tflStations);
+  const [places, tflStations, tflBusStops] = await Promise.all([
+    searchNearbyPlaces(opts.googleKey, origin, { headers: opts.googleHeaders }),
+    fetchTflStations(origin, opts.tflAppKey),
+    fetchTflBusStops(origin, opts.tflAppKey),
+  ]);
+  return mergeTflBusStops(mergeTflStations(places, tflStations), tflBusStops);
 }

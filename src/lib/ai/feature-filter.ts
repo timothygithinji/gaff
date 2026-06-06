@@ -116,17 +116,12 @@ const NOISE_WATCHOUTS: ReadonlyArray<{ pattern: RegExp; why: string }> = [
     why: "Default for most London rentals; visible in fineprint; only matters as a compound watchout.",
   },
 
-  // Deposit at the legal floor / cap — one month's rent is the
-  // *minimum* protection landlords offer; flagging it as a caution
-  // confuses renters. ABOVE the cap is a real problem (kept).
-  {
-    pattern: /^deposit (equals|at) (one month'?s rent|legal (limit|maximum|cap)|five weeks'? rent)$/i,
-    why: "Legal-floor / legal-cap deposits are tenant-friendly; only *above* the cap is a real watchout.",
-  },
-  {
-    pattern: /^deposit near legal cap$/i,
-    why: "Near-cap is the norm; only above-cap is illegal.",
-  },
+  // NOTE: deposit-cap watchouts (at / near / below / above the legal
+  // cap, "= one month's rent", "= 5 weeks' rent", etc.) are NOT handled
+  // here. They're gated arithmetically in `keepWatchout` via
+  // `isDepositCapWatchout` + `depositConfirmedOverCap` — a single broad
+  // matcher that survives the model's ever-shifting phrasing, rather than
+  // an exact-label whack-a-mole.
 
   // Tenant-policy restatements that only matter for affected users.
   {
@@ -222,16 +217,54 @@ export function isNoiseWatchout(label: string): boolean {
 }
 
 /**
- * Labels the model uses when it thinks the deposit exceeds the Tenant
- * Fees Act cap (5 weeks' rent for annual rent under £50k). We verify
- * these arithmetically — Haiku has been observed to write
- * "Deposit above legal cap" with a self-contradicting detail field that
- * does the math wrong (e.g. dividing deposit by monthly rent and calling
- * the ratio "weeks"), then ship the alarm anyway because the structured
- * tool output commits label + severity before reasoning completes.
+ * Any deposit watchout that comments on the legal cap — above / over /
+ * exceeds, but ALSO at / near / nearly at / below / "= one month's rent"
+ * / "= 5 weeks' rent" / "at the limit". We treat the whole family as
+ * suspect and gate it on the actual arithmetic (see
+ * {@link depositConfirmedOverCap}), because:
+ *
+ *   - Only ABOVE the cap is a real problem. At / near / below / "= one
+ *     month's rent" deposits are the tenant-friendly norm — surfacing
+ *     them as a caution just confuses renters (the original v2.1 noise).
+ *   - Haiku invents fresh phrasings constantly ("nearly at legal cap",
+ *     "deposit at legal minimum", "below legal cap but worth confirming")
+ *     and writes self-contradicting details (dividing deposit by monthly
+ *     rent and calling the ratio "weeks"), shipping the alarm anyway
+ *     because the tool output commits label + severity before reasoning
+ *     finishes. An exact-label denylist can't keep up; a broad matcher
+ *     gated on our own arithmetic can.
+ *
+ * Requires the word "deposit" AND a cap/limit reference token, so
+ * unrelated deposit mentions ("deposit-free option", "deposit
+ * non-refundable") are left alone.
  */
-const DEPOSIT_OVER_CAP_PATTERN =
-  /^deposit (above|over|exceeds?|exceeding) (the )?(legal (cap|limit|maximum)|(5|five) weeks'? rent)$/i;
+const DEPOSIT_MENTION = /\bdeposit\b/i;
+const DEPOSIT_CAP_REFERENCE =
+  /\b(legal\s+(cap|limit|maximum|minimum)|(the\s+)?cap\b|at the limit|(5|five)\s*weeks'?\s*rent|one\s*month'?s?\s*rent|weeks'?\s*rent)\b/i;
+
+function isDepositCapWatchout(label: string): boolean {
+  const l = label.trim();
+  return DEPOSIT_MENTION.test(l) && DEPOSIT_CAP_REFERENCE.test(l);
+}
+
+/**
+ * True only when our own arithmetic confirms the deposit exceeds the
+ * five-weeks cap. Unknown (missing deposit or rent, or no `checks`) is
+ * NOT "confirmed over" — matching the prompt's rule that a `false` OR
+ * `null` cap check must never surface a deposit-cap watchout. `ceil()`
+ * on the cap absorbs pence-over rounding (Shelter/landlords ignore
+ * sub-£1 overages).
+ */
+function depositConfirmedOverCap(checks: LegalChecks | undefined): boolean {
+  if (!checks) {
+    return false;
+  }
+  const cap = computeFiveWeeksRent(checks.priceMonthly);
+  if (cap == null || checks.deposit == null) {
+    return false;
+  }
+  return checks.deposit > Math.ceil(cap);
+}
 
 /**
  * Five weeks' rent — the Tenant Fees Act 2019 cap for annual rent under
@@ -259,27 +292,6 @@ export type LegalChecks = {
   deposit?: number | null;
   priceMonthly?: number | null;
 };
-
-/**
- * True when a deposit-over-cap watchout label is *contradicted* by the
- * actual numbers. Uses ceil() on the cap so pence-over-cap rounding
- * (e.g. £2,308 deposit against £2,307.69 cap on £2,000 rent) reads as
- * "at cap" rather than a legal breach — matching how landlords and
- * Shelter treat sub-£1 overages in practice.
- */
-function isFalseDepositOverCap(
-  label: string,
-  checks: LegalChecks | undefined
-): boolean {
-  if (!checks || !DEPOSIT_OVER_CAP_PATTERN.test(label.trim())) {
-    return false;
-  }
-  const cap = computeFiveWeeksRent(checks.priceMonthly);
-  if (cap == null || checks.deposit == null) {
-    return false;
-  }
-  return checks.deposit <= Math.ceil(cap);
-}
 
 /**
  * Apply both denylists to a persisted Features blob. Items with empty
@@ -340,7 +352,11 @@ function keepWatchout(w: WatchoutItem, checks?: LegalChecks): boolean {
   if (isNoiseWatchout(label)) {
     return false;
   }
-  if (isFalseDepositOverCap(label, checks)) {
+  // Deposit-cap watchouts survive ONLY when our own arithmetic confirms
+  // the deposit is over the five-weeks cap. At / near / below / "= one
+  // month's rent" cap commentary — and any over-cap claim we can't verify
+  // — is dropped regardless of phrasing.
+  if (isDepositCapWatchout(label) && !depositConfirmedOverCap(checks)) {
     return false;
   }
   return true;

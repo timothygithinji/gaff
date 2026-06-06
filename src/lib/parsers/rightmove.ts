@@ -9,6 +9,7 @@
 
 import {
   bathroomCount,
+  extractDepositFromText,
   extractPostcode,
   extractScriptJson,
   probe,
@@ -772,7 +773,9 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     description: toStringSafe(text.description),
     availableFrom: toStringSafe(lettings.letAvailableDate),
     furnished: rightmoveFurnishType(toStringSafe(lettings.furnishType)),
-    deposit: toNumber(lettings.deposit),
+    deposit:
+      toNumber(lettings.deposit) ??
+      extractDepositFromText(toStringSafe(text.description)),
     photos,
     floorplanUrl,
     agentName:

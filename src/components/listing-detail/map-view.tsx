@@ -42,6 +42,8 @@ export type TransitPoint = {
   kind?: TransitKind | null;
   /** TfL modes serving a station (for line roundels), when known. */
   modes?: string[];
+  /** Lines / routes serving the stop (tube/operator names, bus numbers). */
+  lines?: string[];
   /**
    * Per-place marker + route colour, so each place is individually
    * tellable apart on the map (and matches its chip dot). Falls back to
@@ -109,6 +111,8 @@ interface GMapsApi {
   ) => GMapsDirectionsRenderer;
   TravelMode?: { WALKING: unknown; TRANSIT: unknown };
   SymbolPath?: { CIRCLE: unknown };
+  Point?: new (x: number, y: number) => unknown;
+  Size?: new (w: number, h: number) => unknown;
 }
 
 function getMapsApi(): GMapsApi | null {
@@ -224,6 +228,7 @@ export function MapView({
       position: center,
       map,
       title,
+      icon: propertyPinIcon(api),
       zIndex: 1000,
     });
   }, [status, lat, lng, title, isDark]);
@@ -386,6 +391,23 @@ function drawSelectedRoutes(
   }
 }
 
+/**
+ * The property's own marker — a navy teardrop pin with a hollow centre, so
+ * "home" is unmistakable against the small category dots. SVG path is a
+ * Material-style place pin (24×24, tip at y≈23); anchored at the tip.
+ */
+function propertyPinIcon(api: GMapsApi): Record<string, unknown> {
+  return {
+    path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 14 7 14s7-8.75 7-14c0-3.87-3.13-7-7-7zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2z",
+    fillColor: "#0e2235",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 1.6,
+    scale: 1.7,
+    anchor: api.Point ? new api.Point(12, 23) : undefined,
+  };
+}
+
 /** A filled-circle marker symbol, larger + ringed when selected. */
 function markerIcon(
   api: GMapsApi,
@@ -490,18 +512,109 @@ function computeTimes(
 
 /* ---------------- Map styles ---------------- */
 
-// Light: default Google map with the busiest icon/label clutter removed.
+// Light: a calm "nautical chart" derived from the maritime palette — softly
+// tinted land, calm-blue water, sage parks, warm-sand highways — so the area
+// reads as a *place* (green space, water, stations) rather than a bare road
+// grid. We keep park + transit-station labels/icons (the context a renter
+// actually wants) and silence only the commercial POI noise.
 const MAP_STYLE_LIGHT = [
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "geometry", stylers: [{ color: "#e9eef2" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#54657a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#f4f7f9" }] },
+  {
+    featureType: "administrative",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#cdd7df" }],
+  },
+  {
+    featureType: "administrative.land_parcel",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "administrative.neighborhood",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#7c8c9c" }],
+  },
+  {
+    featureType: "landscape.natural",
+    elementType: "geometry",
+    stylers: [{ color: "#e4ebe2" }],
+  },
+  // Quiet the commercial POI clutter, but keep parks visible + named.
   {
     featureType: "poi",
     elementType: "labels",
     stylers: [{ visibility: "off" }],
   },
   {
-    featureType: "transit",
+    featureType: "poi.business",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "geometry",
+    stylers: [{ color: "#cfe0c9" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text",
+    stylers: [{ visibility: "on" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#5a7d63" }],
+  },
+  {
+    featureType: "poi.park",
     elementType: "labels.icon",
     stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#ffffff" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#dde4ea" }],
+  },
+  {
+    featureType: "road.arterial",
+    elementType: "geometry",
+    stylers: [{ color: "#ffffff" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#f6e7d2" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#e7d3b6" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#9a7b56" }],
+  },
+  // Keep transit lines + station marks — they're the whole point here.
+  {
+    featureType: "transit.station",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#516074" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#b7d3e3" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#6d93a8" }],
   },
 ];
 
@@ -524,13 +637,27 @@ const MAP_STYLE_DARK = [
   },
   {
     featureType: "poi",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#5a7596" }],
+    elementType: "labels",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi.business",
+    stylers: [{ visibility: "off" }],
   },
   {
     featureType: "poi.park",
     elementType: "geometry",
     stylers: [{ color: "#16352a" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text",
+    stylers: [{ visibility: "on" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#5f8a6e" }],
   },
   {
     featureType: "road",
@@ -553,8 +680,18 @@ const MAP_STYLE_DARK = [
     stylers: [{ color: "#1f3a5f" }],
   },
   {
+    featureType: "transit.station",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#7d93ab" }],
+  },
+  {
     featureType: "water",
     elementType: "geometry",
     stylers: [{ color: "#0a151d" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#4f6b86" }],
   },
 ];

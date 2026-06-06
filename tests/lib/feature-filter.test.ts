@@ -74,11 +74,10 @@ describe("isNoiseWatchout", () => {
     "Bills status unclear",
     "Bills not mentioned",
     "Bills status not specified",
-    "Deposit equals one month's rent",
-    "Deposit at legal limit",
-    "Deposit at legal maximum",
-    "Deposit at legal cap",
-    "Deposit near legal cap",
+    // NB: deposit-cap labels ("Deposit at legal cap", "… near legal cap",
+    // "… equals one month's rent", etc.) are NOT in this denylist — they're
+    // gated arithmetically in filterFeatures (see the deposit-cap describe
+    // block below), so isNoiseWatchout returns false for them.
     "No pets allowed",
     "No DSS tenants",
     "Families and pets not accepted",
@@ -149,37 +148,42 @@ describe("filterFeatures", () => {
   });
 
   it("drops noise from both lists while keeping real signal", () => {
-    const filtered = filterFeatures({
-      summary: null,
-      highlights: [
-        { label: "Furnished", detail: null },
-        { label: "Walk to Bounds Green tube", detail: "6 minutes" },
-        { label: "Available immediately", detail: null },
-        { label: "FTTP 900Mbps available", detail: null },
-      ],
-      watchouts: [
-        {
-          severity: "caution",
-          label: "Bills not included",
-          detail: "Common in this area",
-        },
-        {
-          severity: "problem",
-          label: "Deposit above legal cap",
-          detail: "£3,200 = 7 weeks",
-        },
-        {
-          severity: "caution",
-          label: "6-month minimum term",
-          detail: null,
-        },
-        {
-          severity: "caution",
-          label: "High crime area",
-          detail: "180 incidents/month",
-        },
-      ],
-    });
+    const filtered = filterFeatures(
+      {
+        summary: null,
+        highlights: [
+          { label: "Furnished", detail: null },
+          { label: "Walk to Bounds Green tube", detail: "6 minutes" },
+          { label: "Available immediately", detail: null },
+          { label: "FTTP 900Mbps available", detail: null },
+        ],
+        watchouts: [
+          {
+            severity: "caution",
+            label: "Bills not included",
+            detail: "Common in this area",
+          },
+          {
+            severity: "problem",
+            label: "Deposit above legal cap",
+            detail: "£3,200 = 7 weeks",
+          },
+          {
+            severity: "caution",
+            label: "6-month minimum term",
+            detail: null,
+          },
+          {
+            severity: "caution",
+            label: "High crime area",
+            detail: "180 incidents/month",
+          },
+        ],
+      },
+      // £2,000/mo → cap £2,308; £3,200 deposit is genuinely over, so the
+      // deposit-cap watchout is kept as real signal.
+      { deposit: 3200, priceMonthly: 2000 }
+    );
 
     expect(filtered?.highlights.map((h) => h.label)).toEqual([
       "Walk to Bounds Green tube",
@@ -206,17 +210,21 @@ describe("filterFeatures", () => {
   });
 
   it("preserves `severity` on retained watchouts", () => {
-    const filtered = filterFeatures({
-      summary: null,
-      highlights: [],
-      watchouts: [
-        {
-          severity: "problem",
-          label: "Deposit above legal cap",
-          detail: null,
-        },
-      ],
-    });
+    const filtered = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "problem",
+            label: "Deposit above legal cap",
+            detail: null,
+          },
+        ],
+      },
+      // Confirmed over cap, so it survives with its severity intact.
+      { deposit: 3200, priceMonthly: 2000 }
+    );
     expect(filtered?.watchouts).toEqual([
       { severity: "problem", label: "Deposit above legal cap", detail: null },
     ]);
@@ -266,7 +274,11 @@ describe("filterFeatures", () => {
     expect(filtered?.watchouts).toHaveLength(1);
   });
 
-  it("keeps a deposit-over-cap watchout when checks aren't supplied (existing call sites)", () => {
+  it("drops a deposit-cap watchout when checks aren't supplied (can't confirm over-cap)", () => {
+    // New policy: a deposit-cap watchout survives ONLY when our own
+    // arithmetic confirms it's over. With no checks we can't confirm, so
+    // we drop it rather than surface an unverifiable alarm. Both prod
+    // call sites pass checks, so genuine over-cap deposits still survive.
     const filtered = filterFeatures({
       summary: null,
       highlights: [],
@@ -274,10 +286,10 @@ describe("filterFeatures", () => {
         { severity: "problem", label: "Deposit above legal cap", detail: null },
       ],
     });
-    expect(filtered?.watchouts).toHaveLength(1);
+    expect(filtered?.watchouts).toEqual([]);
   });
 
-  it("keeps a deposit-over-cap watchout when deposit or price is missing", () => {
+  it("drops a deposit-cap watchout when deposit or price is missing", () => {
     const noDeposit = filterFeatures(
       {
         summary: null,
@@ -292,7 +304,7 @@ describe("filterFeatures", () => {
       },
       { deposit: null, priceMonthly: 2000 }
     );
-    expect(noDeposit?.watchouts).toHaveLength(1);
+    expect(noDeposit?.watchouts).toEqual([]);
 
     const noPrice = filterFeatures(
       {
@@ -308,7 +320,73 @@ describe("filterFeatures", () => {
       },
       { deposit: 2308, priceMonthly: null }
     );
-    expect(noPrice?.watchouts).toHaveLength(1);
+    expect(noPrice?.watchouts).toEqual([]);
+  });
+
+  it("drops at/near/below-cap deposit watchouts regardless of phrasing", () => {
+    // The exact phrasings Haiku invented in prod that slipped past the old
+    // exact-match denylist. £2,000/mo → cap £2,308; none of these deposits
+    // are over, so every one must be dropped.
+    const labels = [
+      "Deposit nearly at legal cap",
+      "Deposit at legal minimum",
+      "Deposit at legal maximum",
+      "Deposit below legal cap but worth confirming",
+      "Deposit near legal cap",
+      "Deposit equals one month's rent",
+      "Deposit at the limit",
+    ];
+    for (const label of labels) {
+      const filtered = filterFeatures(
+        {
+          summary: null,
+          highlights: [],
+          watchouts: [{ severity: "caution", label, detail: null }],
+        },
+        { deposit: 2100, priceMonthly: 2000 }
+      );
+      expect(filtered?.watchouts, `should drop: ${label}`).toEqual([]);
+    }
+  });
+
+  it("keeps a genuine over-cap deposit even with a novel phrasing", () => {
+    // £2,000/mo → cap £2,308; £2,900 is genuinely over. A phrasing the
+    // old exact-match list never had must still survive.
+    const filtered = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "problem",
+            label: "Deposit sits above the five weeks' rent cap",
+            detail: "£2,900 vs £2,308 legal maximum",
+          },
+        ],
+      },
+      { deposit: 2900, priceMonthly: 2000 }
+    );
+    expect(filtered?.watchouts).toHaveLength(1);
+  });
+
+  it("leaves non-cap deposit mentions alone", () => {
+    // "deposit-free" / "no deposit" highlights and non-cap deposit
+    // watchouts have no cap-reference token, so the gate ignores them.
+    const filtered = filterFeatures(
+      {
+        summary: null,
+        highlights: [],
+        watchouts: [
+          {
+            severity: "caution",
+            label: "Deposit non-refundable",
+            detail: "Stated as non-returnable in the listing",
+          },
+        ],
+      },
+      { deposit: 2100, priceMonthly: 2000 }
+    );
+    expect(filtered?.watchouts).toHaveLength(1);
   });
 });
 

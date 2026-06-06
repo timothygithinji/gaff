@@ -21,7 +21,7 @@ import type {
 } from "../../server/functions/listing-detail";
 import { MountWhenVisible } from "../ui/patterns/mount-when-visible";
 import { MapView, type RouteTimes, type TransitPoint } from "./map-view";
-import { StationGlyphs } from "./transit-glyph";
+import { StationGlyphs, TransitLines } from "./transit-glyph";
 
 type PlaceCategory = ListingDetailNearbyTransit["category"];
 
@@ -208,6 +208,7 @@ export function MapCommute({
         category: t.category,
         kind: t.kind,
         modes: t.modes,
+        lines: t.lines,
         color: routeColor(i),
         lat: t.lat,
         lng: t.lng,
@@ -454,11 +455,12 @@ function PlaceChip({
   } else if (selected) {
     trailing = "routing…";
   }
+  const hasLines = point.lines != null && point.lines.length > 0;
   return (
     <button
       aria-pressed={selected}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-[12px] transition-colors",
+        "inline-flex flex-col items-start gap-1 rounded-md border px-3 py-2 text-[12px] transition-colors",
         selected
           ? "border-copper bg-copper/10"
           : "border-line bg-mist hover:border-slate-2"
@@ -466,12 +468,15 @@ function PlaceChip({
       onClick={() => onToggle(point.id)}
       type="button"
     >
-      <LeadingMark logoToken={logoToken} point={point} />
-      <span className="font-medium text-foreground">{point.name}</span>
-      {point.distanceMiles != null ? (
-        <span className="text-slate">{point.distanceMiles.toFixed(1)} mi</span>
-      ) : null}
-      {trailing ? <span className="text-slate">· {trailing}</span> : null}
+      <span className="flex items-center gap-1.5">
+        <LeadingMark logoToken={logoToken} point={point} />
+        <span className="font-medium text-foreground">{point.name}</span>
+        {point.distanceMiles != null ? (
+          <span className="text-slate">{point.distanceMiles.toFixed(1)} mi</span>
+        ) : null}
+        {trailing ? <span className="text-slate">· {trailing}</span> : null}
+      </span>
+      {hasLines ? <TransitLines kind={point.kind} lines={point.lines} /> : null}
     </button>
   );
 }

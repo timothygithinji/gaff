@@ -63,6 +63,9 @@ const emptyContext: ExtractContext = {
     epcCurrent: "C",
     epcPotential: "B",
     commuteMinutes: { Liverpool_Street: 22 },
+    stationRoutes: [
+      { name: "Highbury & Islington", walkMinutes: 8, transitMinutes: 14 },
+    ],
     broadband: {
       technology: "FTTP",
       downloadMbps: 900,

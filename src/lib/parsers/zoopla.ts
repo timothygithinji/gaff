@@ -16,6 +16,7 @@
 
 import {
   bathroomCount,
+  extractDepositFromText,
   extractPostcode,
   toNumber,
   coerceString as toStringSafe,
@@ -633,8 +634,10 @@ export function parseZooplaDetail(html: string): ListingDetail {
     : undefined;
 
   const nts = collectNtsInfo(c);
-  // Zoopla puts deposit in `additionalNtsInfo` more often than on `c.deposit`.
-  const ntsDeposit = nts.get("deposit") ?? nts.get("holding_deposit");
+  // Zoopla puts the tenancy deposit in `additionalNtsInfo` more often
+  // than on `c.deposit`. Do NOT fall back to `holding_deposit` — that's a
+  // separate ~1-week figure, not the deposit the Tenant Fees Act caps.
+  const ntsDeposit = nts.get("deposit");
   const ntsBillsIncluded = (() => {
     const raw = nts.get("bills_included") ?? nts.get("bills included");
     if (!raw) {
@@ -675,7 +678,10 @@ export function parseZooplaDetail(html: string): ListingDetail {
     description,
     availableFrom: toStringSafe(c.availableFrom),
     furnished: zooplaFurnished(toStringSafe(c.furnishedState)),
-    deposit: toNumber(c.deposit) ?? toNumber(ntsDeposit),
+    deposit:
+      toNumber(c.deposit) ??
+      toNumber(ntsDeposit) ??
+      extractDepositFromText(description),
     photos,
     floorplanUrl: zooplaDetailFloorplan(c),
     agentName: toStringSafe(branch?.branchName) ?? toStringSafe(branch?.name),

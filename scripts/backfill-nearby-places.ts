@@ -24,8 +24,10 @@ import * as schema from "../db/schema";
 import { env, mapsServerKey } from "../src/lib/env";
 import type { NearbyPlace } from "../src/lib/google-places";
 import {
+  fetchTflBusStops,
   fetchTflStations,
   gatherNearbyPlaces,
+  mergeTflBusStops,
   mergeTflStations,
 } from "../src/lib/nearby-places";
 import { upsertEnrichmentForListings } from "../src/trigger/enrich-helpers";
@@ -123,8 +125,11 @@ async function main() {
           done += 1;
           continue;
         }
-        const tfl = await fetchTflStations({ lat, lng }, TFL_APP_KEY);
-        places = mergeTflStations(existing, tfl);
+        const [tfl, buses] = await Promise.all([
+          fetchTflStations({ lat, lng }, TFL_APP_KEY),
+          fetchTflBusStops({ lat, lng }, TFL_APP_KEY),
+        ]);
+        places = mergeTflBusStops(mergeTflStations(existing, tfl), buses);
       } else {
         places = await gatherNearbyPlaces(
           { lat, lng },

@@ -20,7 +20,11 @@ import { neon } from "@neondatabase/serverless";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "../../db/schema";
-import { computeFiveWeeksRent } from "../../src/lib/ai/feature-filter";
+import {
+  computeFiveWeeksRent,
+  filterFeatures,
+} from "../../src/lib/ai/feature-filter";
+import type { HighlightItem, WatchoutItem } from "../../src/lib/ai/prompt";
 import {
   openrentSearchUrl,
   rightmoveSearchUrl,
@@ -66,9 +70,11 @@ for (const s of active) {
 // ---------------------------------------------------------------------------
 // 2. Reconstruct the per-portal URLs (faithful to buildSearchTargets)
 // ---------------------------------------------------------------------------
-// NOTE: scrape-portal.ts only spreads THESE filters into the URL builders.
-// bathrooms / furnished / mustHaves / exclusions are intentionally omitted
-// in production — reproduced here exactly so the URLs match what runs.
+// As of the 2026-06 sweep, scrape-portal.ts threads exclusions / furnished
+// / mustHaves into the URL builders too (RM dontShow, ZP
+// is_shared_accommodation, OR acceptNonStudents). Bathrooms remain
+// deliberately OUT of the URL (enforced read-time only) — a portal
+// baths_min drops the many listings that don't state a bathroom count.
 hr("2. PER-PORTAL SEARCH URLs (page 1, recency window omitted = full set)");
 console.log(
   "Reconstructed exactly as scrape-portal.ts buildSearchTargets does.\n" +
@@ -84,6 +90,13 @@ for (const s of active) {
     minPrice: s.minPrice,
     maxPrice: s.maxPrice,
     propertyTypes: s.propertyTypes,
+    furnished: s.furnished as "furnished" | "unfurnished" | null,
+    mustHaves: (s.mustHaves ?? []) as ("garden" | "parking" | "pets")[],
+    exclusions: (s.exclusions ?? []) as (
+      | "student"
+      | "retirement"
+      | "house_share"
+    )[],
     radiusMiles: Number(s.radiusMiles),
   };
   hr(`   URLs for "${s.name}"`);
@@ -424,6 +437,53 @@ sub("Enrichment prompt-version spread (active searches)");
 const verCount: Record<string, number> = {};
 for (const r of enrRows) { verCount[r.promptVersion] = (verCount[r.promptVersion] ?? 0) + 1; }
 console.log(`  ${JSON.stringify(verCount)}`);
+
+// ---------------------------------------------------------------------------
+// 6. Read-time filter effect — what the USER actually sees after
+//    filterFeatures (the P2.5 deposit gate + noise denylist) runs at read
+//    time, even on existing rows and before any AI re-enrichment.
+// ---------------------------------------------------------------------------
+hr("6. READ-TIME FILTER EFFECT (filterFeatures, applied to stored rows)");
+let rawWatchouts = 0;
+let keptWatchouts = 0;
+let depositWatchoutsDropped = 0;
+const droppedDepositSamples: string[] = [];
+for (const r of enrRows) {
+  const f = (r.features ?? {}) as Features;
+  const raw = (r.rawJson ?? {}) as Record<string, unknown>;
+  const deposit = num(raw.deposit);
+  const checks = { deposit, priceMonthly: r.priceMonthly };
+  const before = (f.watchouts ?? []) as WatchoutItem[];
+  rawWatchouts += before.length;
+  const filtered = filterFeatures(
+    {
+      summary: f.summary ?? null,
+      highlights: (f.highlights ?? []) as HighlightItem[],
+      watchouts: before,
+    },
+    checks
+  );
+  const after = filtered?.watchouts ?? [];
+  keptWatchouts += after.length;
+  const afterLabels = new Set(after.map((w) => w.label));
+  for (const w of before) {
+    if (!afterLabels.has(w.label) && /deposit/i.test(`${w.label} ${w.detail ?? ""}`)) {
+      depositWatchoutsDropped++;
+      if (droppedDepositSamples.length < 12) {
+        droppedDepositSamples.push(
+          `${r.portal}  deposit=£${deposit ?? "?"} price=£${r.priceMonthly ?? "?"}  "${w.label}"`
+        );
+      }
+    }
+  }
+}
+console.log(`
+total stored watchouts:            ${rawWatchouts}
+kept after read-time filter:       ${keptWatchouts}
+dropped:                           ${rawWatchouts - keptWatchouts}
+  of which deposit-cap watchouts:  ${depositWatchoutsDropped}`);
+sub("Deposit watchouts now suppressed at read time");
+for (const x of droppedDepositSamples) { console.log(`  ${x}`); }
 
 console.log("\nDone.");
 process.exit(0);

@@ -141,6 +141,16 @@ export function searchHasTargets(s: ActiveSearch): boolean {
  * exactly what leaked listings in). Bus/tram keep the heuristic. A target we
  * have no data for is "pending" — it neither satisfies nor drops the
  * cluster; only an evaluable-but-unmet set drops it.
+ *
+ * PRODUCT DECISION (pending clusters): a cluster with NO routed transport
+ * data yet PASSES rather than being held back. In an active hunt, hiding a
+ * candidate because our enrichment is still catching up is worse than
+ * showing it with transport marked "pending" on the card — the user can
+ * see the criterion isn't confirmed and the cluster re-filters correctly
+ * once `enrich-station-routes` / `enrich-nearby-transit` land. This is
+ * safe because `nearbyTransit` gathers EVERY station kind within ~1mi, so
+ * a kind that's absent from a populated set is genuinely unreachable (a
+ * real drop), not pending — only a wholly-empty set means "not measured".
  */
 function clusterPassesTransport(
   search: ActiveSearch,

@@ -58,6 +58,12 @@ export type NearbyPlace = {
    * to TfL StopPoint data; absent for Google-only stations + non-stations.
    */
   modes?: TransitMode[];
+  /**
+   * Lines / routes serving this stop (transport only): tube line names and
+   * the train operator for stations, bus route numbers for bus stops.
+   * Populated from TfL; absent for Google-only stations + non-transport.
+   */
+  lines?: string[];
   lat: number;
   lng: number;
   /** Straight-line distance from the search origin, in miles. */

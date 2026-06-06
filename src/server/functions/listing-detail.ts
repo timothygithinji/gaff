@@ -290,6 +290,12 @@ export type ListingDetailNearbyTransit = {
    * stations outside TfL coverage.
    */
   modes?: ListingDetailTransitMode[];
+  /**
+   * Lines / routes serving the stop: tube line names + train operator for
+   * stations ("Piccadilly", "Great Northern"), bus route numbers for bus
+   * stops ("34", "232"). From TfL; absent outside TfL coverage.
+   */
+  lines?: string[];
   lat: number;
   lng: number;
   distanceMiles: number;
@@ -517,6 +523,20 @@ function asTransitModes(
   return out.length > 0 ? out : undefined;
 }
 
+/** Coerce the stored `lines` blob into clean display strings. */
+function asTransitLines(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  const out: string[] = [];
+  for (const l of value) {
+    if (typeof l === "string" && l.trim()) {
+      out.push(l.trim());
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /**
  * Validate + coerce the `enrichments.nearbyTransit` JSONB blob into the
  * wire type. Drops entries missing a name, a recognised category, or
@@ -554,11 +574,13 @@ function asNearbyTransit(
         ? r.distanceMiles
         : 0;
     const modes = asTransitModes(r.modes);
+    const lines = asTransitLines(r.lines);
     out.push({
       name,
       category: category as ListingDetailPlaceCategory,
       kind: TRANSIT_KINDS.has(kind) ? (kind as ListingDetailTransitKind) : null,
       ...(modes ? { modes } : {}),
+      ...(lines ? { lines } : {}),
       lat,
       lng,
       distanceMiles: distance,

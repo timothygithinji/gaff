@@ -93,6 +93,50 @@ export function bathroomCount(v: unknown): number | undefined {
   return typeof n === "number" && n > 0 ? n : undefined;
 }
 
+/**
+ * Best-effort tenancy-deposit amount from free text, used as a FALLBACK
+ * when the portal's structured deposit field is empty. Deliberately
+ * conservative — a wrong-high figure would resurface the false
+ * "deposit over legal cap" alarms we work to suppress, so we'd rather
+ * return undefined than guess:
+ *
+ *   - Skips "holding deposit" (≈1 week's rent, a different thing from the
+ *     tenancy deposit the Tenant Fees Act caps).
+ *   - Skips combined figures where the amount is the deposit PLUS rent —
+ *     e.g. "£5,150 (5 weeks + 1st month)" or "£5,150 including first
+ *     month's rent". Detected by an addition marker ("+" / "incl") in the
+ *     immediate trailing text, NOT by any nearby "rent"/"month" word — a
+ *     table laying out "Deposit £X  Rent PCM £Y" must still read £X.
+ *   - Returns the first clean "(…) deposit … £amount" match.
+ */
+const DEPOSIT_TEXT_RE = /([a-z]+\s+)?deposit\b[^£\n]{0,30}?£\s*([\d,]+(?:\.\d+)?)/gi;
+const DEPOSIT_COMBINED_RE = /[+]|\bincl/i;
+
+export function extractDepositFromText(
+  text: string | undefined
+): number | undefined {
+  if (!text) {
+    return undefined;
+  }
+  for (const m of text.matchAll(DEPOSIT_TEXT_RE)) {
+    const qualifier = (m[1] ?? "").toLowerCase();
+    if (qualifier.includes("holding")) {
+      continue;
+    }
+    const amount = toNumber(m[2]);
+    if (amount == null || amount <= 0) {
+      continue;
+    }
+    const matchEnd = (m.index ?? 0) + m[0].length;
+    const trailing = text.slice(matchEnd, matchEnd + 20);
+    if (DEPOSIT_COMBINED_RE.test(trailing)) {
+      continue;
+    }
+    return amount;
+  }
+  return undefined;
+}
+
 /** Coerce an unknown to `string | undefined` (trims, rejects empty). */
 export function coerceString(v: unknown): string | undefined {
   if (typeof v === "string") {
