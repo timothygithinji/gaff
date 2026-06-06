@@ -595,6 +595,13 @@ export const enrichments = pgTable(
         lat: number;
         lng: number;
         distanceMiles: number;
+        /**
+         * Real routed walking minutes from the cluster (Google Routes
+         * WALK), set by `enrich-nearby-transit` for the nearest few
+         * station stops. The transport filter prefers this over the
+         * straight-line `distanceMiles` heuristic.
+         */
+        walkMinutes?: number | null;
       }>
     >(),
     aiRunId: text("ai_run_id").references(() => aiRuns.id, {

@@ -62,6 +62,14 @@ export type NearbyPlace = {
   lng: number;
   /** Straight-line distance from the search origin, in miles. */
   distanceMiles: number;
+  /**
+   * Real routed walking minutes from the cluster to this place (Google
+   * Routes WALK). Populated by `enrich-nearby-transit` for the nearest
+   * few station stops (tube/rail/tram) — the ones the transport filter
+   * evaluates — so the queue can match on routed time, not a straight-
+   * line guess. Absent for everything else.
+   */
+  walkMinutes?: number | null;
 };
 
 /**

@@ -853,10 +853,39 @@ type ClusterTargetEnrichment = {
   nearbyTransit: Array<{
     kind: string | null;
     distanceMiles: number;
+    /** Real routed walk minutes (Google), when computed for this stop. */
+    walkMinutes?: number | null;
   }> | null;
 };
 
 type ActiveSearch = typeof searches.$inferSelect;
+
+/**
+ * Smallest reachable minutes to a `nearbyTransit` stop of `kind` — the
+ * real routed walk time (`walkMinutes`, Google) when present, else the
+ * straight-line {@link MIN_PER_MILE} heuristic. `Infinity` when the
+ * cluster carries no stop of that kind.
+ */
+function bestStopMinutes(
+  stops: NonNullable<ClusterTargetEnrichment["nearbyTransit"]>,
+  kind: string,
+  mode: string
+): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const s of stops) {
+    if (s.kind !== kind) {
+      continue;
+    }
+    const minutes =
+      typeof s.walkMinutes === "number"
+        ? s.walkMinutes
+        : s.distanceMiles * (MIN_PER_MILE[mode] ?? 20);
+    if (minutes < best) {
+      best = minutes;
+    }
+  }
+  return best;
+}
 
 /** True when a search carries any commute/transport criteria to filter on. */
 function searchHasTargets(s: ActiveSearch): boolean {
@@ -873,11 +902,12 @@ function searchHasTargets(s: ActiveSearch): boolean {
  *     within `maxMinutes`. A target with no computed time yet is treated
  *     as passing (enrichment pending — we don't drop a place for not yet
  *     being measured), mirroring the null-edge convention elsewhere.
- *   - Transport: for each target, the nearest `nearbyTransit` stop of the
- *     requested kind must be within the distance implied by `maxMinutes`
- *     and the mode (see {@link MIN_PER_MILE}). If the cluster has been
- *     swept and carries NO stop of that kind, it genuinely fails; if it
- *     hasn't been swept yet (`nearbyTransit` absent), it passes (pending).
+ *   - Transport: targets are OR-ed — the cluster passes if at least one
+ *     requested stop kind is within `maxMinutes`, using the stop's real
+ *     routed walk time (`walkMinutes`, Google) when present and the
+ *     straight-line {@link MIN_PER_MILE} heuristic only as a fallback. A
+ *     swept cluster within reach of none of the kinds fails; one not yet
+ *     swept (`nearbyTransit` absent) passes (pending).
  */
 function clusterPassesSearch(
   search: ActiveSearch,
@@ -893,27 +923,21 @@ function clusterPassesSearch(
       return false;
     }
   }
-  for (const t of search.transportTargets ?? []) {
-    const kind = AMENITY_KIND[t.amenity];
-    const max = typeof t.maxMinutes === "number" ? t.maxMinutes : null;
-    if (!kind || max === null) {
-      continue;
-    }
-    const stops = enr?.nearbyTransit;
-    if (!stops) {
-      continue;
-    }
-    let nearest = Number.POSITIVE_INFINITY;
-    for (const s of stops) {
-      if (s.kind === kind && s.distanceMiles < nearest) {
-        nearest = s.distanceMiles;
-      }
-    }
-    if (!Number.isFinite(nearest)) {
-      return false;
-    }
-    const maxDistanceMiles = max / (MIN_PER_MILE[t.mode] ?? 20);
-    if (nearest > maxDistanceMiles) {
+  // Transport targets are OR-ed: the cluster passes if it's within reach
+  // of AT LEAST ONE requested stop kind (e.g. "tube OR train"). Pending
+  // until swept — an absent `nearbyTransit` doesn't drop the cluster.
+  const transportTargets = (search.transportTargets ?? []).filter(
+    (t) => Boolean(AMENITY_KIND[t.amenity]) && typeof t.maxMinutes === "number"
+  );
+  const stops = enr?.nearbyTransit;
+  if (transportTargets.length > 0 && stops) {
+    const anyWithinReach = transportTargets.some((t) => {
+      const kind = AMENITY_KIND[t.amenity];
+      return kind
+        ? bestStopMinutes(stops, kind, t.mode) <= (t.maxMinutes as number)
+        : false;
+    });
+    if (!anyWithinReach) {
       return false;
     }
   }
