@@ -42,14 +42,29 @@ export function toPills(features: Features | null | undefined): Pill[] {
   if (!features) {
     return [];
   }
-  const pills: Pill[] = [];
-  for (const h of features.highlights ?? []) {
-    pills.push({ severity: "positive", label: h.label, detail: h.detail });
-  }
-  for (const w of features.watchouts ?? []) {
-    pills.push({ severity: w.severity, label: w.label, detail: w.detail });
-  }
-  return pills;
+  return [
+    ...highlightsToPills(features.highlights ?? []),
+    ...watchoutsToPills(features.watchouts ?? []),
+  ];
+}
+
+/** Highlights → positive pills. For features split into separate arrays
+ * (listing detail keeps "what stands out" and "small print" as two sections). */
+export function highlightsToPills(items: Features["highlights"]): Pill[] {
+  return items.map((h) => ({
+    severity: "positive" as const,
+    label: h.label,
+    detail: h.detail,
+  }));
+}
+
+/** Watchouts → caution/problem pills, preserving severity. */
+export function watchoutsToPills(items: Features["watchouts"]): Pill[] {
+  return items.map((w) => ({
+    severity: w.severity,
+    label: w.label,
+    detail: w.detail,
+  }));
 }
 
 type SeverityToken = {

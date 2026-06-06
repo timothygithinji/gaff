@@ -10,7 +10,9 @@ import {
   FEATURE_PILL_MAX,
   FeatureList,
   FeaturePills,
+  highlightsToPills,
   toPills,
+  watchoutsToPills,
 } from "../../src/components/ui/patterns/feature-pills";
 import type { Features } from "../../src/lib/ai/prompt";
 
@@ -42,6 +44,14 @@ describe("toPills", () => {
   it("returns [] for missing features", () => {
     expect(toPills(null)).toEqual([]);
     expect(toPills(undefined)).toEqual([]);
+  });
+
+  it("item-level helpers map severity for the split listing-detail sections", () => {
+    expect(highlightsToPills(FEATURES.highlights).every((p) => p.severity === "positive")).toBe(true);
+    expect(watchoutsToPills(FEATURES.watchouts).map((p) => p.severity)).toEqual([
+      "caution",
+      "problem",
+    ]);
   });
 });
 
