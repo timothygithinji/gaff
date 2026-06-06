@@ -10,10 +10,12 @@
  * each naming the OTHER member(s) — so it reads right for either
  * recipient without caring who completed the match.
  *
- * Email images use the portal CDN URL (public + absolute); the app's own
- * R2-served photos sit behind Cloudflare Access and wouldn't load in a
- * mail client. The CTA links into the app (Access login is expected — the
- * recipient is a household member).
+ * Email images use our own R2-served photo (right-sized, durable) via
+ * `emailPhotoUrl`; the `/clusters/*` photo path is exempted from Cloudflare
+ * Access (a bypass app in infra/cloudflare) so it loads without a login,
+ * falling back to the portal CDN URL when a photo isn't cached yet. The CTA
+ * links into the gated app (Access login is expected — the recipient is a
+ * household member).
  */
 import { logger, task } from "@trigger.dev/sdk";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -26,8 +28,11 @@ import {
   user,
 } from "../../db/schema";
 import { getResend } from "../lib/email/client";
-import { FROM_EMAIL, appUrl } from "../lib/email/config";
+import { FROM_EMAIL, appUrl, emailPhotoUrl } from "../lib/email/config";
 import { MatchEmail } from "../lib/email/match-email";
+
+/** CSS width the match hero renders at (see match-email.tsx container). */
+const HERO_WIDTH = 480;
 
 export type SendMatchEmailPayload = {
   householdId: string;
@@ -111,7 +116,7 @@ export const sendMatchEmailTask = task({
     }
 
     const photoRows = await db
-      .select({ url: listingPhotos.url })
+      .select({ url: listingPhotos.url, r2Key: listingPhotos.r2Key })
       .from(listingPhotos)
       .where(inArray(listingPhotos.listingId, [headline.id]))
       .orderBy(asc(listingPhotos.position))
@@ -123,7 +128,7 @@ export const sendMatchEmailTask = task({
       price: formatPrice(headline.priceMonthly),
       beds: headline.bedrooms,
       outcode: outcodeOf(headline.postcode ?? cluster.postcode),
-      photoUrl: photoRows[0]?.url ?? null,
+      photoUrl: photoRows[0] ? emailPhotoUrl(photoRows[0], HERO_WIDTH) : null,
       listingUrl: `${appUrl()}/listings/${clusterId}?from=shortlist`,
     };
 

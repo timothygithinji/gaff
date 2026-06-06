@@ -170,6 +170,46 @@ const accessApp = new cloudflare.ZeroTrustAccessApplication(
 );
 
 // ---------------------------------------------------------------------------
+// Public bypass for listing photos.
+//
+// Cached photos are served by the Worker at
+// `/clusters/{cluster}/listings/{listing}/{file}` (see PHOTO_PATH_RE in
+// src/server.ts). The whole domain sits behind the Access app above, but a
+// mail client has no Access session — so an <img> in a digest/match email
+// pointing at our own R2-served photo would be redirected to the Access
+// login and break in the inbox.
+//
+// Cloudflare Access matches the MOST SPECIFIC application by path, so a
+// path-scoped app on `/clusters/*` with a BYPASS policy (everyone) lets photo
+// requests through unauthenticated while every other route stays gated. What
+// it exposes is listing photos already sourced from public property portals —
+// not sensitive — and nothing else lives under that prefix (the app's own
+// listing page is `/listings/{cluster}`, a different path).
+// ---------------------------------------------------------------------------
+const photoBypassPolicy = new cloudflare.ZeroTrustAccessPolicy(
+  `${projectName}-photo-bypass-policy`,
+  {
+    accountId,
+    name: "Bypass listing photos",
+    decision: "bypass",
+    includes: [{ everyone: {} }],
+  }
+);
+
+const photoAccessApp = new cloudflare.ZeroTrustAccessApplication(
+  `${projectName}-photo-access-app`,
+  {
+    accountId,
+    name: `${projectName}-photos`,
+    domain: `${domain}/clusters`,
+    type: "self_hosted",
+    sessionDuration: "24h",
+    autoRedirectToIdentity: false,
+    policies: [{ id: photoBypassPolicy.id }],
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Image Transformations (formerly "Image Resizing") — DISABLED.
 //
 // We no longer transform at the edge. `cf.image` bills per unique transform
@@ -199,6 +239,8 @@ export const imageResizingStatus = imageResizing.value;
 export const accessAppId = accessApp.id;
 export const accessAppAud = accessApp.aud;
 export const accessPolicyId = accessPolicy.id;
+export const photoAccessAppId = photoAccessApp.id;
+export const photoBypassPolicyId = photoBypassPolicy.id;
 
 export const kvNamespaceId = kv.id;
 export const kvNamespaceTitle = kv.title;

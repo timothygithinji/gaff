@@ -25,8 +25,11 @@ import {
   user,
 } from "../../db/schema";
 import { getResend } from "../lib/email/client";
-import { FROM_EMAIL, appUrl } from "../lib/email/config";
+import { FROM_EMAIL, appUrl, emailPhotoUrl } from "../lib/email/config";
 import { DigestEmail, type DigestItem } from "../lib/email/digest-email";
+
+/** CSS width the digest thumbnail renders at (see digest-email.tsx). */
+const THUMB_WIDTH = 120;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 20;
@@ -101,7 +104,7 @@ function pickHeadlines(
   return head;
 }
 
-/** First photo URL per listing id. */
+/** Absolute, thumbnail-sized first-photo URL per listing id. */
 async function loadFirstPhotos(
   db: Db,
   listingIds: string[]
@@ -111,13 +114,17 @@ async function loadFirstPhotos(
     return byListing;
   }
   const photos = await db
-    .select({ listingId: listingPhotos.listingId, url: listingPhotos.url })
+    .select({
+      listingId: listingPhotos.listingId,
+      url: listingPhotos.url,
+      r2Key: listingPhotos.r2Key,
+    })
     .from(listingPhotos)
     .where(inArray(listingPhotos.listingId, listingIds))
     .orderBy(listingPhotos.position);
   for (const p of photos) {
     if (!byListing.has(p.listingId)) {
-      byListing.set(p.listingId, p.url);
+      byListing.set(p.listingId, emailPhotoUrl(p, THUMB_WIDTH));
     }
   }
   return byListing;

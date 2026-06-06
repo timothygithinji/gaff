@@ -5,6 +5,10 @@
  * enrichment has finished, so each row is rich (price, beds, area). One
  * email to every member; blind review is preserved (it lists places to
  * review, never a peer's verdict). Rendered by `daily-digest`.
+ *
+ * Styling tracks the maritime + all-Inter design system (the "Gaff" Paper
+ * file → globals.css). Email clients can't read CSS variables, so the
+ * palette is inlined as literal hex; the names mirror the maritime tokens.
  */
 import {
   Body,
@@ -41,10 +45,14 @@ export type DigestEmailProps = {
   reviewUrl: string;
 };
 
-const INK = "#1C1A17";
-const PAPER = "#FDFAF4";
-const COPPER = "#A0673E";
-const MUTED = "#6B6253";
+// Maritime palette (light scene), inlined — email clients don't do CSS vars.
+const NAVY = "#0e2235"; // ink: headings, body, primary button
+const GROUND = "#eef1f4"; // page background + primary-button text
+const WHITE = "#ffffff"; // card surface
+const COPPER = "#d77a4a"; // the one accent — small-caps label
+const STEEL = "#5a7596"; // captions / tertiary
+const LINE = "#c9d3dc"; // hairline borders
+const SANS = "Inter, Helvetica, Arial, sans-serif";
 
 export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
   const heading =
@@ -56,8 +64,8 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
       <Preview>{heading}</Preview>
       <Body
         style={{
-          backgroundColor: PAPER,
-          fontFamily: "Inter, Helvetica, Arial, sans-serif",
+          backgroundColor: GROUND,
+          fontFamily: SANS,
           margin: 0,
           padding: "24px 0",
         }}
@@ -78,9 +86,11 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
             </Text>
             <Heading
               style={{
-                color: INK,
-                fontFamily: "Fraunces, Georgia, serif",
+                color: NAVY,
+                fontFamily: SANS,
                 fontSize: "26px",
+                fontWeight: 700,
+                letterSpacing: "-0.01em",
                 margin: 0,
               }}
             >
@@ -92,9 +102,9 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
             <Section
               key={item.listingUrl}
               style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #EFE7D8",
-                borderRadius: "12px",
+                backgroundColor: WHITE,
+                border: `1px solid ${LINE}`,
+                borderRadius: "8px",
                 marginBottom: "10px",
                 overflow: "hidden",
               }}
@@ -118,20 +128,21 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
                   <Column style={{ padding: "12px 14px", verticalAlign: "top" }}>
                     <Text
                       style={{
-                        color: INK,
-                        fontFamily: "Fraunces, Georgia, serif",
+                        color: NAVY,
+                        fontFamily: SANS,
                         fontSize: "18px",
+                        fontWeight: 700,
                         margin: "0 0 2px",
                       }}
                     >
                       {item.price}
                     </Text>
                     <Text
-                      style={{ color: INK, fontSize: "14px", margin: "0 0 2px" }}
+                      style={{ color: NAVY, fontSize: "14px", margin: "0 0 2px" }}
                     >
                       {item.address}
                     </Text>
-                    <Text style={{ color: MUTED, fontSize: "12px", margin: 0 }}>
+                    <Text style={{ color: STEEL, fontSize: "12px", margin: 0 }}>
                       {item.beds == null ? "" : `${item.beds} bed · `}
                       {item.outcode || "—"}
                     </Text>
@@ -142,7 +153,7 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
           ))}
 
           {overflow > 0 ? (
-            <Text style={{ color: MUTED, fontSize: "13px", padding: "4px 8px" }}>
+            <Text style={{ color: STEEL, fontSize: "13px", padding: "4px 8px" }}>
               + {overflow} more waiting in your queue.
             </Text>
           ) : null}
@@ -151,9 +162,9 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
             <Button
               href={reviewUrl}
               style={{
-                backgroundColor: INK,
-                borderRadius: "999px",
-                color: PAPER,
+                backgroundColor: NAVY,
+                borderRadius: "8px",
+                color: GROUND,
                 display: "inline-block",
                 fontSize: "15px",
                 fontWeight: 600,
@@ -164,8 +175,8 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
               Review them in Gaff
             </Button>
           </Section>
-          <Hr style={{ borderColor: "#EFE7D8", margin: "8px 0" }} />
-          <Text style={{ color: MUTED, fontSize: "12px", padding: "0 8px" }}>
+          <Hr style={{ borderColor: LINE, margin: "8px 0" }} />
+          <Text style={{ color: STEEL, fontSize: "12px", padding: "0 8px" }}>
             New listings that matched your searches since yesterday.
           </Text>
         </Container>
