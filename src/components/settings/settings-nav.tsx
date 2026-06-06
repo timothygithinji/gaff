@@ -32,10 +32,6 @@ const LINKS: SettingsLink[] = [
   { to: "/settings/duplicates", label: "Merge duplicates", icon: GitMergeIcon },
 ];
 
-/** Placeholders Paper draws for the eventual settings IA — routes that
- * don't exist yet, rendered as inert muted labels. */
-const PLACEHOLDERS = ["Profile", "Notifications", "Billing", "Data & export"];
-
 export const SettingsNav: FC = () => {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: groups } = useQuery(duplicatesQueryOptions);
@@ -76,15 +72,6 @@ export const SettingsNav: FC = () => {
           </Link>
         );
       })}
-      {PLACEHOLDERS.map((label) => (
-        <span
-          aria-disabled
-          className="cursor-default px-3.5 py-2.5 pl-[42px] text-[13px] text-slate/70"
-          key={label}
-        >
-          {label}
-        </span>
-      ))}
     </nav>
   );
 };
