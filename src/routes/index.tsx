@@ -27,7 +27,7 @@ import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { AdminSidebar } from "../components/layout/admin-sidebar";
 import { BottomNav } from "../components/layout/bottom-nav";
-import { ActionButtons } from "../components/review/action-buttons";
+import { DecisionActions } from "../components/review/decision-actions";
 import {
   DesktopReview,
   type DesktopReviewData,
@@ -81,6 +81,11 @@ import { listSearches } from "../server/functions/searches";
 type SwipeOutcome = "shortlist" | "skip";
 type PendingAction = SwipeOutcome | "undo" | "defer" | null;
 
+// Short stale window for the review queries — long enough that quick
+// back-navigation reuses the cache, short enough that the queue still
+// feels live. Cross-device freshness rides `refetchOnWindowFocus`.
+const REVIEW_STALE_TIME = 12_000;
+
 // `searchId` filter and the explicit `clusterId` selection both live
 // in the URL so refresh + back-button preserve them and the filter is
 // shareable. Empty / omitted both collapse to `null` so the queue
@@ -123,9 +128,14 @@ const reviewCardQueryOptions = (
           : undefined;
       return getNextReviewCard(input);
     },
-    // Always re-fetch on focus — a household member swiping on another
-    // device can change what's at the top of our queue.
-    staleTime: 0,
+    // A short stale window keeps the SSR-painted / preloaded card on
+    // screen across quick back-navigation (Detail → back → Review)
+    // instead of refetching on every mount. Cross-device freshness — a
+    // household member swiping elsewhere shifts our queue — is covered
+    // by `refetchOnWindowFocus`, which fires when the user returns to
+    // the tab rather than on every remount.
+    staleTime: REVIEW_STALE_TIME,
+    refetchOnWindowFocus: true,
   }) as const;
 
 const reviewQueueQueryOptions = (searchId: string | null) =>
@@ -133,7 +143,8 @@ const reviewQueueQueryOptions = (searchId: string | null) =>
     queryKey: queryKeys.reviewQueue(searchId),
     queryFn: () =>
       getReviewQueue(searchId ? { data: { searchId } } : undefined),
-    staleTime: 0,
+    staleTime: REVIEW_STALE_TIME,
+    refetchOnWindowFocus: true,
   }) as const;
 
 const reviewTodayStatsQueryOptions = (searchId: string | null) =>
@@ -141,7 +152,8 @@ const reviewTodayStatsQueryOptions = (searchId: string | null) =>
     queryKey: queryKeys.reviewTodayStats(searchId),
     queryFn: () =>
       getTodayReviewStats(searchId ? { data: { searchId } } : undefined),
-    staleTime: 0,
+    staleTime: REVIEW_STALE_TIME,
+    refetchOnWindowFocus: true,
   }) as const;
 
 const reviewSearchesQueryOptions = {
@@ -241,11 +253,7 @@ function ReviewPage() {
     //     than flashing the "all caught up" empty state mid-swipe.
     onMutate: async (args) => {
       setPendingAction(args.outcome);
-      await Promise.all([
-        qc.cancelQueries({ queryKey: ["review", "next"] }),
-        qc.cancelQueries({ queryKey: ["review", "queue"] }),
-        qc.cancelQueries({ queryKey: ["review", "today-stats"] }),
-      ]);
+      await qc.cancelQueries({ queryKey: queryKeys.review() });
 
       const previousCard = qc.getQueryData<ReviewCard | null>(
         cardOpts.queryKey
@@ -303,9 +311,7 @@ function ReviewPage() {
       // bucket) so the next-card pointer and queue refresh regardless
       // of which filter is active — a swipe inside one search shifts
       // the cross-search "All" queue too.
-      qc.invalidateQueries({ queryKey: ["review", "next"] });
-      qc.invalidateQueries({ queryKey: ["review", "queue"] });
-      qc.invalidateQueries({ queryKey: ["review", "today-stats"] });
+      qc.invalidateQueries({ queryKey: queryKeys.review() });
       // Drop the pinned-cluster selection so the next top-of-queue
       // card surfaces — the swiped one is gone from the queue.
       if (clusterId) {
@@ -318,7 +324,7 @@ function ReviewPage() {
     mutationFn: () => undoLastSwipe(),
     onMutate: async () => {
       setPendingAction("undo");
-      await qc.cancelQueries({ queryKey: ["review"] });
+      await qc.cancelQueries({ queryKey: queryKeys.review() });
       // We don't know which cluster the server will restore until the
       // mutation returns, so we don't touch the card cache — the
       // current card stays visible until the refetch swaps it.
@@ -328,9 +334,7 @@ function ReviewPage() {
     },
     onSettled: () => {
       setPendingAction(null);
-      qc.invalidateQueries({ queryKey: ["review", "next"] });
-      qc.invalidateQueries({ queryKey: ["review", "queue"] });
-      qc.invalidateQueries({ queryKey: ["review", "today-stats"] });
+      qc.invalidateQueries({ queryKey: queryKeys.review() });
       if (clusterId) {
         navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: null }) });
       }
@@ -347,10 +351,7 @@ function ReviewPage() {
       }),
     onMutate: async (args) => {
       setPendingAction("defer");
-      await Promise.all([
-        qc.cancelQueries({ queryKey: ["review", "next"] }),
-        qc.cancelQueries({ queryKey: ["review", "queue"] }),
-      ]);
+      await qc.cancelQueries({ queryKey: queryKeys.review() });
       const previousCard = qc.getQueryData<ReviewCard | null>(
         cardOpts.queryKey
       );
@@ -386,9 +387,8 @@ function ReviewPage() {
     },
     onSettled: () => {
       setPendingAction(null);
-      qc.invalidateQueries({ queryKey: ["review", "next"] });
-      qc.invalidateQueries({ queryKey: ["review", "queue"] });
-      qc.invalidateQueries({ queryKey: ["deferrals"] });
+      qc.invalidateQueries({ queryKey: queryKeys.review() });
+      qc.invalidateQueries({ queryKey: queryKeys.deferrals() });
       if (clusterId) {
         navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: null }) });
       }
@@ -825,6 +825,7 @@ function renderDesktopHero(args: {
         }}
         onShortlist={args.doShortlist}
         onSkip={args.doSkip}
+        onUndo={args.doUndo}
         pendingAction={args.pendingAction}
       />
     );
@@ -866,13 +867,13 @@ function renderMobileHero(args: {
           onShortlist={args.doShortlist}
           onSkip={args.doSkip}
         />
-        <ActionButtons
-          clusterId={args.card.cluster.id}
+        <DecisionActions
           disabled={args.pending}
           onDefer={args.doDefer}
           onShortlist={args.doShortlist}
           onSkip={args.doSkip}
           onUndo={args.doUndo}
+          orientation="horizontal"
           pendingAction={args.pendingAction}
         />
       </main>

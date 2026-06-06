@@ -32,9 +32,6 @@ import {
   BathtubIcon,
   BedIcon,
   Cancel01Icon,
-  Clock01Icon,
-  InformationCircleIcon,
-  Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useHotkey } from "@tanstack/react-hotkeys";
@@ -59,7 +56,7 @@ import { type Pill, severityToken } from "../ui/patterns/feature-pills";
 import { PortalList, type PortalRowItem } from "../ui/patterns/portal-list";
 import { type StatCell, StatRow } from "../ui/patterns/stat-row";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { DeferMenu } from "./defer-menu";
+import { DecisionActions } from "./decision-actions";
 import {
   EMPTY_QUEUE_FILTERS,
   QueueFilter,
@@ -157,6 +154,8 @@ type Props = {
   data?: DesktopReviewData;
   onSkip?: () => void;
   onShortlist?: () => void;
+  /** Pop the last swipe (mirrors the mobile dock's Undo). */
+  onUndo?: () => void;
   /** Snooze the listing for `days` (it re-scrapes + re-surfaces later). */
   onDefer?: (days: number) => void;
   onOpenDetail?: () => void;
@@ -179,6 +178,7 @@ export function DesktopReview({
   data = DESKTOP_REVIEW_PLACEHOLDER,
   onSkip,
   onShortlist,
+  onUndo,
   onDefer,
   onOpenDetail,
   onSelectCluster,
@@ -211,6 +211,7 @@ export function DesktopReview({
           onOpenDetail={onOpenDetail}
           onShortlist={onShortlist}
           onSkip={onSkip}
+          onUndo={onUndo}
           pendingAction={pendingAction}
           portals={data.portals}
           today={data.today}
@@ -794,6 +795,7 @@ function RightRail({
   today,
   onSkip,
   onShortlist,
+  onUndo,
   onDefer,
   onOpenDetail,
   disabled,
@@ -804,6 +806,7 @@ function RightRail({
   today: DesktopReviewData["today"];
   onSkip?: () => void;
   onShortlist?: () => void;
+  onUndo?: () => void;
   onDefer?: (days: number) => void;
   onOpenDetail?: () => void;
   disabled?: boolean;
@@ -813,12 +816,14 @@ function RightRail({
     <aside className="-mr-2 flex min-h-0 w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pr-2">
       <TodayPanel today={today} />
       <PortalsPanel matchPct={matchPct} portals={portals} />
-      <ActionStack
+      <DecisionActions
         disabled={disabled}
         onDefer={onDefer}
         onOpenDetail={onOpenDetail}
         onShortlist={onShortlist}
         onSkip={onSkip}
+        onUndo={onUndo}
+        orientation="vertical"
         pendingAction={pendingAction}
       />
     </aside>
@@ -850,141 +855,6 @@ function PortalsPanel({
       </div>
       <PortalList hasSpread={hasSpread} rows={portals} variant="rail" />
     </section>
-  );
-}
-
-function ActionStack({
-  onShortlist,
-  onSkip,
-  onDefer,
-  onOpenDetail,
-  disabled,
-  pendingAction,
-}: {
-  onShortlist?: () => void;
-  onSkip?: () => void;
-  onDefer?: (days: number) => void;
-  onOpenDetail?: () => void;
-  disabled?: boolean;
-  pendingAction?: DesktopReviewPendingAction;
-}) {
-  const keepBusy = pendingAction === "shortlist";
-  const vetoBusy = pendingAction === "skip";
-  const deferBusy = pendingAction === "defer";
-  return (
-    <div className="flex flex-col gap-2">
-      <button
-        aria-busy={keepBusy || undefined}
-        className={cn(
-          "flex items-center justify-center gap-2.5 rounded-[6px] bg-[#0e2235] p-4 font-medium text-[#eef1f4] text-[13px] transition-opacity",
-          (!onShortlist || disabled) && "cursor-not-allowed opacity-40",
-          onShortlist && !disabled && "hover:opacity-90 active:scale-[0.99]"
-        )}
-        disabled={!onShortlist || disabled}
-        onClick={onShortlist}
-        type="button"
-      >
-        {keepBusy ? (
-          <HugeiconsIcon
-            className="animate-spin text-copper"
-            icon={Loading03Icon}
-            size={16}
-            strokeWidth={2}
-          />
-        ) : (
-          <HeartGlyph />
-        )}
-        <span>Keep</span>
-        <ActionKbd onDark>K</ActionKbd>
-      </button>
-      <div className="flex gap-2">
-        <OutlineAction
-          hint="X"
-          icon={Cancel01Icon}
-          label="Veto"
-          loading={vetoBusy}
-          onClick={onSkip}
-          disabled={disabled}
-        />
-        <OutlineAction
-          hint="I"
-          icon={InformationCircleIcon}
-          label="Details"
-          onClick={onOpenDetail}
-        />
-      </div>
-      {/* Defer — for half-filled listings where a veto would be premature.
-          Opens the 3/5/7-day picker; "D" defers with the 5-day default. */}
-      {onDefer ? (
-        <DeferMenu
-          onDefer={onDefer}
-          side="top"
-          trigger={
-            <button
-              aria-busy={deferBusy || undefined}
-              className={cn(
-                "flex items-center justify-center gap-2 rounded-[6px] border border-line bg-paper p-3.5 text-[12px] text-navy transition-opacity",
-                disabled
-                  ? "cursor-not-allowed opacity-40"
-                  : "hover:opacity-90 active:scale-[0.99]"
-              )}
-              disabled={disabled}
-              type="button"
-            >
-              <HugeiconsIcon
-                className={deferBusy ? "animate-spin" : undefined}
-                icon={deferBusy ? Loading03Icon : Clock01Icon}
-                size={14}
-                strokeWidth={1.8}
-              />
-              <span>Defer — need more info</span>
-              <ActionKbd>D</ActionKbd>
-            </button>
-          }
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/** Outline secondary action (Veto / Details) — shares one shell so the
- *  two sit as an even two-up row under the navy Keep button. */
-function OutlineAction({
-  icon,
-  label,
-  hint,
-  onClick,
-  disabled,
-  loading = false,
-}: {
-  icon: typeof Cancel01Icon;
-  label: string;
-  hint: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-}) {
-  const inert = !onClick || disabled;
-  return (
-    <button
-      aria-busy={loading || undefined}
-      className={cn(
-        "flex flex-1 items-center justify-center gap-2 rounded-[6px] border border-line bg-paper p-3.5 text-[12px] text-navy transition-opacity",
-        inert ? "cursor-not-allowed opacity-40" : "hover:opacity-90 active:scale-[0.99]"
-      )}
-      disabled={inert}
-      onClick={onClick}
-      type="button"
-    >
-      <HugeiconsIcon
-        className={loading ? "animate-spin" : undefined}
-        icon={loading ? Loading03Icon : icon}
-        size={14}
-        strokeWidth={1.8}
-      />
-      <span>{label}</span>
-      <ActionKbd>{hint}</ActionKbd>
-    </button>
   );
 }
 
@@ -1032,48 +902,6 @@ function Eyebrow({ children }: { children: ReactNode }) {
     <span className='font-semibold text-[10px] text-slate uppercase leading-3 tracking-[0.14em]'>
       {children}
     </span>
-  );
-}
-
-/** Small keycap used inside the Keep / Veto buttons. */
-function ActionKbd({
-  children,
-  onDark = false,
-}: {
-  children: ReactNode;
-  onDark?: boolean;
-}) {
-  return (
-    <kbd
-      className={cn(
-        "pointer-events-none inline-flex h-[18px] min-w-[18px] select-none items-center justify-center rounded-[4px] px-1 font-medium font-sans text-[10px]",
-        onDark
-          ? "bg-white/10 text-[#c9d3dc]"
-          : "bg-mist text-slate"
-      )}
-    >
-      {children}
-    </kbd>
-  );
-}
-
-/** Filled copper heart for the Keep button (matches the Paper SVG). */
-function HeartGlyph() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="shrink-0"
-      fill="none"
-      height="16"
-      viewBox="0 0 16 16"
-      width="16"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M8 14C8 14 1.5 10 1.5 5.5C1.5 3.5 3 2 5 2C6.5 2 7.5 3 8 4C8.5 3 9.5 2 11 2C13 2 14.5 3.5 14.5 5.5C14.5 10 8 14 8 14Z"
-        fill="#D77A4A"
-      />
-    </svg>
   );
 }
 
