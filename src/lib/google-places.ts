@@ -152,9 +152,12 @@ function classifyKind(
   if (all.includes("bus_station") || all.includes("bus_stop")) {
     return "bus";
   }
-  if (all.includes("transit_station")) {
-    return "rail";
-  }
+  // `transit_station` is Google's generic catch-all — in residential
+  // London it's overwhelmingly bus-stop clusters, not rail. Defaulting it
+  // to "rail" stamped fake 0.03mi "rail" stops onto clusters, fooling the
+  // queue's transport-time filter (nearest "rail" looked seconds away).
+  // Treat a bare transit_station (no subway/train/light_rail/bus type) as
+  // unclassified so it's dropped rather than masquerading as a station.
   return null;
 }
 

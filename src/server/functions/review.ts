@@ -852,6 +852,13 @@ const AMENITY_KIND: Record<string, "tube" | "rail" | "tram" | "bus"> = {
 
 type ClusterTargetEnrichment = {
   commuteMinutes: Record<string, number> | null;
+  /**
+   * Google Routes walk/transit minutes to the nearest few real stations
+   * (Rightmove-sourced — undefined for Zoopla/OpenRent). Authoritative for
+   * the station-time filter; preferred over `nearbyTransit`, whose `kind`
+   * tagging has historically mislabelled bus stops as rail.
+   */
+  stationRoutes: Array<{ walkMinutes: number | null }> | null;
   nearbyTransit: Array<{
     kind: string | null;
     distanceMiles: number;
@@ -925,25 +932,79 @@ function clusterPassesSearch(
       return false;
     }
   }
-  // Transport targets are OR-ed: the cluster passes if it's within reach
-  // of AT LEAST ONE requested stop kind (e.g. "tube OR train"). Pending
-  // until swept — an absent `nearbyTransit` doesn't drop the cluster.
+  return clusterPassesTransport(search, enr);
+}
+
+/** Station kinds judged on Google `stationRoutes` rather than nearbyTransit. */
+const STATION_KINDS = new Set(["tube", "rail"]);
+
+/**
+ * Transport targets are OR-ed: the cluster passes if it's within reach of
+ * AT LEAST ONE requested stop kind (e.g. "tube OR train"). Station kinds
+ * (tube/rail) are judged on Google Routes walk time from `stationRoutes` —
+ * the same source the review card shows — because `nearbyTransit` has
+ * historically mislabelled bus stops as 0.03mi "rail", fooling the
+ * heuristic. Bus/tram keep `nearbyTransit`. A target we have no data for is
+ * "pending" — it neither satisfies nor drops the cluster; only an
+ * evaluable-but-unmet set drops it.
+ */
+function clusterPassesTransport(
+  search: ActiveSearch,
+  enr: ClusterTargetEnrichment | undefined
+): boolean {
   const transportTargets = (search.transportTargets ?? []).filter(
     (t) => Boolean(AMENITY_KIND[t.amenity]) && typeof t.maxMinutes === "number"
   );
+  if (transportTargets.length === 0) {
+    return true;
+  }
+  const stationWalk = bestStationWalkMinutes(enr?.stationRoutes);
   const stops = enr?.nearbyTransit;
-  if (transportTargets.length > 0 && stops) {
-    const anyWithinReach = transportTargets.some((t) => {
-      const kind = AMENITY_KIND[t.amenity];
-      return kind
-        ? bestStopMinutes(stops, kind, t.mode) <= (t.maxMinutes as number)
-        : false;
-    });
-    if (!anyWithinReach) {
-      return false;
+  let evaluable = false;
+  let satisfied = false;
+  for (const t of transportTargets) {
+    const kind = AMENITY_KIND[t.amenity];
+    const max = t.maxMinutes as number;
+    if (!kind) {
+      continue;
+    }
+    // Station kinds: Google station routes only; don't fall back to the
+    // unreliable nearbyTransit kinds. Absent (non-Rightmove) → pending.
+    let reach: number | null;
+    if (STATION_KINDS.has(kind)) {
+      reach = stationWalk;
+    } else {
+      reach = stops ? bestStopMinutes(stops, kind, t.mode) : null;
+    }
+    if (reach === null) {
+      continue;
+    }
+    evaluable = true;
+    if (reach <= max) {
+      satisfied = true;
     }
   }
-  return true;
+  return !(evaluable && !satisfied);
+}
+
+/**
+ * Shortest real Google-routed WALK time across a cluster's `stationRoutes`,
+ * or null when none carry a walk time (pending / non-Rightmove). Walk only —
+ * a "within 15 min walk" target must not be satisfied by a transit time.
+ */
+function bestStationWalkMinutes(
+  stationRoutes: ClusterTargetEnrichment["stationRoutes"] | undefined
+): number | null {
+  if (!Array.isArray(stationRoutes) || stationRoutes.length === 0) {
+    return null;
+  }
+  let best = Number.POSITIVE_INFINITY;
+  for (const s of stationRoutes) {
+    if (typeof s.walkMinutes === "number" && s.walkMinutes < best) {
+      best = s.walkMinutes;
+    }
+  }
+  return Number.isFinite(best) ? best : null;
 }
 
 /**
@@ -991,6 +1052,7 @@ async function filterCandidatesByTargets(
       clusterId: listings.clusterId,
       promptVersion: enrichments.promptVersion,
       commuteMinutes: enrichments.commuteMinutes,
+      stationRoutes: enrichments.stationRoutes,
       nearbyTransit: enrichments.nearbyTransit,
     })
     .from(enrichments)
@@ -1004,6 +1066,7 @@ async function filterCandidatesByTargets(
     }
     enrByCluster.set(r.clusterId, {
       commuteMinutes: r.commuteMinutes ?? null,
+      stationRoutes: r.stationRoutes ?? null,
       nearbyTransit: r.nearbyTransit ?? null,
     });
   }
