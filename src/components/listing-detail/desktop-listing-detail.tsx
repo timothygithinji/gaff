@@ -48,13 +48,11 @@ import type {
   ListingDetailPartnerSwipe,
   ListingDetailPayload,
   ListingDetailPhoto,
-  ListingDetailPortalRow,
   ListingDetailPublicRecords,
   ListingDetailStationRoute,
   ListingDetailWatchout,
 } from "../../server/functions/listing-detail";
 import { AdminSidebar } from "../layout/admin-sidebar";
-import { PortalLogo } from "../portal-logo";
 import { Button } from "../ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import {
@@ -62,6 +60,12 @@ import {
   highlightsToPills,
   watchoutsToPills,
 } from "../ui/patterns/feature-pills";
+import {
+  PortalList,
+  portalLabel,
+  toPortalRows,
+} from "../ui/patterns/portal-list";
+import { PriceBlock } from "../ui/patterns/price-block";
 import { CostsCard } from "./costs";
 import { GalleryLightbox } from "./gallery-lightbox";
 import { MapView, type RouteTimes, type TransitPoint } from "./map-view";
@@ -1114,14 +1118,8 @@ function PriceCard({
   pendingAction?: ListingDetailPendingAction;
 }) {
   const { headline, portalSpread, cluster, mySwipe } = data;
-  // Only crown a "cheapest" portal when some portal is actually dearer; if
-  // every portal lists the same rent there's nothing to crown.
-  const cheapestPortalPrice = portalSpread[0]?.priceMonthly ?? null;
-  const portalHasSpread =
-    cheapestPortalPrice !== null &&
-    portalSpread.some(
-      (p) => p.priceMonthly !== null && p.priceMonthly > cheapestPortalPrice
-    );
+  const { rows: portalRows, hasSpread: portalHasSpread } =
+    toPortalRows(portalSpread);
   const iKept = mySwipe === "keep" || mySwipe === "shortlist";
   // Until a verdict is recorded, offer both Keep and Veto.
   const reviewed = mySwipe != null;
@@ -1130,21 +1128,8 @@ function PriceCard({
     .map((s) => s.name);
   return (
     <article className="flex flex-col gap-[18px] rounded-lg border border-navy bg-card p-6">
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-light text-[40px] text-foreground leading-10 tracking-[-0.025em]">
-          {formatPrice(headline.priceMonthly)}
-        </span>
-        <span className="text-[13px] text-slate">/mo</span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {portalSpread.map((row, idx) => (
-          <PortalRow
-            key={`${row.portal}-${row.url}`}
-            row={row}
-            showCheapest={portalHasSpread && idx === 0}
-          />
-        ))}
-      </div>
+      <PriceBlock priceMonthly={headline.priceMonthly} size="lg" suffix="/mo" />
+      <PortalList hasSpread={portalHasSpread} rows={portalRows} variant="rail" />
       {onEditAddress ? (
         <button
           className="flex w-full items-center justify-center gap-1.5 rounded-md border border-line bg-card p-3 text-[12px] text-foreground hover:bg-ground"
@@ -1254,57 +1239,6 @@ function shortlistLabel(
   return rest > 0
     ? `Kept · waiting on ${first} +${rest}`
     : `Kept · waiting on ${first}`;
-}
-
-function PortalRow({
-  row,
-  showCheapest,
-}: {
-  row: ListingDetailPortalRow;
-  showCheapest: boolean;
-}) {
-  const delta = row.deltaFromHeadline ?? 0;
-  return (
-    <a
-      className="group -mx-2 flex flex-col gap-1 rounded-md px-2 py-2 transition-colors hover:bg-ground"
-      href={row.url}
-      rel="noopener noreferrer"
-      target="_blank"
-    >
-      <div className="flex items-center gap-2.5">
-        <PortalLogo portal={row.portal} />
-        <span className="min-w-0 flex-1 text-[13px] text-foreground">
-          {portalLabel(row.portal)}
-          {row.agentName ? ` · ${row.agentName}` : " · direct"}
-        </span>
-        <HugeiconsIcon
-          className="shrink-0 text-slate opacity-0 transition-opacity group-hover:opacity-100"
-          icon={LinkSquare01Icon}
-          size={13}
-          strokeWidth={1.6}
-        />
-      </div>
-      {/* Price sits under the (full-width) portal name, indented to line up
-          with the name past the badge (24px badge + 10px gap). */}
-      <div className="flex items-baseline gap-1.5 pl-[34px]">
-        {showCheapest ? (
-          <>
-            <span className="font-semibold text-[13px] text-foreground">
-              {formatPrice(row.priceMonthly)}
-            </span>
-            <span className="font-bold text-[9px] text-copper uppercase tracking-[0.08em]">
-              Cheapest
-            </span>
-          </>
-        ) : (
-          <span className="text-[13px] text-slate">
-            {formatPrice(row.priceMonthly)}
-            {delta > 0 ? ` +${formatPrice(delta)}` : ""}
-          </span>
-        )}
-      </div>
-    </a>
-  );
 }
 
 function RecordsCard({
@@ -1492,13 +1426,6 @@ function firstName(name: string): string {
   return (name || "").trim().split(WHITESPACE_RE)[0] || name;
 }
 
-function formatPrice(value: number | null): string {
-  if (value === null) {
-    return "—";
-  }
-  return `£${value.toLocaleString("en-GB")}`;
-}
-
 function listedAgoLabel(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const days = Math.floor(ms / (1000 * 60 * 60 * 24));
@@ -1531,19 +1458,6 @@ function stripLeadingHouseNumber(line: string): string {
   const stripped = line.replace(/^(flat|unit|apartment|apt)\s+\w+\s+/i, "");
   const withoutNumber = stripped.replace(/^\d+[a-z]?\s+/i, "");
   return withoutNumber.length > 0 ? withoutNumber : line;
-}
-
-function portalLabel(portal: string): string {
-  if (portal === "rightmove") {
-    return "Rightmove";
-  }
-  if (portal === "zoopla") {
-    return "Zoopla";
-  }
-  if (portal === "openrent") {
-    return "OpenRent";
-  }
-  return portal;
 }
 
 type RecordRow = {
