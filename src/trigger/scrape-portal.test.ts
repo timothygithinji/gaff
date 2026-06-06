@@ -145,6 +145,9 @@ describe("filterByExclusions", () => {
     ),
     shareListing("studio", "Studio Flat", "Studio Flat — Bowes Road"),
     shareListing("hmo", "House", "5 Bed HMO — Friern Barnet"),
+    // Zoopla prod offender: share wording lives in the title only, with no
+    // "Room in a Shared" prefix the original detector keyed on.
+    shareListing("shared-accom", undefined, "3 bed shared accommodation to rent"),
   ];
 
   it("drops `Room in a Shared X` listings when house_share is excluded", () => {

@@ -744,7 +744,8 @@ function bedroomsWithinBand(
  * (and would leak retirement schemes) into the feed unfiltered.
  */
 const EXCLUSION_PATTERNS = {
-  house_share: "house\\s*share|room\\s+in\\s+a?\\s*shared",
+  house_share:
+    "house\\s*share|flat\\s*share|room\\s+in\\s+a?\\s*shared|shared\\s+(?:accommodation|flat|house|room|living|apartment)",
   student: "student",
   retirement: "retirement|over\\s*55|over\\s*60|mccarthy|churchill",
 } as const;

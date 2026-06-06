@@ -524,14 +524,24 @@ export function filterByBedroomRange(
  * so a propertyType/title check is enough for defense-in-depth across
  * all three portals.
  */
+const ROOM_TYPE_RE = /^room\b/i;
+const SHARED_TYPE_RE = /\bshared\b/i;
+const ROOM_IN_SHARED_RE = /^room in a shared\b/i;
+const HOUSE_FLAT_SHARE_RE = /\b(?:house|flat)\s*share\b/i;
+const SHARED_X_RE =
+  /\bshared\s+(?:accommodation|flat|house|room|living|apartment)\b/i;
+const HMO_RE = /\bhmo\b/i;
+
 function looksLikeRoomShare(summary: ListingSummary): boolean {
   const propertyType = summary.propertyType ?? "";
   const title = summary.title ?? "";
   return (
-    /^room\b/i.test(propertyType) ||
-    /\bshared\b/i.test(propertyType) ||
-    /^room in a shared\b/i.test(title) ||
-    /\bhmo\b/i.test(title)
+    ROOM_TYPE_RE.test(propertyType) ||
+    SHARED_TYPE_RE.test(propertyType) ||
+    ROOM_IN_SHARED_RE.test(title) ||
+    HOUSE_FLAT_SHARE_RE.test(title) ||
+    SHARED_X_RE.test(title) ||
+    HMO_RE.test(title)
   );
 }
 

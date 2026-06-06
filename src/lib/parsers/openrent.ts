@@ -278,6 +278,12 @@ function buildOpenrentSummary(args: {
 
 const TITLE_RE =
   /^(?:.+?)\s*-\s*(\d+)\s*Bed\s*([A-Za-z]+),\s*(.+?),\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*-\s*To Rent[^£]*?£([\d,]+(?:\.\d+)?)\s*(?:p\/m|pm|pcm)/i;
+// Studios have no "N Bed" segment ("… - Studio Flat, Street, N3 - To Rent
+// … £965.00 p/m"), so TITLE_RE never matches and beds/price/type were left
+// null — letting sub-band studios slip past the queue's null-keep backstop.
+// Captures (type, street, postcode, price); beds is fixed at 0.
+const TITLE_STUDIO_RE =
+  /^(?:.+?)\s*-\s*Studio\s+([A-Za-z]+),\s*(.+?),\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*-\s*To Rent[^£]*?£([\d,]+(?:\.\d+)?)\s*(?:p\/m|pm|pcm)/i;
 
 const LAT_RE = /data-lat=["'](-?\d+\.\d+)["']/;
 const LNG_RE = /data-lng=["'](-?\d+\.\d+)["']/;
@@ -582,20 +588,38 @@ export function parseOpenrentDetail(html: string): ListingDetail {
   const id = resolveOpenrentId(root);
 
   const titleMatch = titleText.match(TITLE_RE);
+  const studioMatch = titleMatch ? null : titleText.match(TITLE_STUDIO_RE);
   const latMatch = html.match(LAT_RE);
   const lngMatch = html.match(LNG_RE);
 
-  if (!titleMatch && !(latMatch && lngMatch) && !id) {
+  if (!titleMatch && !studioMatch && !(latMatch && lngMatch) && !id) {
     throw new Error(
       "OpenRent detail: neither title pattern nor lat/lng nor canonical id found — wrong page?"
     );
   }
 
-  const beds = titleMatch ? toNumber(titleMatch[1]) : undefined;
-  const propertyType = titleMatch ? titleMatch[2] : undefined;
-  const street = titleMatch ? titleMatch[3] : undefined;
-  const postcode = titleMatch ? titleMatch[4] : extractPostcode(titleText);
-  const rent = titleMatch ? toNumber(titleMatch[5]) : undefined;
+  // Two title shapes: "… - N Bed Type, Street, PC - To Rent … £X" and the
+  // studio variant ("… - Studio Flat, Street, PC - …"), which carries no
+  // "N Bed" segment and so means 0 bedrooms. Fall back to a postcode scrape
+  // when neither matches.
+  let beds: number | undefined;
+  let propertyType: string | undefined;
+  let street: string | undefined;
+  let postcode = extractPostcode(titleText);
+  let rent: number | undefined;
+  if (titleMatch) {
+    beds = toNumber(titleMatch[1]);
+    propertyType = titleMatch[2];
+    street = titleMatch[3];
+    postcode = titleMatch[4];
+    rent = toNumber(titleMatch[5]);
+  } else if (studioMatch) {
+    beds = 0;
+    propertyType = `Studio ${studioMatch[1] ?? ""}`.trim();
+    street = studioMatch[2];
+    postcode = studioMatch[3];
+    rent = toNumber(studioMatch[4]);
+  }
 
   const lat = latMatch ? toNumber(latMatch[1]) : undefined;
   const lng = lngMatch ? toNumber(lngMatch[1]) : undefined;
@@ -627,10 +651,12 @@ export function parseOpenrentDetail(html: string): ListingDetail {
   const titleFromHtml =
     titleText.replace(STRIP_OPENRENT_SUFFIX_RE, "").trim() ||
     `OpenRent listing ${id ?? ""}`;
-  const titleOut =
-    titleMatch && street
-      ? `${beds ?? "?"} bed ${propertyType ?? "property"} — ${street}`
-      : ogTitle || titleFromHtml;
+  let titleOut = ogTitle || titleFromHtml;
+  if (street && studioMatch) {
+    titleOut = `${propertyType ?? "Studio"} — ${street}`;
+  } else if (street && titleMatch) {
+    titleOut = `${beds ?? "?"} bed ${propertyType ?? "property"} — ${street}`;
+  }
 
   const url = id
     ? `https://www.openrent.co.uk/property-to-rent/${id}`
