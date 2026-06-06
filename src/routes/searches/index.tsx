@@ -19,6 +19,7 @@ import { useEffect, useState } from "react";
 import { BottomNav } from "../../components/layout/bottom-nav";
 import { DesktopSearches } from "../../components/searches/desktop-searches";
 import { subline } from "../../components/searches/desktop-searches";
+import { PageShell } from "../../components/ui/patterns/page-shell";
 import { requireSession } from "../../lib/auth-guard";
 import { findCadenceByCron } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
@@ -94,7 +95,7 @@ function SearchesIndexPage() {
         searches={data}
       />
 
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-28 sm:max-w-2xl lg:hidden">
+      <PageShell className="pb-28" variant="mobile">
         <header className="flex items-start justify-between gap-4 px-5 pt-2 pb-3.5">
           <div className="flex flex-col gap-1">
             <p className="font-normal text-[11px] text-slate uppercase tracking-[0.14em]">
@@ -126,7 +127,7 @@ function SearchesIndexPage() {
           )}
         </main>
         <BottomNav />
-      </div>
+      </PageShell>
     </>
   );
 }

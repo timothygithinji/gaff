@@ -51,6 +51,7 @@ import {
 } from "../components/review/review-shapers";
 import { EmptyState } from "../components/ui/patterns/empty-state";
 import { toPills } from "../components/ui/patterns/feature-pills";
+import { PageShell } from "../components/ui/patterns/page-shell";
 import { Skeleton } from "../components/ui/skeleton";
 import { useIsMobile } from "../hooks/use-mobile";
 import { requireSession } from "../lib/auth-guard";
@@ -58,6 +59,7 @@ import {
   type HouseholdValue,
   useHouseholdOptional,
 } from "../lib/household-context";
+import { listingDetailQueryOptions } from "../lib/listing-detail-query";
 import { outcodeLocationLabel } from "../lib/outcode-areas";
 import { propertyKindLabel } from "../lib/property-kind";
 import { queryKeys } from "../lib/query-keys";
@@ -237,6 +239,17 @@ function ReviewPage() {
     }
     qc.prefetchQuery(reviewCardQueryOptions(searchId, nextItem.clusterId));
   }, [card, queue, searchId, qc]);
+
+  // Warm the listing-detail payload for the current card. Opening detail
+  // ("I" / the Details button) navigates imperatively, so the router's
+  // intent-preload never fires — without this, the click pays the full
+  // (heaviest-in-app) payload latency cold.
+  useEffect(() => {
+    if (!card) {
+      return;
+    }
+    qc.prefetchQuery(listingDetailQueryOptions(card.cluster.id));
+  }, [card, qc]);
 
   const swipe = useMutation({
     mutationFn: (args: {
@@ -642,7 +655,7 @@ function renderMobileReview(args: {
     args.filteredQueueItems.length === 0 &&
     args.queueItems.length > 0;
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-background pb-24 sm:max-w-2xl lg:hidden">
+    <PageShell className="flex flex-col pb-24" variant="mobile">
       <ReviewHeader
         leftToday={
           filtering ? args.filteredQueueItems.length : (args.card?.leftToday ?? 0)
@@ -684,7 +697,7 @@ function renderMobileReview(args: {
       )}
 
       <BottomNav />
-    </div>
+    </PageShell>
   );
 }
 
