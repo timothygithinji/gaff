@@ -12,7 +12,11 @@
  * of outstanding suggestion groups, fed by the shared duplicates query —
  * the same cache the page reads, so badge and page never disagree.
  */
-import { GitMergeIcon, UserGroup03Icon } from "@hugeicons/core-free-icons";
+import {
+  GitMergeIcon,
+  UserCircleIcon,
+  UserGroup03Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
@@ -29,6 +33,7 @@ type SettingsLink = {
 
 const LINKS: SettingsLink[] = [
   { to: "/settings/household", label: "Household", icon: UserGroup03Icon },
+  { to: "/settings/account", label: "Account", icon: UserCircleIcon },
   { to: "/settings/duplicates", label: "Merge duplicates", icon: GitMergeIcon },
 ];
 

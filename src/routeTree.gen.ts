@@ -19,6 +19,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
 import { Route as SettingsDuplicatesRouteImport } from './routes/settings/duplicates'
+import { Route as SettingsAccountRouteImport } from './routes/settings/account'
 import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
 import { Route as ListingsClusterIdRouteImport } from './routes/listings/$clusterId'
@@ -74,6 +75,11 @@ const SettingsDuplicatesRoute = SettingsDuplicatesRouteImport.update({
   path: '/settings/duplicates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsAccountRoute = SettingsAccountRouteImport.update({
+  id: '/settings/account',
+  path: '/settings/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchesNewRoute = SearchesNewRouteImport.update({
   id: '/searches/new',
   path: '/searches/new',
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
+  '/settings/account': typeof SettingsAccountRoute
   '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches/': typeof SearchesIndexRoute
@@ -123,6 +130,7 @@ export interface FileRoutesByTo {
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
+  '/settings/account': typeof SettingsAccountRoute
   '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches': typeof SearchesIndexRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/listings/$clusterId': typeof ListingsClusterIdRoute
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
+  '/settings/account': typeof SettingsAccountRoute
   '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches/': typeof SearchesIndexRoute
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
+    | '/settings/account'
     | '/settings/duplicates'
     | '/settings/household'
     | '/searches/'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
+    | '/settings/account'
     | '/settings/duplicates'
     | '/settings/household'
     | '/searches'
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/listings/$clusterId'
     | '/searches/$id'
     | '/searches/new'
+    | '/settings/account'
     | '/settings/duplicates'
     | '/settings/household'
     | '/searches/'
@@ -207,6 +219,7 @@ export interface RootRouteChildren {
   ListingsClusterIdRoute: typeof ListingsClusterIdRoute
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
+  SettingsAccountRoute: typeof SettingsAccountRoute
   SettingsDuplicatesRoute: typeof SettingsDuplicatesRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
   SearchesIndexRoute: typeof SearchesIndexRoute
@@ -284,6 +297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsDuplicatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/account': {
+      id: '/settings/account'
+      path: '/settings/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof SettingsAccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/searches/new': {
       id: '/searches/new'
       path: '/searches/new'
@@ -327,6 +347,7 @@ const rootRouteChildren: RootRouteChildren = {
   ListingsClusterIdRoute: ListingsClusterIdRoute,
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
+  SettingsAccountRoute: SettingsAccountRoute,
   SettingsDuplicatesRoute: SettingsDuplicatesRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
   SearchesIndexRoute: SearchesIndexRoute,

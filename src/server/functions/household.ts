@@ -258,6 +258,43 @@ export const acceptInvite = createServerFn({ method: "POST" })
     return { householdId };
   });
 
+const renameHouseholdSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give your household a name")
+    .max(60, "Keep it under 60 characters"),
+});
+
+/**
+ * Rename the current user's household. Owner-only, mirroring the invite /
+ * remove guards — a member shouldn't be able to relabel the shared space
+ * out from under the owner. The `name` is trimmed + length-bounded by the
+ * schema; `households.updatedAt` advances automatically via `$onUpdate`.
+ */
+export const renameHousehold = createServerFn({ method: "POST" })
+  .inputValidator(renameHouseholdSchema)
+  .handler(async ({ data }): Promise<{ name: string }> => {
+    const session = await getCurrentUser();
+    if (!session) {
+      throw new Error("unauthorized");
+    }
+
+    const db = getDb();
+    const payload = await loadHouseholdFor(session.userId);
+    const me = payload.members.find((m) => m.userId === session.userId);
+    if (me?.role !== "owner") {
+      throw new Error("forbidden");
+    }
+
+    await db
+      .update(households)
+      .set({ name: data.name })
+      .where(eq(households.id, payload.household.id));
+
+    return { name: data.name };
+  });
+
 const removeMemberSchema = z.object({
   memberId: z.string().min(1),
 });

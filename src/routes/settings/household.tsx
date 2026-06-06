@@ -31,6 +31,7 @@ import {
   ArrowLeft01Icon,
   Copy01Icon,
   Mail01Icon,
+  PencilEdit02Icon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -71,6 +72,7 @@ import {
   type HouseholdPayload,
   createInvite,
   removeMember,
+  renameHousehold,
 } from "../../server/functions/household";
 
 export const Route = createFileRoute("/settings/household")({
@@ -152,7 +154,7 @@ function avatarFill(role: HouseholdMemberRow["role"]): string {
 }
 
 function HouseholdSettingsPage() {
-  const { isOwner, members, currentUserId } = useHousehold();
+  const { household, isOwner, members, currentUserId } = useHousehold();
   useSuspenseQuery(householdQueryOptions); // keep the cache alive
 
   const memberCountLabel = `${members.length} ${
@@ -164,6 +166,7 @@ function HouseholdSettingsPage() {
       <AdminSidebar mode="desktop-only">
         <DesktopHousehold
           currentUserId={currentUserId}
+          householdName={household.name}
           isOwner={isOwner}
           memberCountLabel={memberCountLabel}
           members={members}
@@ -203,6 +206,7 @@ function HouseholdSettingsPage() {
           </header>
 
           <main className="flex flex-col gap-2.5 px-5 pt-5 sm:px-8">
+            <HouseholdNameCard isOwner={isOwner} name={household.name} />
             {members.map((member) => (
               <MemberCard
                 currentUserId={currentUserId}
@@ -301,16 +305,155 @@ function RolePill({
   );
 }
 
+/**
+ * Editable household name. Owners get an inline edit affordance; everyone
+ * else sees the name read-only. Save is optimistic — the cached household
+ * payload's name is swapped immediately so the field (and any other
+ * consumer of `useHousehold`) repaints before the round-trip lands, then
+ * rolled back on error. Mirrors the RemoveMemberButton mutation shape.
+ */
+function HouseholdNameCard({
+  name,
+  isOwner,
+}: {
+  name: string;
+  isOwner: boolean;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+
+  const rename = useMutation({
+    mutationFn: (next: string) => renameHousehold({ data: { name: next } }),
+    onMutate: async (next: string) => {
+      await qc.cancelQueries({ queryKey: queryKeys.household() });
+      const prev = qc.getQueryData<HouseholdPayload>(queryKeys.household());
+      if (prev) {
+        qc.setQueryData<HouseholdPayload>(queryKeys.household(), {
+          ...prev,
+          household: { ...prev.household, name: next },
+        });
+      }
+      return { prev };
+    },
+    onSuccess: () => {
+      setError(null);
+      setEditing(false);
+    },
+    onError: (e: Error, _next, ctx) => {
+      if (ctx?.prev !== undefined) {
+        qc.setQueryData(queryKeys.household(), ctx.prev);
+      }
+      setError(e.message ?? "Couldn't rename household");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.household() });
+    },
+  });
+
+  function startEditing() {
+    setValue(name);
+    setError(null);
+    setEditing(true);
+  }
+
+  function submit() {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("Give your household a name");
+      return;
+    }
+    if (trimmed === name) {
+      setEditing(false);
+      return;
+    }
+    rename.mutate(trimmed);
+  }
+
+  if (!(isOwner && editing)) {
+    return (
+      <div className="flex items-center gap-3.5 rounded-lg border border-line bg-card px-[18px] py-4">
+        <div className="flex min-w-0 grow flex-col gap-0.5">
+          <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.12em]">
+            Household name
+          </p>
+          <p className="truncate font-semibold text-[15px] text-navy">{name}</p>
+        </div>
+        {isOwner ? (
+          <button
+            className="flex shrink-0 items-center gap-1.5 font-medium text-copper text-xs transition-opacity hover:opacity-70"
+            onClick={startEditing}
+            type="button"
+          >
+            <HugeiconsIcon icon={PencilEdit02Icon} size={14} strokeWidth={1.5} />
+            Edit
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-2.5 rounded-lg border border-line bg-card px-[18px] py-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <label className="flex flex-col gap-1.5">
+        <span className="font-semibold text-[10px] text-slate uppercase tracking-[0.12em]">
+          Household name
+        </span>
+        <input
+          className={cn(
+            "w-full rounded-md border bg-card px-3.5 py-2.5 text-[15px] text-navy outline-none transition-colors focus:border-primary",
+            error ? "border-warning" : "border-[#c9d3dc]"
+          )}
+          maxLength={60}
+          onChange={(e) => setValue(e.target.value)}
+          value={value}
+        />
+      </label>
+      {error ? <p className="text-warning-text text-xs">{error}</p> : null}
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          onClick={() => {
+            setEditing(false);
+            setError(null);
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Cancel
+        </Button>
+        <Button
+          loading={rename.isPending}
+          loadingText="Saving…"
+          size="sm"
+          type="submit"
+        >
+          Save
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function DesktopHousehold({
   isOwner,
   members,
   currentUserId,
   memberCountLabel,
+  householdName,
 }: {
   isOwner: boolean;
   members: HouseholdPayload["members"];
   currentUserId: string;
   memberCountLabel: string;
+  householdName: string;
 }) {
   return (
     <div className="flex w-full gap-10 px-10 py-10">
@@ -335,6 +478,8 @@ function DesktopHousehold({
             </div>
           ) : null}
         </header>
+
+        <HouseholdNameCard isOwner={isOwner} name={householdName} />
 
         <ul className="flex flex-col overflow-hidden rounded-lg border border-line bg-card">
           {members.map((member, idx) => {
