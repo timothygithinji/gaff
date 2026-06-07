@@ -516,7 +516,9 @@ function ReviewPage() {
     });
   }, [currentQueueIdx, queueItems, navigate]);
 
-  // Review-screen shortcuts: S Skip · L Shortlist · Z Undo · I Details.
+  // Review-screen shortcuts: K Keep · X Skip · Z Undo · D Defer · I Details.
+  // These keys must match the keycap hints rendered on the decision dock
+  // (DecisionActions): K Keep, X Skip, Z Undo, D Defer, I Details.
   // Plus ↑/↓ to step through the queue rail, and ←/→ to cycle the hero photos
   // (the latter registered inside HeroPhoto where the embla instance lives).
   // Disabled while the photo lightbox owns the keyboard (so its ArrowLeft/Right
@@ -524,13 +526,13 @@ function ReviewPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const isMobile = useIsMobile();
   const reviewKeysEnabled = !lightboxOpen && !isMobile;
-  useHotkey("S", doSkip, {
+  useHotkey("X", doSkip, {
     enabled: reviewKeysEnabled,
     meta: { category: "Review", description: "Skip listing" },
   });
-  useHotkey("L", doShortlist, {
+  useHotkey("K", doShortlist, {
     enabled: reviewKeysEnabled,
-    meta: { category: "Review", description: "Shortlist listing" },
+    meta: { category: "Review", description: "Keep listing" },
   });
   useHotkey("Z", doUndo, {
     enabled: reviewKeysEnabled,
