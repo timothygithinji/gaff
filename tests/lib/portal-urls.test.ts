@@ -96,26 +96,26 @@ describe("zooplaSearchUrl property type + route", () => {
     expect(params(url).getAll("property_sub_type")).toContain("detached");
   });
 
-  it("does not constrain sub-type when 'other' is selected", () => {
-    const url = zooplaSearchUrl({
-      q: "NW3",
-      radiusMiles: 0,
-      propertyTypes: ["house", "other"],
-    });
-    expect(params(url).getAll("property_sub_type")).toEqual([]);
+  it("omits sub-type when an unmappable type ('other'/'flat') is selected", () => {
+    // 'other' has no Zoopla token; 'flat' is deliberately unmapped (the
+    // `flats` token under-fetches) — either makes us fetch all + backstop.
+    for (const types of [["house", "other"], ["house", "flat"], ["flat"]]) {
+      const url = zooplaSearchUrl({ q: "NW3", radiusMiles: 0, propertyTypes: types });
+      expect(params(url).getAll("property_sub_type")).toEqual([]);
+    }
   });
 
-  it("maps flat and bungalow tokens", () => {
-    expect(
-      params(zooplaSearchUrl({ q: "N1", radiusMiles: 0, propertyTypes: ["flat"] })).getAll(
-        "property_sub_type"
-      )
-    ).toEqual(["flats"]);
+  it("maps bungalow (and house) tokens for pure house/bungalow searches", () => {
     expect(
       params(
         zooplaSearchUrl({ q: "N1", radiusMiles: 0, propertyTypes: ["bungalow"] })
       ).getAll("property_sub_type")
     ).toEqual(["bungalow"]);
+    expect(
+      params(
+        zooplaSearchUrl({ q: "N1", radiusMiles: 0, propertyTypes: ["house", "bungalow"] })
+      ).getAll("property_sub_type")
+    ).toContain("detached");
   });
 
   it("sets explicit exclusion params per enabled category", () => {

@@ -49,12 +49,16 @@ in the UI rewrites the path:
 - Emitted URL: `/properties-to-rent/nw3/houses?term=Nw3&prices_min=…`
   (i.e. `/houses`, `/flats`, `/rooms`).
 
-⚠️ We omit property type entirely and rely on the read-time/scrape-time
-backstop. Adopting the `/houses` path would filter at source, but that
-route renders listings as a `PROPERTYIDS=[…]` JS array (different markup),
-so it needs a `parseOpenrentPropertyIds`-style parser path. Single-valued,
-so a multi-type search (house+flat) can't use it → fall back to no-path +
-backstop.
+⚠️ We omit property type and rely on the read-time/scrape-time backstop —
+and this is **forced, not a choice**. Our OpenRent scrape reads the
+`PROPERTYIDS=[…]` array (via `parseOpenrentPropertyIds`), and that array is
+the **unfiltered** outcode universe: verified live, `?propertyType=1` and
+the `/houses` path both return the *identical* 157 IDs as baseline (only
+the page title changes to "Houses" — the type filter is applied client-side
+in JS to the rendered cards, which we bypass). So no URL form of the type
+filter can reduce what we parse; the backstop is the only lever. Same goes
+for `prices_*`, `bedrooms_*`, `acceptNonStudents`, etc. — all no-ops on the
+`PROPERTYIDS` array, all enforced by our backstops after the detail fetch.
 
 | Param | Values | Status |
 |---|---|---|
@@ -88,11 +92,14 @@ Our builder uses the path route for the 8 London postal-area letters
 `detached`, `semi_detached`, `terraced`, `end_terrace`, `town_house`,
 `mews`, `cottage`; plus `bungalow`; plus `flats`.
 
-⚠️ Quirks found live: `property_sub_type=flats` is oddly **restrictive**
-(returned ~1 result where the unfiltered page had 25) — a coverage caveat
-for *flat* searches (houses unaffected). `property_sub_type=maisonette`
-is **ignored** (returns the full unfiltered set) — not a valid standalone
-token, don't add it.
+⚠️ Quirks found live: there is **no usable flat token**. `flats` is the
+only one Zoopla recognises and it's catastrophically restrictive (1 of 21
+flats on a page); every other candidate (`flat`, `apartment`,
+`purpose_built_flat`, `converted_flat`, `maisonette`, `studio`, …) is
+silently ignored (returns the full unfiltered set). So we DON'T map "flat"
+→ a token: a flat search omits `property_sub_type` and lets the backstop
+keep flats from the full set (21 vs 1). House/bungalow tokens are reliable
+and kept. Filter is applied only for pure house/bungalow searches.
 
 | Param | Values | Status |
 |---|---|---|
@@ -118,9 +125,13 @@ by the read-time + scrape-time backstop (`listingMatchesPropertyTypes`),
 independent of what each URL honours. The URL params are about **coverage
 + efficiency** (don't waste page-depth on listings the backstop will drop).
 
-Open opportunities:
-1. **OpenRent `/houses` path** — filter at source (needs the PROPERTYIDS
-   parser path; single-type only).
-2. **Zoopla `flats` restrictiveness** — flat searches may under-fetch;
-   investigate the correct flat token(s) if flat coverage matters.
-3. **OpenRent `acceptNonStudents` casing** — confirm `AcceptNonStudents`.
+Investigated + resolved (2026-06-07):
+1. ~~OpenRent `/houses` path~~ — **not viable**: `PROPERTYIDS` is the
+   unfiltered universe regardless of path/query (verified 157 == 157), so
+   it can't reduce what we parse. Backstop stays the only lever.
+2. **Zoopla flat under-fetch** — **fixed**: "flat" is no longer mapped to a
+   token (none works); flat searches omit `property_sub_type` and rely on
+   the backstop for full coverage.
+3. ~~OpenRent `acceptNonStudents` casing~~ — **moot**: the param has no
+   effect on the `PROPERTYIDS` array we parse (client-side only), so casing
+   is irrelevant to our flow.

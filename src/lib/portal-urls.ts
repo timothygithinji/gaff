@@ -227,13 +227,18 @@ export type ZooplaSearchUrlParams = PortalSearchParams & {
  * Zoopla's `property_sub_type` vocabulary. Zoopla has no umbrella "house"
  * token — it's decomposed into the individual built-forms below (verified
  * live: requesting these returns houses only, zero flats). The param is
- * REPEATABLE; we `append` one per token. "other" has no clean Zoopla
- * sub-type, so any search including it skips the URL filter entirely and
- * leans on the read-time/scrape-time backstop instead (see
- * {@link zooplaSubTypes}).
+ * REPEATABLE; we `append` one per token.
+ *
+ * NB: "flat" is deliberately NOT mapped. Verified live, the only valid
+ * Zoopla flat token (`flats`) is catastrophically restrictive — it
+ * returned 1 of 21 flats on a page — and every other candidate (`flat`,
+ * `apartment`, `purpose_built_flat`, …) is silently ignored (returns the
+ * full unfiltered set). So a flat-only search gets BETTER coverage by
+ * omitting `property_sub_type` and letting the backstop drop non-flats
+ * from the full set. "other" is likewise unmapped. Any selected type
+ * that isn't here makes {@link zooplaSubTypes} omit the filter entirely.
  */
 const ZOOPLA_SUBTYPE_MAP: Record<string, string[]> = {
-  flat: ["flats"],
   house: [
     "detached",
     "semi_detached",
@@ -250,8 +255,10 @@ const ZOOPLA_SUBTYPE_MAP: Record<string, string[]> = {
  * Expand the search's form-level property types into Zoopla sub-type
  * tokens. Returns `null` (→ omit the filter, fetch everything, let the
  * backstop drop mismatches) when there's nothing to filter or any selected
- * type is unmappable ("other") — sending a partial filter would silently
- * drop the unmappable type at the portal, which the backstop can't undo.
+ * type is unmappable ("flat"/"other") — sending a partial filter would
+ * silently drop the unmappable type at the portal, which the backstop
+ * can't undo. So the filter is applied ONLY for pure house/bungalow
+ * combinations, where Zoopla's tokens are reliable.
  */
 function zooplaSubTypes(types: string[] | undefined): string[] | null {
   if (!types || types.length === 0) {
