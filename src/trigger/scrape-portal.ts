@@ -57,6 +57,7 @@ import {
   zooplaAddedFromDays,
   zooplaSearchUrl,
 } from "../lib/portal-urls";
+import { listingMatchesPropertyTypes } from "../lib/property-kind";
 import { storeRawHtml } from "../lib/raw-html";
 import { findScheduleByExternalId } from "../lib/schedule-lookup";
 import {
@@ -585,6 +586,28 @@ export function filterByExclusions(
 }
 
 /**
+ * Drop listings whose type isn't in the search's `propertyTypes` filter.
+ *
+ * The portal URLs only partially enforce this: Rightmove honours
+ * `propertyTypes`, Zoopla only on the path route (London outcodes),
+ * OpenRent not at all. So a "house" search leaks flats from OpenRent and
+ * from Zoopla's free-text fallback. This is the backstop — empty filter is
+ * a no-op, and unclassifiable listings are kept (see
+ * {@link listingMatchesPropertyTypes}).
+ */
+export function filterByPropertyType(
+  summaries: ListingSummary[],
+  propertyTypes: readonly string[]
+): ListingSummary[] {
+  if (propertyTypes.length === 0) {
+    return summaries;
+  }
+  return summaries.filter((s) =>
+    listingMatchesPropertyTypes(s.propertyType ?? null, s.title ?? "", propertyTypes)
+  );
+}
+
+/**
  * The "mutable" subset of `listings` — every column we want refreshed
  * each time the same portal listing reappears in a search sweep.
  * `first_seen_at`, `id`, and the key columns (search/portal/portalListingId)
@@ -987,7 +1010,8 @@ export const scrapePortalTask = task({
         search.minBedrooms,
         search.maxBedrooms
       );
-      const kept = filterByExclusions(bedFiltered, search.exclusions);
+      const exclusionFiltered = filterByExclusions(bedFiltered, search.exclusions);
+    const kept = filterByPropertyType(exclusionFiltered, search.propertyTypes);
       const { totalSeen, newCount, touchedPortalListingIds } =
         await upsertListings(db, searchId, portal, kept);
       totalListingsFound += totalSeen;

@@ -16,6 +16,7 @@ import {
   filterByExcludeLocations,
   filterByExclusions,
   filterByPriceRange,
+  filterByPropertyType,
 } from "./scrape-portal";
 
 function listing(
@@ -167,6 +168,41 @@ describe("filterByExclusions", () => {
   it("is a no-op for an empty exclusion list", () => {
     const out = filterByExclusions(mixed, []);
     expect(out).toBe(mixed);
+  });
+});
+
+describe("filterByPropertyType", () => {
+  function typeListing(
+    portalListingId: string,
+    propertyType: string | undefined,
+    title: string
+  ): ListingSummary {
+    return { portalListingId, propertyType, title } as ListingSummary;
+  }
+
+  const mixed: ListingSummary[] = [
+    typeListing("flat", "Flat", "2 Bed Flat"),
+    typeListing("house", "Terraced", "3 Bed Terraced House"),
+    typeListing("bungalow", "Bungalow", "Detached Bungalow"),
+    typeListing("unknown", undefined, "Parking space"),
+  ];
+
+  it("drops flats for a house search but keeps houses + unknowns", () => {
+    expect(ids(filterByPropertyType(mixed, ["house"]))).toEqual([
+      "house",
+      "unknown",
+    ]);
+  });
+
+  it("treats bungalow as distinct from house", () => {
+    expect(ids(filterByPropertyType(mixed, ["bungalow"]))).toEqual([
+      "bungalow",
+      "unknown",
+    ]);
+  });
+
+  it("is a no-op for an empty filter", () => {
+    expect(filterByPropertyType(mixed, [])).toBe(mixed);
   });
 });
 

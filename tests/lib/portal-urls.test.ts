@@ -59,6 +59,79 @@ describe("zooplaSearchUrl pagination + recency", () => {
   });
 });
 
+describe("zooplaSearchUrl property type + route", () => {
+  it("uses the path route for London outcodes and honours property_sub_type", () => {
+    const url = zooplaSearchUrl({
+      q: "NW3",
+      radiusMiles: 0,
+      propertyTypes: ["house"],
+    });
+    expect(url.startsWith("https://www.zoopla.co.uk/to-rent/property/london/nw3/?")).toBe(
+      true
+    );
+    const subs = params(url).getAll("property_sub_type");
+    // "house" expands to its built-forms, repeated — no flats.
+    expect(subs).toContain("detached");
+    expect(subs).toContain("semi_detached");
+    expect(subs).toContain("terraced");
+    expect(subs).not.toContain("flats");
+  });
+
+  it("extracts the outcode from a postal_code formattedAddress", () => {
+    const url = zooplaSearchUrl({ q: "NW3, London, UK", radiusMiles: 0 });
+    expect(
+      url.startsWith("https://www.zoopla.co.uk/to-rent/property/london/nw3/?")
+    ).toBe(true);
+  });
+
+  it("falls back to the free-text route for non-London places", () => {
+    const url = zooplaSearchUrl({
+      q: "Camden Town, London, UK",
+      radiusMiles: 0,
+      propertyTypes: ["house"],
+    });
+    expect(url.startsWith("https://www.zoopla.co.uk/search/?")).toBe(true);
+    expect(params(url).get("q")).toBe("Camden Town, London, UK");
+    // Type tokens are still appended (harmless; backstop enforces type).
+    expect(params(url).getAll("property_sub_type")).toContain("detached");
+  });
+
+  it("does not constrain sub-type when 'other' is selected", () => {
+    const url = zooplaSearchUrl({
+      q: "NW3",
+      radiusMiles: 0,
+      propertyTypes: ["house", "other"],
+    });
+    expect(params(url).getAll("property_sub_type")).toEqual([]);
+  });
+
+  it("maps flat and bungalow tokens", () => {
+    expect(
+      params(zooplaSearchUrl({ q: "N1", radiusMiles: 0, propertyTypes: ["flat"] })).getAll(
+        "property_sub_type"
+      )
+    ).toEqual(["flats"]);
+    expect(
+      params(
+        zooplaSearchUrl({ q: "N1", radiusMiles: 0, propertyTypes: ["bungalow"] })
+      ).getAll("property_sub_type")
+    ).toEqual(["bungalow"]);
+  });
+
+  it("sets explicit exclusion params per enabled category", () => {
+    const p = params(
+      zooplaSearchUrl({
+        q: "NW3",
+        radiusMiles: 0,
+        exclusions: ["house_share", "student", "retirement"],
+      })
+    );
+    expect(p.get("is_shared_accommodation")).toBe("false");
+    expect(p.get("is_student_accommodation")).toBe("false");
+    expect(p.get("is_retirement_home")).toBe("false");
+  });
+});
+
 describe("zooplaAddedFromDays", () => {
   it("maps cadence days to the nearest covering enum", () => {
     expect(zooplaAddedFromDays(1)).toBe("24_hours");

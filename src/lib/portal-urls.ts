@@ -12,21 +12,25 @@
  *     string does not work — Rightmove silently returns a "not found" page.
  *     Radius is sent as `radius=<miles>` (decimal); `0.0` means "this
  *     area only".
- *   - Zoopla uses the free-text search route `/search/?section=to-rent&q=...`.
- *     The path-based `/to-rent/property/<city>/<outcode>/` URL still
- *     works but requires a city segment we don't have for arbitrary
- *     locality picks (e.g. "Manchester", "Cambridge"). The free-text
- *     route handles every place type with no slug derivation —
- *     verified empirically: full parity vs path for postcodes, correct
- *     scoping for cities and sublocalities. Radius is `radius=<miles>`
+ *   - Zoopla has two routes and we use BOTH: the path route
+ *     `/to-rent/property/london/<outcode>/` for London outcodes (the only
+ *     route that honours `property_sub_type` — verified live), and the
+ *     free-text `/search/?section=to-rent&q=...` route for everything else
+ *     (cities, sublocalities, non-London outcodes) where we can't derive a
+ *     region slug. The free-text route scopes any place server-side but
+ *     silently ignores `property_sub_type`, so type filtering there falls
+ *     to the read-time/scrape-time backstop. Radius is `radius=<miles>`
  *     (decimal); `0` means "this area only".
  *   - OpenRent uses `term=` and `area=<km integer>`; we pass the place's
  *     display name and convert the user's miles → km (rounded) at
  *     URL-build time, floored at OR's UI minimum of 2km. The older
  *     `within=` param is no longer honoured.
  *   - `propertyTypes` maps to portal-specific tokens (Rightmove: comma
- *     joined; Zoopla: single `property_sub_type`; OpenRent: not supported
- *     in the URL — filtered downstream by the parser).
+ *     joined `propertyTypes`; Zoopla: repeated `property_sub_type`, with
+ *     "house" expanded to its built-forms, and only on the path route;
+ *     OpenRent: not supported in the URL — enforced by the backstop). The
+ *     read-time/scrape-time backstop (`listingMatchesPropertyTypes`)
+ *     guarantees correctness regardless of what each portal's URL honours.
  *   - Silent-win defaults: Rightmove gets `includeLetAgreed=false` and
  *     `letType=longTerm` baked in. Zoopla gets `include_let_agreed=false`.
  *     OpenRent's existing `isLive=true` is the equivalent — leave alone.
@@ -41,10 +45,9 @@
  *     `pets_allowed=true` as its own param. OpenRent `hasGarden=true`
  *     / `hasParking=true` / `acceptPets=true` each as its own param.
  *   - Exclusions: Rightmove `dontShow=student,retirement,houseShare`
- *     comma list. Zoopla uses path selection (default `/property/` path
- *     already hides student-accommodation and retirement-homes which
- *     have their own paths) plus explicit `is_shared_accommodation=false`
- *     for house-share. OpenRent only supports `acceptNonStudents=true`
+ *     comma list. Zoopla uses explicit `is_shared_accommodation=false` /
+ *     `is_student_accommodation=false` / `is_retirement_home=false` per
+ *     enabled category. OpenRent only supports `acceptNonStudents=true`
  *     ("Accepts non-students"); it has no retirement-homes or house-share
  *     categories at all, so those exclusions are no-ops on OR (nothing to
  *     hide).
@@ -219,6 +222,89 @@ export type ZooplaSearchUrlParams = PortalSearchParams & {
   added?: ZooplaAdded;
 };
 
+/**
+ * Map each form-level property-type token (`searches.propertyTypes`) to
+ * Zoopla's `property_sub_type` vocabulary. Zoopla has no umbrella "house"
+ * token — it's decomposed into the individual built-forms below (verified
+ * live: requesting these returns houses only, zero flats). The param is
+ * REPEATABLE; we `append` one per token. "other" has no clean Zoopla
+ * sub-type, so any search including it skips the URL filter entirely and
+ * leans on the read-time/scrape-time backstop instead (see
+ * {@link zooplaSubTypes}).
+ */
+const ZOOPLA_SUBTYPE_MAP: Record<string, string[]> = {
+  flat: ["flats"],
+  house: [
+    "detached",
+    "semi_detached",
+    "terraced",
+    "end_terrace",
+    "town_house",
+    "mews",
+    "cottage",
+  ],
+  bungalow: ["bungalow"],
+};
+
+/**
+ * Expand the search's form-level property types into Zoopla sub-type
+ * tokens. Returns `null` (→ omit the filter, fetch everything, let the
+ * backstop drop mismatches) when there's nothing to filter or any selected
+ * type is unmappable ("other") — sending a partial filter would silently
+ * drop the unmappable type at the portal, which the backstop can't undo.
+ */
+function zooplaSubTypes(types: string[] | undefined): string[] | null {
+  if (!types || types.length === 0) {
+    return null;
+  }
+  const out: string[] = [];
+  for (const t of types) {
+    const mapped = ZOOPLA_SUBTYPE_MAP[t.toLowerCase()];
+    if (!mapped) {
+      return null;
+    }
+    out.push(...mapped);
+  }
+  return out;
+}
+
+/**
+ * The eight London postal-area letter groups. An outcode whose area
+ * letters are one of these resolves under Zoopla's `/to-rent/property/
+ * london/<outcode>/` PATH route — the only route that honours
+ * `property_sub_type` (the free-text `/search/?q=` route silently ignores
+ * it). Verified live for E/EC/N/NW/SE/SW/W/WC. Outer Greater-London codes
+ * (EN, HA, BR, …) are deliberately excluded: their Zoopla region slug
+ * isn't `london`, and a wrong path returns zero results.
+ */
+const LONDON_OUTCODE_AREAS = new Set([
+  "E",
+  "EC",
+  "N",
+  "NW",
+  "SE",
+  "SW",
+  "W",
+  "WC",
+]);
+const OUTCODE_HEAD_RE = /^([A-Z]{1,2})[0-9][A-Z0-9]?$/;
+
+/**
+ * If the Zoopla `q` is (or starts with) a London outcode, return the bare
+ * uppercased outcode so the caller can build the path route; otherwise
+ * `null`. Handles both the per-outcode area refs (`q = "NW3"`) and the
+ * postal_code free-text ref (`q = "NW3, London, UK"`). A locality name
+ * ("Camden Town, …") yields `null` → free-text route + backstop.
+ */
+function londonOutcode(q: string): string | null {
+  const head = (q.split(",")[0] ?? "").trim().toUpperCase();
+  const m = head.match(OUTCODE_HEAD_RE);
+  if (!m?.[1]) {
+    return null;
+  }
+  return LONDON_OUTCODE_AREAS.has(m[1]) ? head : null;
+}
+
 /** Zoopla returns 25 cards per page. */
 export const ZOOPLA_RESULTS_PER_PAGE = 25;
 /** Zoopla caps search depth at 40 pages (~1,000 results). */
@@ -270,9 +356,6 @@ export function zooplaAddedFromDays(days: number | undefined): ZooplaAdded | und
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flat sequence of conditional `usp.set(...)` calls mapping each search param to Zoopla's query string — the branches are independent and splitting would just scatter the URL contract.
 export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
   const usp = new URLSearchParams();
-  usp.set("section", "to-rent");
-  usp.set("category", "residential");
-  usp.set("q", params.q);
   usp.set("radius", params.radiusMiles.toFixed(2));
   usp.set("price_frequency", "per_month");
   usp.set("results_sort", "newest_listings");
@@ -301,11 +384,14 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
   if (typeof params.maxBathrooms === "number") {
     usp.set("baths_max", String(params.maxBathrooms));
   }
-  if (params.propertyTypes && params.propertyTypes.length > 0) {
-    // Zoopla wants a single sub-type — first one wins.
-    const firstType = params.propertyTypes[0]?.toLowerCase();
-    if (firstType) {
-      usp.set("property_sub_type", firstType);
+  // `property_sub_type` is REPEATABLE and only honoured on the path route
+  // below; we still append it on the free-text route (harmless, ignored)
+  // and rely on the read-time/scrape-time backstop there. `house` has no
+  // single Zoopla token — it expands to several built-forms.
+  const subTypes = zooplaSubTypes(params.propertyTypes);
+  if (subTypes) {
+    for (const st of subTypes) {
+      usp.append("property_sub_type", st);
     }
   }
   if (params.furnished) {
@@ -322,17 +408,31 @@ export function zooplaSearchUrl(params: ZooplaSearchUrlParams): string {
       }
     }
   }
-  // Exclusions:
-  //   - student / retirement: handled by the `/property/` path —
-  //     they live under `/student-accommodation/` and `/retirement-
-  //     homes/` respectively, so the default path already hides them.
-  //   - house_share: shared accommodation is hidden by default, but
-  //     we set explicitly when the user enables the toggle so the
-  //     intent is visible in the URL and resilient if Zoopla's
-  //     default changes.
+  // Exclusions — explicit `is_*=false` params, verified live against a
+  // real Zoopla URL. Each defaults to hidden, but we set it explicitly so
+  // the intent is visible and resilient to Zoopla's defaults changing.
   if (params.exclusions?.includes("house_share")) {
     usp.set("is_shared_accommodation", "false");
   }
+  if (params.exclusions?.includes("student")) {
+    usp.set("is_student_accommodation", "false");
+  }
+  if (params.exclusions?.includes("retirement")) {
+    usp.set("is_retirement_home", "false");
+  }
+  // Route choice: Zoopla only honours `property_sub_type` on the path
+  // route `/to-rent/property/london/<outcode>/`. Use it when `q` resolves
+  // to a London outcode; otherwise fall back to the free-text `/search/`
+  // route (which scopes arbitrary localities server-side but ignores the
+  // type filter — the backstop covers that case).
+  const outcode = londonOutcode(params.q);
+  if (outcode) {
+    usp.set("q", outcode);
+    return `https://www.zoopla.co.uk/to-rent/property/london/${outcode.toLowerCase()}/?${usp.toString()}`;
+  }
+  usp.set("section", "to-rent");
+  usp.set("category", "residential");
+  usp.set("q", params.q);
   return `https://www.zoopla.co.uk/search/?${usp.toString()}`;
 }
 

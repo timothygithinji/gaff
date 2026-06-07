@@ -54,6 +54,7 @@ import {
   HOUSE_SHARE_PATTERN,
   type PropertyKind,
   classifyPropertyKind,
+  listingMatchesPropertyTypes,
 } from "../../lib/property-kind";
 import {
   type ActiveSearch,
@@ -818,6 +819,48 @@ function listingPassesExclusions() {
   )`;
 }
 
+/**
+ * Property-type regex sources for the SQL backstop. These are the Postgres
+ * twins of the `\b`-bounded regexes in `property-kind.ts`: Postgres ARE
+ * uses `\y` for a word boundary (`\b` is backspace in POSIX), so the
+ * boundaries are spelled `\y` here. The share pattern is boundary-free and
+ * shared verbatim. Precedence (share > studio > flat > house) is applied in
+ * {@link listingMatchesPropertyType} below, mirroring `classifyPropertyKind`.
+ */
+const PROPERTY_TYPE_PATTERNS = {
+  studio: "studio",
+  flat: "\\y(?:flat|apartment|maisonette)\\y",
+  house: "\\y(?:house|bungalow|cottage|terrace[d]?|detached|semi|mews|town\\s*house)\\y",
+  bungalow: "\\ybungalow\\y",
+} as const;
+
+/**
+ * SQL backstop mirroring `filterByPropertyType` in scrape-portal.ts and
+ * {@link listingMatchesPropertyTypes}. Enforces `searches.propertyTypes`
+ * at read time — the only place it bites for OpenRent (no URL type filter)
+ * and Zoopla's free-text fallback (ignores `property_sub_type`). An empty
+ * filter is a no-op; an unclassifiable listing is kept (keep-null). The
+ * `kind` precedence (share > studio > flat > house) matches the JS
+ * classifier so a listing buckets identically at the DB and in memory;
+ * "bungalow" is split out from "house" the way the form's pills imply.
+ */
+function listingMatchesPropertyType() {
+  const h = sql`(coalesce(${listings.propertyType}, '') || ' ' || ${listings.title})`;
+  const pt = searches.propertyTypes;
+  const isShare = sql`${h} ~* ${HOUSE_SHARE_PATTERN}`;
+  const isStudio = sql`${h} ~* ${PROPERTY_TYPE_PATTERNS.studio}`;
+  const isFlat = sql`${h} ~* ${PROPERTY_TYPE_PATTERNS.flat}`;
+  const isHouse = sql`${h} ~* ${PROPERTY_TYPE_PATTERNS.house}`;
+  const isBungalow = sql`${h} ~* ${PROPERTY_TYPE_PATTERNS.bungalow}`;
+  return sql`(
+    cardinality(${pt}) = 0
+    OR NOT (${isShare} OR ${isStudio} OR ${isFlat} OR ${isHouse})
+    OR ('flat' = ANY(${pt}) AND NOT ${isShare} AND (${isStudio} OR ${isFlat}))
+    OR ('house' = ANY(${pt}) AND ${isHouse} AND NOT ${isShare} AND NOT ${isStudio} AND NOT ${isFlat} AND NOT ${isBungalow})
+    OR ('bungalow' = ANY(${pt}) AND ${isBungalow})
+  )`;
+}
+
 /** JS twin of {@link listingPassesExclusions} for already-fetched rows. */
 function passesExclusions(
   propertyType: string | null,
@@ -990,7 +1033,8 @@ async function loadRankedQueueClusterIds(
         listingWithinSearchBand(),
         listingMatchesBedroomBand(),
         listingMatchesBathroomBand(),
-        listingPassesExclusions()
+        listingPassesExclusions(),
+        listingMatchesPropertyType()
       )
     )
     .groupBy(listings.clusterId)
@@ -1140,6 +1184,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
               minBathrooms: s.minBathrooms,
               maxBathrooms: s.maxBathrooms,
               exclusions: s.exclusions,
+              propertyTypes: s.propertyTypes,
             },
           ] as const
       )
@@ -1153,7 +1198,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         priceWithinBand(l.priceMonthly, band.minPrice, band.maxPrice) &&
         bedroomsWithinBand(l.bedrooms, band.minBedrooms, band.maxBedrooms) &&
         bathroomsWithinBand(l.bathrooms, band.minBathrooms, band.maxBathrooms) &&
-        passesExclusions(l.propertyType, l.title, band.exclusions)
+        passesExclusions(l.propertyType, l.title, band.exclusions) &&
+        listingMatchesPropertyTypes(l.propertyType, l.title, band.propertyTypes)
       );
     });
 
@@ -1434,7 +1480,8 @@ async function hydrateQueueItems(
         inArray(listings.searchId, activeSearchIds),
         listingWithinSearchBand(),
         listingMatchesBedroomBand(),
-        listingPassesExclusions()
+        listingPassesExclusions(),
+        listingMatchesPropertyType()
       )
     );
 
