@@ -291,21 +291,37 @@ async function scrapeOpenrentByIdDiff(deps: {
     summaries: ListingSummary[],
     label: string,
     rawCount: number
-  ) => Promise<void>;
+  ) => Promise<{ keptPortalListingIds: Set<string> }>;
   scopeFor: (label: string) => string;
 }): Promise<void> {
   const { db, searchId, mode, targets, fetchPage, ingest, scopeFor } = deps;
 
-  const storedRows = await db
-    .select({ pid: schema.listings.portalListingId })
-    .from(schema.listings)
-    .where(
-      and(
-        eq(schema.listings.searchId, searchId),
-        eq(schema.listings.portal, "openrent")
-      )
-    );
-  const storedIds = new Set(storedRows.map((r) => r.pid));
+  // Skip an ID if we've already FETCHED a detail page for it — whether it
+  // became a listing (`listings`) or was classified and rejected by the
+  // filters (`openrent_seen_ids`). Both must be excluded or rejected IDs
+  // (wrong beds/price/a share) would be re-fetched newest-first every run and
+  // starve the detail budget before it reaches genuine matches deeper in the
+  // unfiltered `PROPERTYIDS` list. The `listings` half also gracefully covers
+  // matches stored before `openrent_seen_ids` existed (empty on first run).
+  const [storedRows, seenRows] = await Promise.all([
+    db
+      .select({ pid: schema.listings.portalListingId })
+      .from(schema.listings)
+      .where(
+        and(
+          eq(schema.listings.searchId, searchId),
+          eq(schema.listings.portal, "openrent")
+        )
+      ),
+    db
+      .select({ pid: schema.openrentSeenIds.portalListingId })
+      .from(schema.openrentSeenIds)
+      .where(eq(schema.openrentSeenIds.searchId, searchId)),
+  ]);
+  const storedIds = new Set<string>([
+    ...storedRows.map((r) => r.pid),
+    ...seenRows.map((r) => r.pid),
+  ]);
   const processed = new Set<string>();
   let detailBudget = OPENRENT_DETAIL_CAP[mode];
   const startedAt = Date.now();
@@ -384,8 +400,49 @@ async function scrapeOpenrentByIdDiff(deps: {
     }
     // Ingest whatever this outcode collected — including a partial batch
     // when we broke early on the time budget, so that work isn't wasted.
-    await ingest(summaries, target.label, ids.length);
+    const { keptPortalListingIds } = await ingest(
+      summaries,
+      target.label,
+      ids.length
+    );
+    // Record every ID we fetched AND parsed this outcode so the next run skips
+    // it — matched ones (now a `listings` row) and rejected ones alike. Fetch
+    // /parse failures never reach `summaries`, so a transient block retries.
+    await recordOpenrentSeen(db, searchId, summaries, keptPortalListingIds);
   }
+}
+
+/**
+ * Persist the OpenRent IDs we fetched + parsed this run so a later run skips
+ * them. `matched` records whether the ID survived the search filters (became a
+ * `listings` row) — kept for observability only; both values are skipped.
+ * Idempotent: re-seeing an ID is a no-op (the run already excludes stored IDs,
+ * but a concurrent run or a re-list could race).
+ */
+async function recordOpenrentSeen(
+  db: ReturnType<typeof getDb>,
+  searchId: string,
+  summaries: ListingSummary[],
+  keptPortalListingIds: Set<string>
+): Promise<void> {
+  if (summaries.length === 0) {
+    return;
+  }
+  await db
+    .insert(schema.openrentSeenIds)
+    .values(
+      summaries.map((s) => ({
+        searchId,
+        portalListingId: s.portalListingId,
+        matched: keptPortalListingIds.has(s.portalListingId),
+      }))
+    )
+    .onConflictDoNothing({
+      target: [
+        schema.openrentSeenIds.searchId,
+        schema.openrentSeenIds.portalListingId,
+      ],
+    });
 }
 
 /**
@@ -994,7 +1051,7 @@ export const scrapePortalTask = task({
       summaries: ListingSummary[],
       label: string,
       rawCount: number
-    ): Promise<void> => {
+    ): Promise<{ keptPortalListingIds: Set<string> }> => {
       const locationFiltered = filterByExcludeLocations(
         summaries,
         search.excludeLocations,
@@ -1011,7 +1068,7 @@ export const scrapePortalTask = task({
         search.maxBedrooms
       );
       const exclusionFiltered = filterByExclusions(bedFiltered, search.exclusions);
-    const kept = filterByPropertyType(exclusionFiltered, search.propertyTypes);
+      const kept = filterByPropertyType(exclusionFiltered, search.propertyTypes);
       const { totalSeen, newCount, touchedPortalListingIds } =
         await upsertListings(db, searchId, portal, kept);
       totalListingsFound += totalSeen;
@@ -1027,6 +1084,7 @@ export const scrapePortalTask = task({
         totalSeen,
         newCount,
       });
+      return { keptPortalListingIds: new Set(touchedPortalListingIds) };
     };
 
     // R2 scope per outcode: bare place name when there's a single target,

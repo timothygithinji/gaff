@@ -886,6 +886,49 @@ export const scrapeRuns = pgTable("scrape_runs", {
   rawKey: text("raw_key"),
 });
 
+/**
+ * Every OpenRent listing ID we've already fetched a DETAIL page for under a
+ * given search — whether or not it ended up matching the search filters.
+ *
+ * OpenRent's search page exposes the COMPLETE unfiltered area inventory as a
+ * `PROPERTYIDS` array (its bed/price URL filters run client-side, so the
+ * server-rendered ID list ignores them). The ID-diff scraper
+ * (`scrapeOpenrentByIdDiff`) fetches a detail page per *unseen* ID, newest
+ * first, bounded by a small per-run budget. Before this table the only record
+ * of "already handled" was the `listings` row — but a non-matching listing
+ * (wrong beds/price/a share) is filtered out and never stored, so it stayed an
+ * unseen candidate and got re-fetched newest-first on every run, perpetually
+ * burning the budget before it could reach genuine matches deeper in the list.
+ * Recording every classified ID here lets the diff skip it for good.
+ *
+ * Only IDs we fetched AND parsed land here. A fetch error or a parse failure
+ * (transient block / "listing gone" page) is deliberately NOT recorded, so a
+ * real listing behind a transient hiccup is retried on the next run.
+ */
+export const openrentSeenIds = pgTable(
+  "openrent_seen_ids",
+  {
+    searchId: text("search_id")
+      .notNull()
+      .references(() => searches.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    portalListingId: text("portal_listing_id").notNull(),
+    /**
+     * Did this ID pass the search filters and become a `listings` row? Both
+     * values are skipped by the diff — this is kept purely for observability
+     * (how much of an outcode's inventory is noise we keep paying to re-classify).
+     */
+    matched: boolean("matched").notNull(),
+    fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.searchId, t.portalListingId] }),
+    index("openrent_seen_ids_fetched_at_idx").on(t.fetchedAt),
+  ]
+);
+
 // Per-user UI state. Today's only field is `lastSeenMatches` — the
 // timestamp the Matches tab badge clears against. Keyed on userId
 // (1:1 with `user`) so we never have to think about which row to
