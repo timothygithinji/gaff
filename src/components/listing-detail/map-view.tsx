@@ -84,13 +84,46 @@ const CATEGORY_COLOR: Record<PlaceCategory, string> = {
   restaurant: "#d77a4a",
 };
 
+const KIND_LABEL: Record<TransitKind, string> = {
+  tube: "Tube station",
+  rail: "Rail station",
+  tram: "Tram stop",
+  bus: "Bus stop",
+};
+
+const CATEGORY_LABEL: Record<PlaceCategory, string> = {
+  transport: "Transport",
+  park: "Park",
+  shop: "Shop",
+  gp: "GP surgery",
+  restaurant: "Restaurant",
+};
+
+/** What a hovered marker reveals: its name + a one-line "what it is". */
+type HoverTip = { name: string; detail: string | null; color: string; x: number; y: number };
+
+/** Build the hover-tooltip text for a stop ("Tube station · Piccadilly · 0.3 mi"). */
+function pointTooltip(p: TransitPoint): { name: string; detail: string | null } {
+  const bits: string[] = [];
+  bits.push(p.kind ? KIND_LABEL[p.kind] : CATEGORY_LABEL[p.category]);
+  if (p.lines?.length) {
+    bits.push(p.lines.slice(0, 3).join(", "));
+  }
+  if (typeof p.distanceMiles === "number") {
+    bits.push(`${p.distanceMiles.toFixed(1)} mi`);
+  }
+  return { name: p.name, detail: bits.length ? bits.join(" · ") : null };
+}
+
 interface GMapsMap {
   setOptions(opts: Record<string, unknown>): void;
   setCenter(latLng: LatLng): void;
 }
+/** The subset of a google.maps mouse event we read (cursor position). */
+type GMapsMouseEvent = { domEvent?: MouseEvent };
 interface GMapsMarker {
   setMap(map: GMapsMap | null): void;
-  addListener(event: string, handler: () => void): void;
+  addListener(event: string, handler: (e?: GMapsMouseEvent) => void): void;
   setIcon(icon: unknown): void;
   setPosition(latLng: LatLng): void;
 }
@@ -183,6 +216,8 @@ export function MapView({
 }: Props) {
   const status = useGoogleMaps();
   const isDark = useIsDarkTheme();
+  /** The marker currently under the cursor, positioned for its tooltip. */
+  const [hover, setHover] = useState<HoverTip | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GMapsMap | null>(null);
   const propertyMarkerRef = useRef<GMapsMarker | null>(null);
@@ -198,10 +233,14 @@ export function MapView({
   // once at marker-build time always call through to the current props.
   const onToggleRef = useRef(onTogglePoint);
   const onRouteComputedRef = useRef(onRouteComputed);
+  // The property marker's hover closure is built once but `title` can change
+  // (the review page reuses one map across listings), so read it via a ref.
+  const titleRef = useRef(title);
   useEffect(() => {
     onToggleRef.current = onTogglePoint;
     onRouteComputedRef.current = onRouteComputed;
-  }, [onTogglePoint, onRouteComputed]);
+    titleRef.current = title;
+  }, [onTogglePoint, onRouteComputed, title]);
 
   // Build the map once the SDK is ready. Guarded by `mapRef.current` so the
   // listed deps can change without rebuilding it.
@@ -229,11 +268,27 @@ export function MapView({
     propertyMarkerRef.current = new api.Marker({
       position: center,
       map,
-      title,
       icon: propertyPinIcon(api),
       zIndex: 1000,
     });
-  }, [status, lat, lng, title, isDark]);
+    const showPropertyTip = (e?: GMapsMouseEvent) => {
+      const dom = e?.domEvent;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!dom || !rect) {
+        return;
+      }
+      setHover({
+        name: titleRef.current,
+        detail: "This property",
+        color: "#0e2235",
+        x: dom.clientX - rect.left,
+        y: dom.clientY - rect.top,
+      });
+    };
+    propertyMarkerRef.current.addListener("mouseover", showPropertyTip);
+    propertyMarkerRef.current.addListener("mousemove", showPropertyTip);
+    propertyMarkerRef.current.addListener("mouseout", () => setHover(null));
+  }, [status, lat, lng, isDark]);
 
   // Recenter + move the property pin when the coordinates change without a
   // remount — the review page reuses one `MapView` across properties, so the
@@ -262,6 +317,25 @@ export function MapView({
       marker.setMap(null);
     }
     pointMarkersRef.current.clear();
+    setHover(null);
+    // Translate a marker mouse event into a tooltip anchored to the cursor,
+    // relative to the map container (so the absolutely-positioned card lands
+    // in the right place regardless of page scroll).
+    const showTip = (p: TransitPoint, e?: GMapsMouseEvent) => {
+      const dom = e?.domEvent;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!dom || !rect) {
+        return;
+      }
+      const { name, detail } = pointTooltip(p);
+      setHover({
+        name,
+        detail,
+        color: p.color ?? CATEGORY_COLOR[p.category],
+        x: dom.clientX - rect.left,
+        y: dom.clientY - rect.top,
+      });
+    };
     for (const p of points ?? []) {
       // Name-only fallback stops have no coords — they still route (by
       // geocoded name) but can't get a marker.
@@ -271,10 +345,14 @@ export function MapView({
       const marker = new api.Marker({
         position: { lat: p.lat, lng: p.lng },
         map,
-        title: p.name,
+        // No native `title`: the hover card below replaces the slow,
+        // unstyled browser tooltip.
         icon: markerIcon(api, p.color ?? CATEGORY_COLOR[p.category], false),
       });
       marker.addListener("click", () => onToggleRef.current?.(p.id));
+      marker.addListener("mouseover", (e) => showTip(p, e));
+      marker.addListener("mousemove", (e) => showTip(p, e));
+      marker.addListener("mouseout", () => setHover(null));
       pointMarkersRef.current.set(p.id, marker);
     }
   }, [status, points]);
@@ -343,6 +421,73 @@ export function MapView({
           {status === "error" ? "Map unavailable" : "Loading map…"}
         </div>
       ) : null}
+      {hover ? <HoverCard tip={hover} dark={isDark} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The hover reveal — a small card floating just above the dot under the
+ * cursor, naming the place and what it is. Inline-styled (light/dark) so it
+ * stays self-contained and theme-correct; `pointer-events: none` keeps it
+ * from stealing the hover it's reacting to.
+ */
+function HoverCard({ tip, dark }: { tip: HoverTip; dark: boolean }) {
+  return (
+    <div
+      className="pointer-events-none absolute z-20"
+      style={{
+        left: tip.x,
+        top: tip.y,
+        transform: "translate(-50%, calc(-100% - 14px))",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 220,
+          padding: "6px 9px",
+          borderRadius: 8,
+          fontSize: 12,
+          lineHeight: 1.35,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          background: dark ? "#13283a" : "#ffffff",
+          color: dark ? "#e6edf3" : "#0e2235",
+          border: `1px solid ${dark ? "#244258" : "#e1e7ec"}`,
+          boxShadow: dark
+            ? "0 6px 18px rgba(0,0,0,0.45)"
+            : "0 6px 18px rgba(14,34,53,0.16)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              flexShrink: 0,
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: tip.color,
+            }}
+          />
+          <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {tip.name}
+          </span>
+        </div>
+        {tip.detail ? (
+          <div
+            style={{
+              marginTop: 2,
+              paddingLeft: 14,
+              color: dark ? "#9fb0bd" : "#6a7886",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {tip.detail}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
