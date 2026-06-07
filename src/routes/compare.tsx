@@ -64,32 +64,82 @@ export const Route = createFileRoute("/compare")({
   component: ComparePage,
 });
 
-/** Loading frame — two side-by-side column skeletons on desktop, one on
- * mobile, mirroring the compare layout. */
+/** Loading frame — mirrors the compare layout. The headers ("Compare",
+ * the "Side by side" eyebrow, the back links, and the A/B switcher) are
+ * static, so they render for real; only the two columns pulse. */
 function PendingCompare() {
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="grid grid-cols-2 gap-6 px-6 pt-9 pb-12 lg:px-10">
-          <CompareColumnSkeleton />
-          <CompareColumnSkeleton />
+        <header className="flex items-end justify-between gap-4 px-6 pt-9 pb-6 lg:px-10">
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.12em]">
+              Side by side
+            </span>
+            <h1 className="font-serif text-[40px] text-foreground leading-[44px] tracking-tight">
+              Compare
+            </h1>
+          </div>
+          <Button render={<Link to="/shortlist" />} size="sm" variant="ghost">
+            Back to Shortlist
+          </Button>
+        </header>
+        <div className="grid grid-cols-2 gap-6 px-6 pb-12 lg:px-10">
+          <CompareColumnSkeleton side="A" />
+          <CompareColumnSkeleton side="B" />
         </div>
       </AdminSidebar>
-      <div className="mx-auto min-h-screen max-w-md bg-background px-4 pt-6 pb-16 sm:max-w-2xl lg:hidden">
-        <CompareColumnSkeleton />
+      <div className="mx-auto min-h-screen max-w-md bg-background pb-16 sm:max-w-2xl lg:hidden">
+        <header className="flex flex-col gap-3 px-6 pt-6 pb-3">
+          <div className="flex items-center justify-between">
+            <h1 className="font-serif text-[28px] text-foreground tracking-tight">
+              Compare
+            </h1>
+            <Link
+              className="text-[12px] text-primary hover:underline"
+              to="/shortlist"
+            >
+              Shortlist
+            </Link>
+          </div>
+          <div className="flex gap-2">
+            <span className="flex-1 rounded-full bg-foreground px-4 py-2 text-center font-medium text-background text-sm">
+              A
+            </span>
+            <span className="flex-1 rounded-full border border-border bg-card px-4 py-2 text-center font-medium text-foreground text-sm">
+              B
+            </span>
+          </div>
+        </header>
+        <div className="flex flex-col gap-3.5 px-4 pt-3">
+          <CompareColumnSkeleton side="A" />
+        </div>
       </div>
     </>
   );
 }
 
-function CompareColumnSkeleton() {
+/** One compare column skeleton — header (side label + open-listing link),
+ * the fixed-height hero, the price/address block, then the four stacked
+ * fact cards (costs · stands out · key stats · stations). */
+function CompareColumnSkeleton({ side }: { side: string }) {
   return (
-    <div className="flex flex-col gap-3.5">
-      <Skeleton className="aspect-[4/3] w-full rounded-2xl" />
-      {skeletonIds("cmp", 5).map((id) => (
-        <Skeleton className="h-16 w-full rounded-xl" key={id} />
+    <article className="flex flex-col gap-3.5">
+      <header className="flex items-baseline justify-between">
+        <span className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.14em]">
+          {side}
+        </span>
+        <Skeleton className="h-3 w-28" />
+      </header>
+      <Skeleton className="h-44 w-full rounded-2xl" />
+      <div className="flex flex-col gap-1.5">
+        <Skeleton className="h-7 w-32" />
+        <Skeleton className="h-5 w-2/3" />
+      </div>
+      {skeletonIds("cmp", 4).map((id) => (
+        <Skeleton className="h-24 w-full rounded-2xl" key={id} />
       ))}
-    </div>
+    </article>
   );
 }
 

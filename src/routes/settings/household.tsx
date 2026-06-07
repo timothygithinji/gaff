@@ -55,10 +55,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import {
-  SkeletonPageHeader,
-  skeletonIds,
-} from "../../components/ui/patterns/skeletons";
+import { skeletonIds } from "../../components/ui/patterns/skeletons";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import {
@@ -89,8 +86,12 @@ export const Route = createFileRoute("/settings/household")({
   component: HouseholdSettingsPage,
 });
 
-/** Loading frame — header + member-row skeletons in the settings shell
- * (desktop) and the mobile column. */
+/**
+ * Loading frame. The settings nav, page title + description, and the
+ * "Household name" label are static, so they render for real; the member
+ * count, household name, member rows, and invite button pulse. Desktop
+ * uses the grouped member list; mobile stacks separate member cards.
+ */
 function PendingHousehold() {
   const rows = skeletonIds("member", 2);
   return (
@@ -98,24 +99,64 @@ function PendingHousehold() {
       <AdminSidebar mode="desktop-only">
         <div className="flex w-full gap-10 px-10 py-10">
           <SettingsNav />
-          <div className="flex min-w-0 max-w-[640px] grow flex-col gap-6">
-            <SkeletonPageHeader />
-            <div className="flex flex-col gap-3">
-              {rows.map((id) => (
-                <MemberRowSkeleton key={id} />
+          <div className="flex min-w-0 grow flex-col gap-6">
+            <header className="flex items-end justify-between gap-8">
+              <div className="flex min-w-0 grow flex-col gap-1">
+                <Skeleton className="h-3 w-24" />
+                <h1 className="font-semibold text-4xl text-navy leading-[1.1] tracking-[-0.025em]">
+                  Household
+                </h1>
+                <p className="max-w-[560px] pt-1 text-slate text-sm">
+                  Anyone in here sees the same searches and shortlist. The blind
+                  veto loop runs between everyone.
+                </p>
+              </div>
+              <Skeleton className="h-11 w-36 shrink-0 rounded-md" />
+            </header>
+            <HouseholdNameCardSkeleton />
+            <ul className="flex flex-col overflow-hidden rounded-lg border border-line bg-card">
+              {rows.map((id, i) => (
+                <li
+                  className={cn(
+                    "flex items-center gap-4 px-[22px] py-[18px]",
+                    i < rows.length - 1 && "border-mist border-b"
+                  )}
+                  key={id}
+                >
+                  <Skeleton className="size-11 shrink-0 rounded-full" />
+                  <div className="flex flex-1 flex-col gap-2">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </div>
       </AdminSidebar>
       <div className="min-h-screen bg-ground pb-28 lg:hidden">
-        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-5 pt-5 sm:px-8 sm:pt-8">
-          <SkeletonPageHeader />
-          <div className="flex flex-col gap-3">
+        <div className="mx-auto w-full max-w-[640px]">
+          <header className="flex flex-col gap-5 px-5 pt-5 sm:px-8 sm:pt-8">
+            <Link
+              className="flex items-center gap-3.5 text-slate text-sm transition-colors hover:text-navy"
+              to="/"
+            >
+              <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={1.5} />
+              Settings
+            </Link>
+            <div className="flex flex-col gap-1">
+              <Skeleton className="h-2.5 w-24" />
+              <h1 className="font-semibold text-[26px] text-navy leading-[100%] tracking-[-0.02em]">
+                Household
+              </h1>
+            </div>
+          </header>
+          <main className="flex flex-col gap-2.5 px-5 pt-5 sm:px-8">
+            <HouseholdNameCardSkeleton />
             {rows.map((id) => (
-              <MemberRowSkeleton key={id} />
+              <MemberCardSkeleton key={id} />
             ))}
-          </div>
+          </main>
         </div>
       </div>
       <BottomNav />
@@ -123,13 +164,30 @@ function PendingHousehold() {
   );
 }
 
-function MemberRowSkeleton() {
+/** Household-name card skeleton — keeps the real "Household name" label
+ * static and pulses the name + edit affordance. */
+function HouseholdNameCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-line bg-card p-3.5">
-      <Skeleton className="size-10 shrink-0 rounded-full" />
+    <div className="flex items-center gap-3.5 rounded-lg border border-line bg-card px-[18px] py-4">
+      <div className="flex min-w-0 grow flex-col gap-1.5">
+        <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.12em]">
+          Household name
+        </p>
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <Skeleton className="h-4 w-12" />
+    </div>
+  );
+}
+
+/** Stacked mobile member card — avatar + name/email lines. */
+function MemberCardSkeleton() {
+  return (
+    <div className="flex items-center gap-3.5 rounded-lg border border-line bg-card px-[18px] py-4">
+      <Skeleton className="size-11 shrink-0 rounded-full" />
       <div className="flex flex-1 flex-col gap-2">
         <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3 w-28" />
       </div>
     </div>
   );

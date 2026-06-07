@@ -21,11 +21,8 @@ import { BottomNav } from "../../components/layout/bottom-nav";
 import { DesktopSearches } from "../../components/searches/desktop-searches";
 import { subline } from "../../components/searches/desktop-searches";
 import { PageShell } from "../../components/ui/patterns/page-shell";
-import {
-  SkeletonCard,
-  SkeletonPageHeader,
-  skeletonIds,
-} from "../../components/ui/patterns/skeletons";
+import { skeletonIds } from "../../components/ui/patterns/skeletons";
+import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
 import { findCadenceByCron } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
@@ -72,35 +69,100 @@ export const Route = createFileRoute("/searches/")({
   component: SearchesIndexPage,
 });
 
-/** Loading frame — a header + card grid in both shells, mirroring the
- * saved-searches layout. */
+/** Loading frame — mirrors the saved-searches layout. The page title and
+ * the "New search" CTA are static, so they render for real; only the
+ * eyebrow count and the search cards (which carry no photo — status row,
+ * name, subline, stat strip, run footer) pulse. */
 function PendingSearches() {
-  const cards = skeletonIds("search", 4);
+  const cards = skeletonIds("search", 6);
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="mx-auto w-full max-w-[1100px] px-10 py-10">
-          <SkeletonPageHeader className="mb-8" />
-          <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
-            {cards.map((id) => (
-              <SkeletonCard key={id} />
-            ))}
+        <header className="flex items-end justify-between gap-4 px-6 pt-5 pb-7 lg:px-10">
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-36" />
+            <h1 className="font-semibold text-[40px] text-navy leading-[48px] tracking-[-0.025em]">
+              Searches
+            </h1>
           </div>
+          <Link
+            className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-[22px] py-3 font-medium text-[#eef1f4] text-[13px]"
+            to="/searches/new"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2} />
+            <span>New search</span>
+          </Link>
+        </header>
+        <div className="grid w-full grid-cols-1 gap-5 px-6 pb-10 sm:grid-cols-2 lg:grid-cols-3 lg:px-10">
+          {cards.map((id) => (
+            <SearchCardSkeleton key={id} />
+          ))}
         </div>
       </AdminSidebar>
 
       <PageShell className="pb-28" variant="mobile">
-        <div className="px-5 pt-2 pb-3.5">
-          <SkeletonPageHeader />
-        </div>
+        <header className="flex items-start justify-between gap-4 px-5 pt-2 pb-3.5">
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-28" />
+            <h1 className="font-semibold text-[26px] text-navy leading-8 tracking-[-0.02em]">
+              Searches
+            </h1>
+          </div>
+          <Link
+            className="mt-1.5 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-medium text-[#eef1f4] text-[12px]"
+            to="/searches/new"
+          >
+            <HugeiconsIcon icon={Add01Icon} size={12} strokeWidth={2.2} />
+            New
+          </Link>
+        </header>
         <div className="space-y-3 px-5">
           {cards.map((id) => (
-            <SkeletonCard key={id} />
+            <SearchCardSkeleton key={id} padding="p-[18px]" />
           ))}
         </div>
         <BottomNav />
       </PageShell>
     </>
+  );
+}
+
+const SKELETON_STAT_CELLS = ["s0", "s1", "s2"];
+
+/** A photo-less search card skeleton: status row · name · subline, then
+ * the three-cell stat strip over a hairline and the run footer — the exact
+ * regions {@link SearchCard} / {@link MobileCard} fill. */
+function SearchCardSkeleton({ padding = "p-6" }: { padding?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-4 rounded-lg border border-line bg-paper",
+        padding
+      )}
+    >
+      <div className="flex flex-col gap-1.5">
+        <Skeleton className="h-2.5 w-14" />
+        <Skeleton className="h-5 w-2/3" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+      <div className="flex border-mist border-t pt-3.5">
+        {SKELETON_STAT_CELLS.map((id, i) => (
+          <div
+            className={cn(
+              "flex flex-1 flex-col gap-1.5",
+              i === 0 && "border-mist border-r pr-2.5",
+              i === 1 && "border-mist border-r px-2.5",
+              i === 2 && "pl-2.5"
+            )}
+            key={id}
+          >
+            <Skeleton className="h-2 w-10" />
+            <Skeleton className="h-5 w-8" />
+          </div>
+        ))}
+      </div>
+      <Skeleton className="h-3 w-32" />
+    </div>
   );
 }
 

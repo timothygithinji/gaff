@@ -27,10 +27,6 @@ import { BottomNav } from "../../components/layout/bottom-nav";
 import { SettingsNav } from "../../components/settings/settings-nav";
 import { TextField } from "../../components/text-field";
 import { Button } from "../../components/ui/button";
-import {
-  SkeletonPageHeader,
-  skeletonIds,
-} from "../../components/ui/patterns/skeletons";
 import { Skeleton } from "../../components/ui/skeleton";
 import { authClient } from "../../lib/auth-client";
 import { requireSession } from "../../lib/auth-guard";
@@ -56,35 +52,95 @@ export const Route = createFileRoute("/settings/account")({
   component: AccountSettingsPage,
 });
 
+/**
+ * Loading frame. The settings nav, page header, and each panel's
+ * title/description are static, so they render for real; only the form
+ * fields (which default off the loading household payload) pulse.
+ */
 function PendingAccount() {
-  const cards = skeletonIds("panel", 3);
+  const panels = (
+    <div className="flex flex-col gap-4">
+      <SettingsPanelSkeleton
+        description="Shown to everyone in your household and on your avatar."
+        fields={1}
+        title="Your name"
+      />
+      <SettingsPanelSkeleton
+        description="You'll stay signed in on this device after changing it."
+        fields={3}
+        title="Password"
+      />
+    </div>
+  );
   return (
     <>
       <AdminSidebar mode="desktop-only">
         <div className="flex w-full gap-10 px-10 py-10">
           <SettingsNav />
           <div className="flex min-w-0 max-w-[640px] grow flex-col gap-6">
-            <SkeletonPageHeader />
-            <div className="flex flex-col gap-4">
-              {cards.map((id) => (
-                <Skeleton className="h-32 rounded-lg" key={id} />
-              ))}
-            </div>
+            <header className="flex flex-col gap-1">
+              <p className="font-semibold text-[11px] text-slate uppercase tracking-[0.14em]">
+                Your account
+              </p>
+              <h1 className="font-semibold text-4xl text-navy leading-[1.1] tracking-[-0.025em]">
+                Account
+              </h1>
+              <p className="max-w-[560px] pt-1 text-slate text-sm">
+                How you show up in the household, and your sign-in details.
+              </p>
+            </header>
+            {panels}
           </div>
         </div>
       </AdminSidebar>
       <div className="min-h-screen bg-ground pb-28 lg:hidden">
         <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-5 pt-5 sm:px-8 sm:pt-8">
-          <SkeletonPageHeader />
-          <div className="flex flex-col gap-4">
-            {cards.map((id) => (
-              <Skeleton className="h-32 rounded-lg" key={id} />
-            ))}
-          </div>
+          <header className="flex flex-col gap-1">
+            <p className="font-semibold text-[10px] text-slate uppercase tracking-[0.14em]">
+              Your account
+            </p>
+            <h1 className="font-semibold text-[26px] text-navy leading-[100%] tracking-[-0.02em]">
+              Account
+            </h1>
+          </header>
+          {panels}
         </div>
       </div>
       <BottomNav />
     </>
+  );
+}
+
+/** A settings-card skeleton that keeps the real card chrome and its
+ * (static) title + description, pulsing only the labelled form fields and
+ * the save button — mirrors {@link SettingsCard}. */
+function SettingsPanelSkeleton({
+  title,
+  description,
+  fields,
+}: {
+  title: string;
+  description: string;
+  fields: number;
+}) {
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border border-line bg-card px-[22px] py-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-semibold text-[15px] text-navy">{title}</h2>
+        <p className="text-slate text-xs leading-[18px]">{description}</p>
+      </div>
+      <div className="flex flex-col gap-3.5">
+        {Array.from({ length: fields }, (_, i) => `field-${i}`).map((id) => (
+          <div className="flex flex-col gap-1.5" key={id}>
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+        ))}
+        <div className="flex justify-end">
+          <Skeleton className="h-9 w-28 rounded-md" />
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -63,6 +63,7 @@ import { listingDetailQueryOptions } from "../lib/listing-detail-query";
 import { outcodeLocationLabel } from "../lib/outcode-areas";
 import { propertyKindLabel } from "../lib/property-kind";
 import { queryKeys } from "../lib/query-keys";
+import { cn } from "../lib/utils";
 import { deferCluster } from "../server/functions/deferrals";
 import {
   type ReviewCard,
@@ -195,15 +196,18 @@ export const Route = createFileRoute("/")({
 
 /** Loader pending frame — reuses the bespoke desktop + mobile review
  * skeletons (both shadcn-Skeleton based) so a cold/slow load paints the
- * real three-column shape rather than the generic fallback. */
+ * real three-column shape rather than the generic fallback. The mobile
+ * shell keeps the real header + decision dock so the page's static chrome
+ * is on screen from the first frame; only the data regions pulse. */
 function PendingReview() {
   return (
     <>
       <DesktopReviewSkeleton />
-      <div className="mx-auto min-h-screen max-w-md bg-background pb-24 sm:max-w-2xl lg:hidden">
+      <PageShell className="flex flex-col pb-24" variant="mobile">
+        <ReviewHeader leftToday={0} />
         <MobileReviewSkeleton />
         <BottomNav />
-      </div>
+      </PageShell>
     </>
   );
 }
@@ -1189,74 +1193,143 @@ function DesktopReviewEmpty({
 // Stable id arrays for the skeletons — keep them outside the
 // component so React keys don't churn between re-renders.
 const SKELETON_QUEUE_ROWS = ["q0", "q1", "q2", "q3", "q4", "q5"];
-const SKELETON_STAT_CELLS = ["s0", "s1", "s2"];
-const SKELETON_FLOORPLAN_ROWS = ["f0", "f1", "f2", "f3"];
-const SKELETON_MOBILE_STATS = ["m0", "m1", "m2"];
+const SKELETON_STANDOUT_ROWS = ["w0", "w1", "w2", "w3", "w4", "w5"];
+const SKELETON_NUMBER_CELLS = ["n0", "n1", "n2", "n3"];
+const SKELETON_PORTAL_ROWS = ["p0", "p1", "p2"];
+const SKELETON_TODAY_CELLS = ["t0", "t1", "t2"];
+const SKELETON_MOBILE_STATS = ["m0", "m1", "m2", "m3"];
+const SKELETON_MOBILE_TAGS = ["g0", "g1", "g2"];
+
+/** The slate small-caps eyebrow shared by every Review panel — rendered
+ * for real in the skeleton (it's static label text, not data) so the
+ * panels read as themselves the instant the page paints. */
+const REVIEW_EYEBROW =
+  "font-semibold text-[10px] text-slate uppercase leading-3 tracking-[0.14em]";
+
+/** Defer is wired through a dropdown; a no-op keeps the dock's Undo/Defer
+ * row at full width while the buttons sit disabled during load. */
+const NOOP_DEFER = () => {
+  // intentionally inert — the dock is disabled while the card loads
+};
 
 /**
  * Skeleton shell painted while the first card + queue load (initial
  * cold render, or a filter switch where the new search has no cached
  * card yet). Shape mirrors {@link DesktopReview} — queue rail · main
  * column · right rail — so the layout doesn't reflow when content lands.
+ * Static chrome (panel eyebrows, the decision dock) renders for real;
+ * only the data regions pulse.
  */
 function DesktopReviewSkeleton() {
   return (
     <AdminSidebar mode="desktop-only">
-      <div className="flex w-full items-start gap-6 px-8 py-6">
-        <aside className="flex w-60 shrink-0 flex-col gap-3">
-          <Skeleton className="h-3 w-28" />
-          {SKELETON_QUEUE_ROWS.map((id) => (
-            <div
-              className="flex items-stretch gap-3 rounded-[6px] border border-line bg-paper p-2.5"
-              key={id}
-            >
-              <Skeleton className="size-[60px] shrink-0 rounded-[4px]" />
-              <div className="flex flex-1 flex-col gap-1.5 pt-1">
-                <Skeleton className="h-3 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
-              </div>
-            </div>
-          ))}
-        </aside>
-        <section className="flex min-w-0 flex-1 flex-col gap-[18px]">
-          <div className="flex items-baseline justify-between gap-6">
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-3 w-40" />
-              <Skeleton className="h-8 w-56" />
-              <Skeleton className="h-4 w-72" />
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <Skeleton className="h-9 w-28" />
-              <Skeleton className="h-3 w-40" />
-            </div>
+      <div className="flex min-h-0 w-full flex-1 gap-6 px-8 py-6">
+        {/* Queue rail */}
+        <aside className="flex min-h-0 w-60 shrink-0 flex-col gap-3">
+          <div className="flex shrink-0 items-center justify-between gap-2 pb-0.5">
+            <span className={REVIEW_EYEBROW}>Queue</span>
+            <Skeleton className="size-7 rounded-md" />
           </div>
-          <Skeleton className="aspect-[57/40] w-full rounded-[6px]" />
-          <div className="flex items-stretch gap-[18px]">
-            <div className="flex flex-[1.3] flex-col gap-3 rounded-[6px] border border-line bg-paper p-[18px]">
-              <Skeleton className="h-3 w-40" />
-              {SKELETON_FLOORPLAN_ROWS.map((id) => (
-                <Skeleton className="h-4 w-full" key={id} />
-              ))}
+          <div className="flex flex-1 flex-col gap-3">
+            {SKELETON_QUEUE_ROWS.map((id) => (
+              <div
+                className="flex items-stretch gap-3 rounded-[6px] border border-line bg-paper p-2.5"
+                key={id}
+              >
+                <Skeleton className="size-[60px] shrink-0 rounded-[4px]" />
+                <div className="flex flex-1 flex-col gap-1.5 pt-1">
+                  <Skeleton className="h-3 w-3/4" />
+                  <Skeleton className="h-2.5 w-1/2" />
+                  <Skeleton className="h-2.5 w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* Main column */}
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-[18px]">
+          <div className="flex items-baseline justify-between gap-6">
+            <div className="flex min-w-0 flex-col gap-2">
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-4 w-80" />
             </div>
-            <div className="flex flex-1 flex-col gap-3 rounded-[6px] border border-line bg-paper p-[18px]">
-              <Skeleton className="h-3 w-24" />
-              <div className="flex gap-3">
-                {SKELETON_STAT_CELLS.map((id) => (
-                  <div className="flex flex-1 flex-col gap-1.5" key={id}>
-                    <Skeleton className="h-2.5 w-12" />
-                    <Skeleton className="h-6 w-10" />
-                    <Skeleton className="h-2.5 w-10" />
-                  </div>
-                ))}
+            <Skeleton className="h-9 w-32 shrink-0" />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-[18px]">
+            <Skeleton className="min-h-[460px] w-full flex-1 rounded-[6px]" />
+            <div className="flex items-stretch gap-[18px]">
+              {/* What stands out */}
+              <div className="flex flex-[1.3] flex-col gap-3 rounded-[6px] border border-line bg-paper p-[18px]">
+                <span className={REVIEW_EYEBROW}>What stands out</span>
+                <ul className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-0.5">
+                  {SKELETON_STANDOUT_ROWS.map((id) => (
+                    <li className="flex h-5 items-center gap-2" key={id}>
+                      <Skeleton className="size-3.5 shrink-0 rounded-full" />
+                      <Skeleton className="h-3 w-full" />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {/* The numbers */}
+              <div className="flex flex-1 flex-col gap-3 rounded-[6px] border border-line bg-paper p-[18px]">
+                <span className={REVIEW_EYEBROW}>The numbers</span>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-4 pt-0.5">
+                  {SKELETON_NUMBER_CELLS.map((id, i) => (
+                    <div
+                      className={cn(
+                        "flex flex-col gap-1.5",
+                        i % 2 !== 0 && "border-mist border-l pl-3"
+                      )}
+                      key={id}
+                    >
+                      <Skeleton className="h-2.5 w-12" />
+                      <Skeleton className="h-5 w-10" />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
+            <Skeleton className="h-[200px] w-full shrink-0 rounded-[6px]" />
           </div>
         </section>
+
+        {/* Right rail */}
         <aside className="flex w-[280px] shrink-0 flex-col gap-4">
-          <Skeleton className="h-[140px] w-full rounded-[6px]" />
-          <Skeleton className="h-[200px] w-full rounded-[6px]" />
-          <Skeleton className="h-12 w-full rounded-[6px]" />
-          <Skeleton className="h-[86px] w-full rounded-[6px]" />
+          <section className="flex flex-col gap-2.5 rounded-[6px] border border-line bg-paper p-4">
+            <div className="flex items-center justify-between">
+              <span className={REVIEW_EYEBROW}>Today</span>
+              <Skeleton className="size-[18px] rounded-full" />
+            </div>
+            <div className="flex gap-[18px]">
+              {SKELETON_TODAY_CELLS.map((id) => (
+                <div className="flex flex-col gap-1.5" key={id}>
+                  <Skeleton className="h-5 w-7" />
+                  <Skeleton className="h-2.5 w-12" />
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="flex flex-col gap-2.5 rounded-[6px] border border-line bg-paper p-[18px]">
+            <span className={REVIEW_EYEBROW}>Across portals</span>
+            <div className="flex flex-col gap-3 pt-0.5">
+              {SKELETON_PORTAL_ROWS.map((id) => (
+                <div className="flex items-center gap-2.5" key={id}>
+                  <Skeleton className="size-7 shrink-0 rounded-full" />
+                  <Skeleton className="h-3.5 flex-1" />
+                  <Skeleton className="h-3.5 w-12 shrink-0" />
+                </div>
+              ))}
+            </div>
+          </section>
+          {/* The decision dock is static — render it for real (inert) so the
+              page's primary actions are on screen the moment it loads. */}
+          <DecisionActions
+            disabled
+            onDefer={NOOP_DEFER}
+            orientation="vertical"
+            pendingAction={null}
+          />
         </aside>
       </div>
     </AdminSidebar>
@@ -1264,30 +1337,56 @@ function DesktopReviewSkeleton() {
 }
 
 /**
- * Mobile counterpart of {@link DesktopReviewSkeleton}. Shown inside the
- * existing `lg:hidden` shell so the bottom nav stays anchored.
+ * Mobile counterpart of {@link DesktopReviewSkeleton} — the card body +
+ * decision dock that sit under the (real) {@link ReviewHeader}. Mirrors
+ * {@link MobileReviewCard}: full-bleed photo, headline/price row, tag
+ * pills, the 2×2 numbers strip, and the portal row.
  */
 function MobileReviewSkeleton() {
   return (
-    <main className="space-y-4 pb-4">
-      <div className="mx-4 overflow-hidden rounded-2xl bg-card">
-        <Skeleton className="aspect-[4/5] w-full rounded-none" />
-        <div className="space-y-4 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <Skeleton className="h-8 w-32" />
-            <Skeleton className="h-8 w-20" />
+    <main className="flex flex-1 flex-col gap-3.5 pb-3 sm:justify-center sm:py-5">
+      <article className="relative mx-5 flex flex-1 flex-col overflow-hidden rounded-[2px] border border-line bg-paper sm:flex-none">
+        <Skeleton className="min-h-[260px] w-full flex-1 rounded-none sm:h-[420px] sm:flex-none" />
+        <div className="flex flex-col">
+          <div className="flex items-baseline justify-between gap-3 px-[18px] pt-[18px]">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-3.5 w-52" />
+            </div>
+            <Skeleton className="h-7 w-20 shrink-0" />
           </div>
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-          <div className="flex gap-4">
-            {SKELETON_MOBILE_STATS.map((id) => (
-              <Skeleton className="h-12 flex-1 rounded-lg" key={id} />
+          <div className="flex flex-wrap gap-2 px-[18px] pt-3.5">
+            {SKELETON_MOBILE_TAGS.map((id) => (
+              <Skeleton className="h-6 w-24 rounded-full" key={id} />
             ))}
           </div>
+          <div className="mx-[18px] mt-[18px] border-mist border-t pt-[18px]">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+              {SKELETON_MOBILE_STATS.map((id, i) => (
+                <div
+                  className={cn(
+                    "flex flex-col gap-1.5",
+                    i % 2 !== 0 && "border-mist border-l pl-3"
+                  )}
+                  key={id}
+                >
+                  <Skeleton className="h-2.5 w-12" />
+                  <Skeleton className="h-[18px] w-10" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="px-[18px] pt-4 pb-[18px]">
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
         </div>
-      </div>
+      </article>
+      <DecisionActions
+        disabled
+        onDefer={NOOP_DEFER}
+        orientation="horizontal"
+        pendingAction={null}
+      />
     </main>
   );
 }

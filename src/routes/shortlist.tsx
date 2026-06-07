@@ -120,28 +120,37 @@ const PENDING_COLUMNS = [
 ];
 
 /**
- * Loading frame — mirrors the live Shortlist: the desktop header
- * (eyebrow + title + square tab strip), the "Add a listing" button, and
- * the four-column kanban of compact cards; the mobile header + stage-tab
- * strip + stacked card list.
+ * Loading frame — mirrors the live Shortlist. The page title and the
+ * "Add a listing" button are static, so they render for real (the button
+ * inert); the eyebrow count, tab strip, filter, and the four-column
+ * kanban of compact cards pulse. Mobile: real title + the same static
+ * Add button over the stage-tab strip and stacked card list.
  */
 function PendingShortlist() {
   return (
     <>
       <AdminSidebar mode="desktop-only">
         <header className="flex items-end justify-between gap-4 px-10 pt-7 pb-4.5">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             <Skeleton className="h-3 w-44" />
-            <Skeleton className="h-10 w-44" />
+            <h1 className="font-semibold text-[36px] text-navy leading-[44px] tracking-[-0.025em]">
+              Shortlist
+            </h1>
           </div>
           <div className="flex gap-1.5">
             {skeletonIds("tab", 4).map((id) => (
-              <Skeleton className="h-9 w-20 rounded-md" key={id} />
+              <Skeleton className="h-9 w-24 rounded-md" key={id} />
             ))}
           </div>
         </header>
         <div className="flex min-h-0 flex-1 flex-col gap-4 px-10 pt-2 pb-6">
-          <Skeleton className="h-9 w-32 rounded-md" />
+          <div className="flex shrink-0 items-center justify-between gap-3 px-1">
+            <Button className="gap-2" disabled variant="outline">
+              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.5} />
+              Add a listing
+            </Button>
+            <Skeleton className="h-9 w-24 rounded-md" />
+          </div>
           <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto">
             {PENDING_COLUMNS.map((col) => (
               <div
@@ -162,18 +171,26 @@ function PendingShortlist() {
       </AdminSidebar>
 
       <div className="mx-auto min-h-screen max-w-md bg-background px-5 pb-24 sm:max-w-2xl lg:hidden">
-        <header className="flex flex-col gap-2 pt-6 pb-4.5">
-          <Skeleton className="h-3 w-32" />
-          <Skeleton className="h-7 w-40" />
+        <header className="flex flex-col gap-1 pt-6 pb-4.5">
+          <Skeleton className="h-3 w-28" />
+          <h1 className="font-semibold text-[26px] text-navy leading-8 tracking-[-0.02em]">
+            Shortlist
+          </h1>
         </header>
-        <Skeleton className="mb-4 h-9 w-full rounded-md" />
         <div className="mb-4 flex gap-2">
           {skeletonIds("mtab", 4).map((id) => (
             <Skeleton className="h-7 w-20 rounded-full" key={id} />
           ))}
         </div>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <Button className="gap-2" disabled variant="outline">
+            <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={1.5} />
+            Add a listing
+          </Button>
+          <Skeleton className="h-9 w-20 rounded-md" />
+        </div>
         <div className="flex flex-col gap-2.5">
-          {skeletonIds("mcard", 4).map((id) => (
+          {skeletonIds("mcard", 5).map((id) => (
             <KanbanCardSkeleton key={id} />
           ))}
         </div>

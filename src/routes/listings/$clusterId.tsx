@@ -489,53 +489,74 @@ function ListingDetailPage() {
   );
 }
 
-const SKELETON_PORTAL_ROWS = ["p0", "p1"];
-const SKELETON_RECORDS_ROWS = ["r0", "r1", "r2", "r3"];
+const SKELETON_HERO_GRID = ["h0", "h1", "h2", "h3"];
+const SKELETON_MOBILE_CARDS = ["c0", "c1", "c2", "c3"];
 
 /**
  * Skeleton shown if the route component mounts before the loader has
  * hydrated `getListingDetail`. With `ensureQueryData` this is rare, but
- * a filter switch or a cold client navigation can land here briefly —
- * a proper skeleton beats the previous half-line animate-pulse stub.
+ * a filter switch or a cold client navigation can land here briefly.
+ *
+ * Mirrors {@link DesktopListingDetail}: back button · hero gallery (wide
+ * photo + 2×2 thumb grid) · title block · two columns (main cards +
+ * 360px side rail). Mobile mirrors the top bar · gallery · header · cards.
  */
 function ListingDetailSkeleton() {
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="flex min-w-0 flex-1 gap-6 px-10 pt-6 pb-8">
-          <section className="flex w-[420px] shrink-0 flex-col gap-3.5">
-            <Skeleton className="aspect-[4/3] w-full rounded-2xl" />
-            <div className="flex gap-2">
-              {SKELETON_PORTAL_ROWS.map((id) => (
-                <Skeleton className="h-16 flex-1 rounded-xl" key={id} />
+        <div className="flex w-full flex-col px-10 pt-6">
+          <Skeleton className="my-1 h-8 w-36 rounded-md" />
+          <div className="mt-[18px] flex aspect-[13/6] max-h-[640px] shrink-0 gap-2">
+            <Skeleton className="grow-[1.6] basis-0 rounded-lg" />
+            <div className="grid min-w-0 grow basis-0 grid-cols-2 grid-rows-2 gap-2">
+              {SKELETON_HERO_GRID.map((id) => (
+                <Skeleton className="size-full rounded-lg" key={id} />
               ))}
             </div>
-          </section>
-          <section className="flex min-w-0 flex-1 flex-col gap-3.5">
-            <Skeleton className="h-44 rounded-2xl" />
-            <Skeleton className="h-32 rounded-2xl" />
-            <Skeleton className="h-40 rounded-2xl" />
-            <Skeleton className="h-16 rounded-2xl" />
-          </section>
+          </div>
+          <div className="flex flex-col gap-2 pt-[18px]">
+            <Skeleton className="h-3 w-52" />
+            <Skeleton className="h-11 w-2/5" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+          <div className="flex gap-6 pt-[18px] pb-10">
+            <section className="flex min-w-0 flex-1 flex-col gap-4">
+              <Skeleton className="h-52 w-full rounded-lg" />
+              <Skeleton className="h-72 w-full rounded-lg" />
+              <Skeleton className="h-64 w-full rounded-lg" />
+            </section>
+            <aside className="flex w-90 shrink-0 flex-col gap-4">
+              <Skeleton className="h-64 w-full rounded-lg" />
+              <Skeleton className="h-40 w-full rounded-lg" />
+              <Skeleton className="h-48 w-full rounded-lg" />
+              <Skeleton className="h-44 w-full rounded-lg" />
+            </aside>
+          </div>
         </div>
       </AdminSidebar>
       <div className="mx-auto min-h-screen max-w-md bg-background pb-32 sm:max-w-2xl lg:hidden">
-        <header className="flex items-center justify-between px-4 pt-2 pb-3.5">
+        <header className="flex items-center justify-between px-5 pt-2 pb-[18px]">
           <Skeleton className="size-9 rounded-full" />
-          <div className="flex gap-2.5">
+          <div className="flex items-center gap-2">
             <Skeleton className="size-9 rounded-full" />
             <Skeleton className="size-9 rounded-full" />
           </div>
         </header>
-        <Skeleton className="mx-4 aspect-[4/5] rounded-2xl" />
-        <section className="space-y-3 px-6 pt-6">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-6 w-2/3" />
-          <Skeleton className="h-4 w-1/2" />
+        <Skeleton className="aspect-[4/5] w-full rounded-none" />
+        <section className="flex flex-col gap-2 px-5 pt-[22px] pb-4">
+          <Skeleton className="h-2.5 w-44" />
+          <div className="flex items-end justify-between gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Skeleton className="h-6 w-44" />
+              <Skeleton className="h-3.5 w-28" />
+            </div>
+            <Skeleton className="h-8 w-24" />
+          </div>
         </section>
-        <section className="space-y-3 px-4 pt-6">
-          {SKELETON_RECORDS_ROWS.map((id) => (
-            <Skeleton className="h-20 w-full rounded-2xl" key={id} />
+        <section className="flex flex-col gap-3 px-4 pb-8">
+          {SKELETON_MOBILE_CARDS.map((id) => (
+            <Skeleton className="h-24 w-full rounded-2xl" key={id} />
           ))}
         </section>
       </div>
