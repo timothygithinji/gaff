@@ -15,7 +15,7 @@
  *   4. Address.
  *   5. Portal cross-listing card.
  *   6. "What we see" — floorplan analysis.
- *   7. "What's in the small print" — AI-extracted issues.
+ *   7. "What stands out" — AI highlights + watch-outs (one section).
  *   8. "Where it sits" — map + commute card.
  *   9. "Public records" — EPC / broadband / amenities.
  *  10. Sticky bottom CTA bar.
@@ -46,7 +46,6 @@ import { PhotoGallery } from "../../components/listing-detail/photo-gallery";
 import { PortalCrossList } from "../../components/listing-detail/portal-cross-list";
 import { PropertyFacts } from "../../components/listing-detail/property-facts";
 import { PublicRecords } from "../../components/listing-detail/public-records";
-import { SmallPrint } from "../../components/listing-detail/small-print";
 import { PlacesAutocompleteInput } from "../../components/places-autocomplete-input";
 import { Button } from "../../components/ui/button";
 import {
@@ -378,11 +377,13 @@ function ListingDetailPage() {
         {/* Portal cross-list */}
         <PortalCrossList portals={portalSpread} />
 
-        {/* "What stands out" — AI highlights + one-line summary */}
-        <Highlights items={highlights} summary={summary} />
-
-        {/* "What's in the small print" — AI watch-outs */}
-        <SmallPrint items={watchouts} />
+        {/* "What stands out" — AI highlights + watch-outs + one-line summary
+            (one section, matching desktop's combined card). */}
+        <Highlights
+          items={highlights}
+          summary={summary}
+          watchouts={watchouts}
+        />
 
         {/* Consolidated costs — rent + council tax + service charge +
             amortised deposit, with bills as an indicator. */}
