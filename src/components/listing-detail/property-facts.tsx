@@ -225,3 +225,16 @@ export function PropertyFacts(props: Props) {
     </section>
   );
 }
+
+/** Desktop variant: single bordered card to match `<CostsCard>` etc. */
+export function PropertyFactsCard(props: Props) {
+  if (!hasAnything(props)) {
+    return null;
+  }
+  return (
+    <article className="flex flex-col gap-3.5 rounded-lg border border-line bg-card p-6">
+      <SectionLabel>What the agent disclosed</SectionLabel>
+      <PropertyFactsBody {...props} />
+    </article>
+  );
+}

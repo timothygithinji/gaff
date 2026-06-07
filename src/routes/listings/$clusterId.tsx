@@ -35,6 +35,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
+import { Activity } from "../../components/listing-detail/activity";
 import { Costs } from "../../components/listing-detail/costs";
 import { DesktopListingDetail } from "../../components/listing-detail/desktop-listing-detail";
 import { DetailCta } from "../../components/listing-detail/detail-cta";
@@ -65,6 +66,7 @@ import {
   listingFromOriginSchema,
   resolveFromOrigin,
 } from "../../lib/listing-origin";
+import { propertyKindLabel } from "../../lib/property-kind";
 import { queryKeys } from "../../lib/query-keys";
 import {
   type ListingDetailPayload,
@@ -244,6 +246,7 @@ function ListingDetailPage() {
     propertyFacts,
     agentExtras,
     mySwipe,
+    mySwipeAt,
     partnerSwipes,
   } = data;
 
@@ -255,6 +258,19 @@ function ListingDetailPage() {
   const portalsTrackingLabel = `${portalSpread.length} portal${portalSpread.length === 1 ? "" : "s"} tracking`;
   const title = shortAddressTitle(headline.addressRaw);
   const locality = localityFromPostcode(headline.postcode ?? cluster.postcode);
+  // Spec subtitle — same facts the desktop title carries (kind · beds ·
+  // baths · size · locality), so neither device shows less than the other.
+  const subtitle = [
+    propertyKindLabel(headline.propertyKind),
+    headline.bedrooms != null ? `${headline.bedrooms} bed` : null,
+    headline.bathrooms != null ? `${headline.bathrooms} bath` : null,
+    fineprint.sizeSqFt
+      ? `${fineprint.sizeSqFt.toLocaleString("en-GB")} sqft`
+      : null,
+    locality,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <>
@@ -353,8 +369,8 @@ function ListingDetailPage() {
               <h1 className="truncate font-semibold text-[26px] text-foreground leading-7 tracking-[-0.02em]">
                 {title}
               </h1>
-              {locality ? (
-                <p className="text-[12px] text-slate leading-4">{locality}</p>
+              {subtitle ? (
+                <p className="text-[12px] text-slate leading-4">{subtitle}</p>
               ) : null}
             </div>
             <PriceBlock
@@ -389,8 +405,9 @@ function ListingDetailPage() {
             amortised deposit, with bills as an indicator. */}
         <Costs fineprint={fineprint} priceMonthly={headline.priceMonthly} />
 
-        {/* Floor plan — image only, no AI room-slot fakery */}
+        {/* Floor plan + agent brochure (parity with desktop's media card) */}
         <FloorplanAnalysis
+          brochureUrl={agentExtras?.brochureUrl}
           floorplan={floorplan}
           sizeSqFt={fineprint.sizeSqFt}
         />
@@ -416,6 +433,16 @@ function ListingDetailPage() {
 
         {/* Tenancy terms / agent contact / fees disclosure */}
         <Fineprint fineprint={fineprint} />
+
+        {/* Household activity — swipe timeline (parity with desktop rail) */}
+        <Activity
+          firstSeenAt={headline.firstSeenAt}
+          firstSeenPortal={headline.portal}
+          mySwipe={mySwipe}
+          mySwipeAt={mySwipeAt}
+          partnerSwipes={partnerSwipes}
+          portalCount={portalSpread.length}
+        />
 
         {/* Sticky bottom CTA */}
         <DetailCta

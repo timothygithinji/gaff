@@ -148,20 +148,23 @@ function CouncilTaxTable({
   );
 }
 
-export function Fineprint({ fineprint }: Props) {
-  const rows = buildRows(fineprint);
-  const hasAnything =
-    rows.length > 0 ||
-    fineprint.agentName ||
-    fineprint.feesText ||
-    fineprint.councilTax;
-  if (!hasAnything) {
-    return null;
-  }
+/** True when the fineprint has at least one renderable block. */
+function hasFineprint(fineprint: ListingDetailFineprint): boolean {
   return (
-    <section className="flex flex-col gap-3.5 px-5 pb-7">
-      <SectionLabel>Tenancy terms · fine print</SectionLabel>
+    buildRows(fineprint).length > 0 ||
+    Boolean(fineprint.agentName) ||
+    Boolean(fineprint.feesText) ||
+    Boolean(fineprint.councilTax)
+  );
+}
 
+/** The fineprint blocks (def-list + council tax + agent + fees + stations),
+ * shared by the mobile section and the desktop card. Each block is its own
+ * bordered sub-card, so neither shell adds an outer border. */
+function FineprintBody({ fineprint }: Props) {
+  const rows = buildRows(fineprint);
+  return (
+    <>
       {rows.length > 0 ? (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-md border border-line bg-card p-4">
           {rows.map((row) => (
@@ -251,6 +254,33 @@ export function Fineprint({ fineprint }: Props) {
           </ul>
         </div>
       ) : null}
+    </>
+  );
+}
+
+/** Mobile-shell variant: bare section, blocks supply their own card chrome. */
+export function Fineprint({ fineprint }: Props) {
+  if (!hasFineprint(fineprint)) {
+    return null;
+  }
+  return (
+    <section className="flex flex-col gap-3.5 px-5 pb-7">
+      <SectionLabel>Tenancy terms · fine print</SectionLabel>
+      <FineprintBody fineprint={fineprint} />
     </section>
+  );
+}
+
+/** Desktop variant: a labelled group of the same bordered blocks (no outer
+ * border — the blocks are already cards, so wrapping would double-border). */
+export function FineprintCard({ fineprint }: Props) {
+  if (!hasFineprint(fineprint)) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-3.5">
+      <SectionLabel>Tenancy terms · fine print</SectionLabel>
+      <FineprintBody fineprint={fineprint} />
+    </div>
   );
 }
