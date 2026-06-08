@@ -38,6 +38,7 @@ import { perceptualHash } from "../lib/cluster/dhash";
 import { photoContentKey } from "../lib/cluster/photo-identity";
 import { env } from "../lib/env";
 import { PHOTO_WIDTH_BUCKETS, variantKey } from "../lib/photo-size";
+import { clusterByPhotosTask } from "./cluster-by-photos";
 import { photoQueue } from "./queues";
 
 export type CachePhotosPayload = {
@@ -460,6 +461,13 @@ export const cachePhotosTask = task({
       skipped,
       failed,
     });
+
+    // Now that this listing has content_key/phash, consolidate it into the
+    // right cluster by photo identity (corrects the provisional address-based
+    // cluster). Fire-and-forget; a clustering hiccup must not fail caching.
+    if (cached > 0) {
+      await clusterByPhotosTask.trigger({ listingId });
+    }
 
     return { listingId, cached, skipped, failed };
   },
