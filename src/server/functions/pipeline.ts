@@ -71,12 +71,15 @@ const setPipelineDetailsSchema = z.object({
   clusterId: z.string().trim().min(1),
   /** Free-text notes; empty string clears them (stored as NULL). */
   notes: z.string().max(4000),
-  /**
-   * Viewing date+time as an ISO-ish string (`<input type="datetime-local">`
-   * emits `YYYY-MM-DDTHH:mm`), or null to clear. Parsed to a Date server-
-   * side — we keep it a string on the wire so the value survives the
-   * server-fn round-trip without serializer surprises.
-   */
+   /**
+    * Viewing date+time as a UTC ISO string (zone-explicit, `…Z`), or null to
+    * clear. The client converts the `datetime-local` wall-clock to UTC before
+    * sending — see `datetimeLocalToISO` — so `new Date()` below is unambiguous.
+    * Must NOT be a bare `YYYY-MM-DDTHH:mm`: that parses as UTC server-side and
+    * shifts the viewing by the user's timezone offset on every save.
+    * Kept a string on the wire so it survives the server-fn round-trip without
+    * serializer surprises.
+    */
   viewingDate: z.string().min(1).nullable(),
   /** Viewing length in minutes (drives the calendar event's end). */
   viewingDurationMinutes: z.number().int().min(5).max(480).nullable(),

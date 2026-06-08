@@ -34,6 +34,27 @@ import {
   buildGoogleCalendarUrl,
 } from "./pipeline-shared";
 
+const DATETIME_LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+
+/**
+ * `datetime-local` value (`YYYY-MM-DDTHH:mm`, no zone) → UTC ISO string.
+ * Parsed via the local-time `Date` constructor so the wall-clock the user
+ * typed is interpreted in *their* timezone — mirror image of
+ * {@link toDatetimeLocalValue}. We must do this client-side: the bare
+ * string is timezone-ambiguous and the server runs in UTC, so letting the
+ * server `new Date()` it would silently treat the local time as UTC and
+ * shift the viewing by the user's offset on every save.
+ */
+function datetimeLocalToISO(value: string): string | null {
+  const m = value.match(DATETIME_LOCAL_RE);
+  if (!m) {
+    return null;
+  }
+  const [, y = 0, mo = 1, d = 1, h = 0, mi = 0] = m.map(Number);
+  const date = new Date(y, mo - 1, d, h, mi);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 /** Date → `YYYY-MM-DDTHH:mm` in local time, for `datetime-local` value. */
 function toDatetimeLocalValue(date: Date | null): string {
   if (!date) {
@@ -154,10 +175,13 @@ export function NotesViewingDialog({
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
+            const viewingIso = viewingDate.trim()
+              ? datetimeLocalToISO(viewingDate)
+              : null;
             mutation.mutate({
               notes,
-              viewingDate: viewingDate.trim() ? viewingDate : null,
-              viewingDurationMinutes: viewingDate.trim() ? duration : null,
+              viewingDate: viewingIso,
+              viewingDurationMinutes: viewingIso ? duration : null,
             });
           }}
         >
