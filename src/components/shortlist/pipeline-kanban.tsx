@@ -85,7 +85,7 @@ const MORPH_TRANSITION = {
   bounce: 0.12,
 } as const;
 
-/** Columns Paper renders on the desktop board (Archived lives in ⋯). */
+/** The four active stages Paper renders on the board. */
 const BOARD_STATUSES: PipelineStatus[] = [
   "shortlisted",
   "contacted",
@@ -93,13 +93,42 @@ const BOARD_STATUSES: PipelineStatus[] = [
   "offer_made",
 ];
 
-const EMPTY_HINTS: Record<PipelineStatus, string> = {
+/**
+ * Board columns left-to-right. "passed" is a pseudo-column: it isn't a
+ * status but a view onto archived cards whose reason is `passed`, given
+ * its own lane at the right so a passed pick is visibly out of the running
+ * (rather than vanishing into the ⋯ menu). Other archive reasons stay
+ * hidden. Dropping a card here archives it as `passed`.
+ */
+const PASSED_COLUMN = "passed" as const;
+type BoardColumnId = PipelineStatus | typeof PASSED_COLUMN;
+const BOARD_COLUMNS: BoardColumnId[] = [...BOARD_STATUSES, PASSED_COLUMN];
+
+const EMPTY_HINTS: Record<BoardColumnId, string> = {
   shortlisted: "Picks you both kept land here",
   contacted: "Drop a card here once you've reached out",
   viewing_booked: "Drop a card here once a viewing's booked",
   offer_made: "Drop a card here once you've offered",
   archived: "",
+  passed: "Drop a card here when you've passed on it",
 };
+
+/** Column heading per board column. */
+function columnLabel(col: BoardColumnId): string {
+  return col === PASSED_COLUMN ? "Passed" : STAGE_LABEL[col];
+}
+
+/** Cards rendered in a board column — `passed` filters the archived
+ * bucket down to the passed reason; every other column is its status. */
+function cardsForColumn(
+  columns: PipelineColumns,
+  col: BoardColumnId
+): PipelineCard[] {
+  if (col === PASSED_COLUMN) {
+    return columns.archived.filter((c) => c.archivedReason === "passed");
+  }
+  return columns[col];
+}
 
 type Props = {
   columns: PipelineColumns;
@@ -115,8 +144,10 @@ function findCard(
   columns: PipelineColumns,
   clusterId: string
 ): PipelineCard | null {
-  for (const status of BOARD_STATUSES) {
-    const hit = columns[status].find((c) => c.clusterId === clusterId);
+  for (const col of BOARD_COLUMNS) {
+    const hit = cardsForColumn(columns, col).find(
+      (c) => c.clusterId === clusterId
+    );
     if (hit) {
       return hit;
     }
@@ -149,12 +180,23 @@ export function PipelineKanban({
       return;
     }
     const clusterId = String(active.id);
-    const toStatus = String(over.id) as PipelineStatus;
+    const to = String(over.id) as BoardColumnId;
     const card = findCard(columns, clusterId);
-    if (!card || card.status === toStatus) {
+    if (!card) {
       return;
     }
-    onMove(clusterId, toStatus);
+    // Dropping onto the Passed lane archives with reason `passed`.
+    if (to === PASSED_COLUMN) {
+      if (card.archivedReason !== "passed") {
+        onArchive(clusterId, "passed");
+      }
+      return;
+    }
+    // Any other lane is a status move (also un-passes an archived card).
+    if (card.status === to) {
+      return;
+    }
+    onMove(clusterId, to);
   }
 
   return (
@@ -165,16 +207,16 @@ export function PipelineKanban({
       sensors={sensors}
     >
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto pb-2">
-        {BOARD_STATUSES.map((status) => (
+        {BOARD_COLUMNS.map((col) => (
           <Column
-            cards={columns[status]}
+            cards={cardsForColumn(columns, col)}
+            column={col}
             disabled={disabled}
-            key={status}
+            key={col}
             onArchive={onArchive}
             onHoverCluster={onHoverCluster}
             onMove={onMove}
             onOpenCluster={onOpenCluster}
-            status={status}
           />
         ))}
       </div>
@@ -186,7 +228,7 @@ export function PipelineKanban({
 }
 
 function Column({
-  status,
+  column,
   cards,
   onOpenCluster,
   onMove,
@@ -194,13 +236,13 @@ function Column({
   onHoverCluster,
   disabled,
 }: {
-  status: PipelineStatus;
+  column: BoardColumnId;
   cards: PipelineCard[];
 } & Pick<
   Props,
   "onOpenCluster" | "onMove" | "onArchive" | "onHoverCluster" | "disabled"
 >) {
-  const { setNodeRef, isOver } = useDroppable({ id: status, disabled });
+  const { setNodeRef, isOver } = useDroppable({ id: column, disabled });
   // While the column is scrolling, suppress hover-expansion: a card
   // growing under the cursor mid-scroll shifts everything below it and
   // makes the scroll lurch ("jumps an item"). We re-enable shortly after
@@ -233,9 +275,12 @@ function Column({
       <header className="flex shrink-0 items-center justify-between pb-1">
         <div className="flex items-center gap-2">
           <h3 className="font-semibold text-[12px] text-navy uppercase leading-4 tracking-[0.12em]">
-            {STAGE_LABEL[status]}
+            {columnLabel(column)}
           </h3>
-          <StageCountPill count={cards.length} status={status} />
+          <StageCountPill
+            count={cards.length}
+            status={column === PASSED_COLUMN ? "archived" : column}
+          />
         </div>
       </header>
       <div
@@ -243,7 +288,7 @@ function Column({
         onScroll={handleScroll}
       >
         {cards.length === 0 ? (
-          <EmptyColumn hint={EMPTY_HINTS[status]} isOver={isOver} />
+          <EmptyColumn hint={EMPTY_HINTS[column]} isOver={isOver} />
         ) : (
           cards.map((card) => (
             <Card

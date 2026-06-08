@@ -115,6 +115,30 @@ export type PipelineColumns = Record<PipelineStatus, PipelineCard[]>;
 // Reads
 // -----------------------------------------------------------------------------
 
+/** Default column order: most-recently-moved first, id as a stable
+ * tie-break so the order is deterministic across refreshes. */
+function byRecency(a: PipelineCard, b: PipelineCard): number {
+  const dt = b.lastMovedAt.getTime() - a.lastMovedAt.getTime();
+  return dt !== 0 ? dt : a.clusterId.localeCompare(b.clusterId);
+}
+
+/** Viewing-booked order: soonest viewing first, undated cards last,
+ * then the usual recency tie-break. */
+function byViewingDate(a: PipelineCard, b: PipelineCard): number {
+  const av = a.viewingDate?.getTime() ?? null;
+  const bv = b.viewingDate?.getTime() ?? null;
+  if (av === null && bv === null) {
+    return byRecency(a, b);
+  }
+  if (av === null) {
+    return 1;
+  }
+  if (bv === null) {
+    return -1;
+  }
+  return av !== bv ? av - bv : byRecency(a, b);
+}
+
 export const listPipeline = createServerFn({ method: "GET" }).handler(
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: merges the mutual-match + pipeline-row sources, hydrates each cluster, and buckets into columns in one linear pass — splitting it would scatter the column-assembly logic across helpers.
   async (): Promise<PipelineColumns> => {
@@ -231,16 +255,13 @@ export const listPipeline = createServerFn({ method: "GET" }).handler(
       columns[card.status].push(card);
     }
 
-    // Sort each column: most-recently-moved first. Stable secondary
-    // sort by clusterId keeps the order deterministic across refreshes.
+    // Sort each column: most-recently-moved first (stable id tie-break).
+    // Exception: "Viewing booked" reads as a schedule, so it sorts by the
+    // viewing date — soonest upcoming at the top, undated cards last.
     for (const status of PIPELINE_STATUSES) {
-      columns[status].sort((a, b) => {
-        const dt = b.lastMovedAt.getTime() - a.lastMovedAt.getTime();
-        if (dt !== 0) {
-          return dt;
-        }
-        return a.clusterId.localeCompare(b.clusterId);
-      });
+      columns[status].sort(
+        status === "viewing_booked" ? byViewingDate : byRecency
+      );
     }
 
     return columns;
