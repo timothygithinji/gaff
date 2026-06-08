@@ -3,7 +3,7 @@
  *
  * Lives here (not inline in the route) so anything that needs the
  * outstanding-group count shares one query key → one fetch → no disagreement.
- * Currently read by the `/settings/duplicates` page (reached from the account
+ * Currently read by the `/merge` page (reached from the account
  * dropdown). The query loads the household's photo signals, so keep it off
  * always-mounted chrome.
  */

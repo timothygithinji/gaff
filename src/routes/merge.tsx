@@ -1,5 +1,5 @@
 /**
- * `/settings/duplicates` — manual cross-portal de-duplication tool.
+ * `/merge` — manual cross-portal de-duplication tool.
  *
  * Cross-portal clustering matches on exact normalised-address equality, so
  * the same flat listed on two portals can sit in two clusters and show up
@@ -10,6 +10,10 @@
  * + shortlist state; swipe conflicts resolve skip-wins. Street name alone
  * is never enough (two homes on a road are different homes). See
  * `src/server/functions/clusters.ts`.
+ *
+ * Layout mirrors `/deferred`: a centred maintenance column inside the
+ * desktop shell, single column + bottom nav on mobile. Reached from the
+ * account dropdown (see `admin-sidebar.tsx`), not the settings rail.
  */
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -20,50 +24,43 @@ import {
 } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { AdminSidebar } from "../../components/layout/admin-sidebar";
-import { BottomNav } from "../../components/layout/bottom-nav";
+import { AdminSidebar } from "../components/layout/admin-sidebar";
+import { BottomNav } from "../components/layout/bottom-nav";
 import {
   DuplicateCompare,
   type MergeRole,
-} from "../../components/settings/duplicate-compare";
-import { SettingsNav } from "../../components/settings/settings-nav";
-import { Button } from "../../components/ui/button";
-import { SkeletonList } from "../../components/ui/patterns/skeletons";
-import { requireSession } from "../../lib/auth-guard";
-import { duplicatesQueryOptions } from "../../lib/duplicates-query";
-import { queryKeys } from "../../lib/query-keys";
+} from "../components/settings/duplicate-compare";
+import { Button } from "../components/ui/button";
+import { SkeletonList } from "../components/ui/patterns/skeletons";
+import { requireSession } from "../lib/auth-guard";
+import { duplicatesQueryOptions } from "../lib/duplicates-query";
+import { queryKeys } from "../lib/query-keys";
 import {
   type DuplicateGroup,
   dismissDuplicateSuggestion,
   mergeClusters,
-} from "../../server/functions/clusters";
+} from "../server/functions/clusters";
 
-export const Route = createFileRoute("/settings/duplicates")({
+export const Route = createFileRoute("/merge")({
   head: () => ({ meta: [{ title: "Merge duplicates · Gaff" }] }),
   beforeLoad: ({ context }) => {
-    requireSession(
-      context as { currentUserId: string | null },
-      "/settings/duplicates"
-    );
+    requireSession(context as { currentUserId: string | null }, "/merge");
   },
   // Prefetch in the loader (parity with /deferred) so the list is
   // SSR-painted instead of popping in via a mount-time fetch.
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(duplicatesQueryOptions),
-  pendingComponent: PendingDuplicates,
-  component: DuplicatesPage,
+  pendingComponent: PendingMerge,
+  component: MergePage,
 });
 
-function DuplicatesPage() {
+function MergePage() {
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="flex w-full gap-10 px-10 py-10">
-          <SettingsNav />
-          <div className="flex min-w-0 grow flex-col">
-            <Header />
-            <DuplicatesList />
-          </div>
+        <div className="mx-auto w-full max-w-[920px] px-8 py-10">
+          <Header />
+          <DuplicatesList />
         </div>
       </AdminSidebar>
 
@@ -74,7 +71,7 @@ function DuplicatesPage() {
             to="/"
           >
             <HugeiconsIcon icon={ArrowLeft01Icon} size={16} strokeWidth={1.5} />
-            Settings
+            Review
           </Link>
           <Header />
           <DuplicatesList />
@@ -85,18 +82,15 @@ function DuplicatesPage() {
   );
 }
 
-/** Loading frame — mirrors {@link DuplicatesPage}: static header + skeleton
- * rows inside the settings shell (desktop) and the mobile column. */
-function PendingDuplicates() {
+/** Loading frame — mirrors {@link MergePage}: static header + skeleton rows
+ * in both the desktop and mobile shells. */
+function PendingMerge() {
   return (
     <>
       <AdminSidebar mode="desktop-only">
-        <div className="flex w-full gap-10 px-10 py-10">
-          <SettingsNav />
-          <div className="flex min-w-0 grow flex-col">
-            <Header />
-            <SkeletonList count={3} />
-          </div>
+        <div className="mx-auto w-full max-w-[920px] px-8 py-10">
+          <Header />
+          <SkeletonList count={3} />
         </div>
       </AdminSidebar>
       <div className="min-h-screen bg-ground pb-28 lg:hidden">

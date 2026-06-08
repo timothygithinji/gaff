@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ShortlistRouteImport } from './routes/shortlist'
+import { Route as MergeRouteImport } from './routes/merge'
 import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DeferredRouteImport } from './routes/deferred'
@@ -18,7 +19,6 @@ import { Route as CompareRouteImport } from './routes/compare'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SearchesIndexRouteImport } from './routes/searches/index'
 import { Route as SettingsHouseholdRouteImport } from './routes/settings/household'
-import { Route as SettingsDuplicatesRouteImport } from './routes/settings/duplicates'
 import { Route as SettingsAccountRouteImport } from './routes/settings/account'
 import { Route as SearchesNewRouteImport } from './routes/searches/new'
 import { Route as SearchesIdRouteImport } from './routes/searches/$id'
@@ -33,6 +33,11 @@ const SignupRoute = SignupRouteImport.update({
 const ShortlistRoute = ShortlistRouteImport.update({
   id: '/shortlist',
   path: '/shortlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MergeRoute = MergeRouteImport.update({
+  id: '/merge',
+  path: '/merge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MatchesRoute = MatchesRouteImport.update({
@@ -70,11 +75,6 @@ const SettingsHouseholdRoute = SettingsHouseholdRouteImport.update({
   path: '/settings/household',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsDuplicatesRoute = SettingsDuplicatesRouteImport.update({
-  id: '/settings/duplicates',
-  path: '/settings/duplicates',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsAccountRoute = SettingsAccountRouteImport.update({
   id: '/settings/account',
   path: '/settings/account',
@@ -107,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/deferred': typeof DeferredRoute
   '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
+  '/merge': typeof MergeRoute
   '/shortlist': typeof ShortlistRoute
   '/signup': typeof SignupRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -114,7 +115,6 @@ export interface FileRoutesByFullPath {
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/account': typeof SettingsAccountRoute
-  '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches/': typeof SearchesIndexRoute
 }
@@ -124,6 +124,7 @@ export interface FileRoutesByTo {
   '/deferred': typeof DeferredRoute
   '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
+  '/merge': typeof MergeRoute
   '/shortlist': typeof ShortlistRoute
   '/signup': typeof SignupRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -131,7 +132,6 @@ export interface FileRoutesByTo {
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/account': typeof SettingsAccountRoute
-  '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches': typeof SearchesIndexRoute
 }
@@ -142,6 +142,7 @@ export interface FileRoutesById {
   '/deferred': typeof DeferredRoute
   '/login': typeof LoginRoute
   '/matches': typeof MatchesRoute
+  '/merge': typeof MergeRoute
   '/shortlist': typeof ShortlistRoute
   '/signup': typeof SignupRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -149,7 +150,6 @@ export interface FileRoutesById {
   '/searches/$id': typeof SearchesIdRoute
   '/searches/new': typeof SearchesNewRoute
   '/settings/account': typeof SettingsAccountRoute
-  '/settings/duplicates': typeof SettingsDuplicatesRoute
   '/settings/household': typeof SettingsHouseholdRoute
   '/searches/': typeof SearchesIndexRoute
 }
@@ -161,6 +161,7 @@ export interface FileRouteTypes {
     | '/deferred'
     | '/login'
     | '/matches'
+    | '/merge'
     | '/shortlist'
     | '/signup'
     | '/invite/$token'
@@ -168,7 +169,6 @@ export interface FileRouteTypes {
     | '/searches/$id'
     | '/searches/new'
     | '/settings/account'
-    | '/settings/duplicates'
     | '/settings/household'
     | '/searches/'
   fileRoutesByTo: FileRoutesByTo
@@ -178,6 +178,7 @@ export interface FileRouteTypes {
     | '/deferred'
     | '/login'
     | '/matches'
+    | '/merge'
     | '/shortlist'
     | '/signup'
     | '/invite/$token'
@@ -185,7 +186,6 @@ export interface FileRouteTypes {
     | '/searches/$id'
     | '/searches/new'
     | '/settings/account'
-    | '/settings/duplicates'
     | '/settings/household'
     | '/searches'
   id:
@@ -195,6 +195,7 @@ export interface FileRouteTypes {
     | '/deferred'
     | '/login'
     | '/matches'
+    | '/merge'
     | '/shortlist'
     | '/signup'
     | '/invite/$token'
@@ -202,7 +203,6 @@ export interface FileRouteTypes {
     | '/searches/$id'
     | '/searches/new'
     | '/settings/account'
-    | '/settings/duplicates'
     | '/settings/household'
     | '/searches/'
   fileRoutesById: FileRoutesById
@@ -213,6 +213,7 @@ export interface RootRouteChildren {
   DeferredRoute: typeof DeferredRoute
   LoginRoute: typeof LoginRoute
   MatchesRoute: typeof MatchesRoute
+  MergeRoute: typeof MergeRoute
   ShortlistRoute: typeof ShortlistRoute
   SignupRoute: typeof SignupRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -220,7 +221,6 @@ export interface RootRouteChildren {
   SearchesIdRoute: typeof SearchesIdRoute
   SearchesNewRoute: typeof SearchesNewRoute
   SettingsAccountRoute: typeof SettingsAccountRoute
-  SettingsDuplicatesRoute: typeof SettingsDuplicatesRoute
   SettingsHouseholdRoute: typeof SettingsHouseholdRoute
   SearchesIndexRoute: typeof SearchesIndexRoute
 }
@@ -239,6 +239,13 @@ declare module '@tanstack/react-router' {
       path: '/shortlist'
       fullPath: '/shortlist'
       preLoaderRoute: typeof ShortlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/merge': {
+      id: '/merge'
+      path: '/merge'
+      fullPath: '/merge'
+      preLoaderRoute: typeof MergeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/matches': {
@@ -290,13 +297,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsHouseholdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/duplicates': {
-      id: '/settings/duplicates'
-      path: '/settings/duplicates'
-      fullPath: '/settings/duplicates'
-      preLoaderRoute: typeof SettingsDuplicatesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings/account': {
       id: '/settings/account'
       path: '/settings/account'
@@ -341,6 +341,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeferredRoute: DeferredRoute,
   LoginRoute: LoginRoute,
   MatchesRoute: MatchesRoute,
+  MergeRoute: MergeRoute,
   ShortlistRoute: ShortlistRoute,
   SignupRoute: SignupRoute,
   InviteTokenRoute: InviteTokenRoute,
@@ -348,7 +349,6 @@ const rootRouteChildren: RootRouteChildren = {
   SearchesIdRoute: SearchesIdRoute,
   SearchesNewRoute: SearchesNewRoute,
   SettingsAccountRoute: SettingsAccountRoute,
-  SettingsDuplicatesRoute: SettingsDuplicatesRoute,
   SettingsHouseholdRoute: SettingsHouseholdRoute,
   SearchesIndexRoute: SearchesIndexRoute,
 }

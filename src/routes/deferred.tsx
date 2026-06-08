@@ -8,7 +8,7 @@
  * snoozed, when each comes back, whether the refresh scrape has run yet,
  * and lets you pull one back into the queue immediately ("Bring back").
  *
- * Layout mirrors `/settings/duplicates`: a centred maintenance column
+ * Layout mirrors `/merge`: a centred maintenance column
  * inside the desktop shell, single column + bottom nav on mobile.
  */
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
@@ -119,7 +119,7 @@ function DeferredList() {
 
   if (data.length === 0) {
     return (
-      <div className="rounded-lg border border-line bg-white px-5 py-8 text-center">
+      <div className="rounded-lg border border-line bg-card px-5 py-8 text-center">
         <p className="font-medium text-navy text-sm">Nothing deferred</p>
         <p className="mt-1 text-slate text-sm">
           Defer a listing from Review when it's too sparse to judge and it'll
@@ -189,7 +189,7 @@ function DeferredCard({ item }: { item: DeferredItem }) {
   });
 
   return (
-    <div className="flex items-stretch gap-3.5 rounded-lg border border-line bg-white p-3.5">
+    <div className="flex items-stretch gap-3.5 rounded-lg border border-line bg-card p-3.5">
       <div className="size-[64px] shrink-0 overflow-hidden rounded-md bg-mist">
         {item.photoUrl ? (
           // biome-ignore lint/nursery/noImgElement: TanStack Start is not Next.js; <Image> isn't available.

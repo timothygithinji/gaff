@@ -236,7 +236,7 @@ function UserAvatar() {
             <HugeiconsIcon icon={Clock01Icon} size={14} />
             Deferred listings
           </DropdownMenuItem>
-          <DropdownMenuItem render={<Link to="/settings/duplicates" />}>
+          <DropdownMenuItem render={<Link to="/merge" />}>
             <HugeiconsIcon icon={GitMergeIcon} size={14} />
             Merge duplicates
           </DropdownMenuItem>
