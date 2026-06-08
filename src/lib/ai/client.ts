@@ -69,7 +69,19 @@ export async function extractFeatures(
     // well under 1k output tokens. We keep slack so dense properties
     // don't truncate mid-array.
     max_tokens: 1024,
-    system: SYSTEM_PROMPT,
+    // Cache the static prefix (tools + system) so a sweep of listings only
+    // pays full input price on the first call and reads the prefix at ~10%
+    // thereafter. The breakpoint goes on the system block — caching covers
+    // everything before it in the tools → system → messages hierarchy, so
+    // the tool schema is cached too. The per-listing user message stays
+    // after the breakpoint (it varies every call, so it's never cacheable).
+    // NOTE: this only engages while the prefix clears Haiku 4.5's 4,096-token
+    // minimum; the worked examples in SYSTEM_PROMPT exist partly to keep it
+    // above that floor. If both cache_* usage fields come back 0, the prefix
+    // has dropped below 4,096 — see PROMPT_VERSION v2.3.0 in ./config.
+    system: [
+      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+    ],
     tools: [
       {
         name: EXTRACT_FEATURES_TOOL_NAME,

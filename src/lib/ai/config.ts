@@ -53,8 +53,18 @@ export const HAIKU_4_5_OUTPUT_USD_PER_MTOK = 5.0;
  *     ANY at/near/below-cap deposit watchout (not just exact-match
  *     phrasings) unless our computed `depositOverCap` is true. Re-running
  *     AI is required to populate the new context for existing rows.
+ *   - v2.3.0 — worked examples + prompt caching. The system prompt gains a
+ *     WORKED EXAMPLES section (six grounded input→output cases reinforcing
+ *     the relevance bar, the transport-time rule, the mandatory deposit-cap
+ *     watchout, and the don't-surface list). Beyond the quality lift, the
+ *     examples push the static prefix (tools + system) over Haiku 4.5's
+ *     4,096-token minimum cacheable size, so `client.ts` now marks the
+ *     system block with `cache_control` and a sweep reads the prefix at
+ *     ~10% of input price after the first call. Schema unchanged and no new
+ *     context fields, so existing v2.2.0 rows stay valid — re-running AI is
+ *     an optional quality refresh, not required.
  *
  * See `src/lib/ai/prompt.ts` for the prompt text and
  * `src/lib/ai/feature-filter.ts` for the render-time filter.
  */
-export const PROMPT_VERSION = "v2.2.0" as const;
+export const PROMPT_VERSION = "v2.3.0" as const;

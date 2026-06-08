@@ -190,7 +190,76 @@ Real dealbreakers (always surface when actually present):
 Output discipline:
   - 2–5 highlights, 0–4 watchouts. Better empty than padded — an empty highlights[] is a fine answer for an unremarkable property.
   - Return ONLY the tool call. No prose.
-  - If the description is missing or near-empty, return a null summary and skip items you can't ground in the enrichment data alone.`;
+  - If the description is missing or near-empty, return a null summary and skip items you can't ground in the enrichment data alone.
+
+WORKED EXAMPLES — the input is abbreviated to the load-bearing fields; the arrow shows the exact extract_features payload you would return. Study what each one OMITS as much as what it surfaces.
+
+Example 1 — well-connected, grounded positives, nothing to flag:
+  listing: { priceMonthly: 1850, bedrooms: 1, furnished: "furnished", legalDepositCap: { fiveWeeksRent: 2135, depositOverCap: false } }
+  enrichment: { stationRoutes: [{ name: "Clapham Junction", walkMinutes: 7, transitMinutes: null }], commuteMinutes: { "Liverpool Street": 24 }, broadband: { technology: "FTTP", downloadMbps: 900, fttpAvailable: true } }
+  → {
+      "summary": "A well-connected one-bed minutes from Clapham Junction, suited to a commuter who wants fast rail and full-fibre.",
+      "highlights": [
+        { "label": "Walk to Clapham Junction · 7 min", "detail": "Routed 7-min walk; 24 min on to Liverpool Street." },
+        { "label": "FTTP 900Mbps available", "detail": "Full-fibre to the premises." }
+      ],
+      "watchouts": []
+    }
+  Why: the deposit is AT the legal cap (depositOverCap false) and the flat is furnished — neither is a concern, so neither is surfaced. The walk time is cited from stationRoutes, never computed.
+
+Example 2 — real dealbreakers, surfaced as problems:
+  listing: { priceMonthly: 1600, deposit: 2400, billsIncluded: false, legalDepositCap: { fiveWeeksRent: 1846, depositOverCap: true }, materialInfo: { heating: "electric storage heaters" } }
+  enrichment: { epcCurrent: "F" }
+  → {
+      "summary": "A cheaper flat undercut by a deposit over the legal cap and costly electric heating.",
+      "highlights": [],
+      "watchouts": [
+        { "severity": "problem", "label": "Deposit above legal cap", "detail": "£2,400 exceeds the 5-week cap of £1,846 (Tenant Fees Act 2019)." },
+        { "severity": "problem", "label": "EPC F + bills excluded", "detail": "Sub-standard efficiency with electric storage heating and tenant-paid bills means high running costs." }
+      ]
+    }
+  Why: depositOverCap is true, so the deposit watchout is mandatory and cites the pre-computed fiveWeeksRent — the model never does the arithmetic itself.
+
+Example 3 — sparse listing, pending enrichment: ground nothing you don't have:
+  listing: { description: null, keyFeatures: [] }
+  enrichment: { epcCurrent: null, stationRoutes: null, broadband: null, amenities: null }
+  → { "summary": null, "highlights": [], "watchouts": [] }
+  Why: "No EPC data" / "No broadband data" / "Bills status unclear" are gaps in OUR pipeline, not flaws of the property — surface nothing. A null summary is correct when there's no description to ground one.
+
+Example 4 — the transport trap: no routed time means no stated time:
+  listing: { description: "Moments from the tube — a 2-minute walk!", nearestStations: [{ name: "Tooting Bec", distanceMiles: 0.4, types: ["TUBE"] }] }
+  enrichment: { stationRoutes: null, commuteMinutes: null }
+  → {
+      "summary": "A flat near Tooting Bec, though transport times couldn't be verified.",
+      "highlights": [],
+      "watchouts": []
+    }
+  Why: stationRoutes is null, so state NO walk time. The "2-minute walk" is marketing copy and 0.4 miles is straight-line distance (not minutes) — both are forbidden sources. Naming the station with a time would be a hallucination.
+
+Example 5 — softer cautions, each on a single hard fact:
+  listing: { billsIncluded: false, listedBuilding: true, materialInfo: { heating: "electric" } }
+  → {
+      "summary": "A characterful flat in a listed building, with electric heating to budget for.",
+      "highlights": [],
+      "watchouts": [
+        { "severity": "caution", "label": "Electric-only heating", "detail": "No gas central heating; running costs are typically 2–3× gas when you pay your own bills." },
+        { "severity": "caution", "label": "Listed building", "detail": "Statutory limits on alterations, external aerials and satellite dishes." }
+      ]
+    }
+
+Example 6 — below-median rent + genuinely useful amenities; resist padding:
+  listing: { postcode: "SW9 7AB", priceMonthly: 1500, bedrooms: 2, furnished: "unfurnished", letType: "long term" }
+  enrichment: { amenities: { withinMeters: 800, counts: { "supermarket": 4, "gym": 2, "park": 1 } }, stationRoutes: [{ name: "Brixton", walkMinutes: 11, transitMinutes: null }] }
+  portalSpread: [{ portal: "rightmove", priceMonthly: 1500, deltaFromCheapest: 0 }, { portal: "openrent", priceMonthly: 1575, deltaFromCheapest: 75 }]
+  → {
+      "summary": "A two-bed near Brixton with strong local amenities, suited to sharers who want to walk to the tube and the shops.",
+      "highlights": [
+        { "label": "Walk to Brixton · 11 min", "detail": "Routed 11-min walk to the Victoria line." },
+        { "label": "4 supermarkets within 800m", "detail": "Plus two gyms and a park on the doorstep." }
+      ],
+      "watchouts": []
+    }
+  Why: "long term", "unfurnished", and the £75 portal delta are not decision-changing on their own, so they are omitted. Amenity counts are surfaced only because they clear the relevance bar (unusually well-served).`;
 
 /**
  * Compact shape of everything we feed the model. Owned by the AI module
