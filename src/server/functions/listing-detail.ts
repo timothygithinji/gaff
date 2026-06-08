@@ -885,39 +885,24 @@ export const getListingDetail = createServerFn({ method: "GET" })
       };
     });
 
-    // Step 4: photos — pooled across EVERY listing in the cluster. The same
-    // home on two portals carries two galleries; showing only the headline
-    // listing's dropped the other portal's photos entirely (often the
-    // better set). Lead with the headline listing's photos, then the rest
-    // in price order, deduped by source URL and re-sequenced into one
-    // gallery. (Cross-portal copies of an identical image usually have
-    // distinct URLs, so some near-duplicates can remain — acceptable; the
-    // win is not losing a whole portal's photos.)
+    // Step 4: photos — the PRIMARY (headline) listing's gallery only. A
+    // cluster groups duplicate listings of one home; we show that home
+    // through a single representative listing rather than pooling galleries
+    // across cluster members. Pooling was how a 21-listing over-merge piled
+    // up 283 photos — and even on a correct cluster, stitching two portals'
+    // sets together duplicates the same rooms under different CDN URLs.
+    // Per-listing photos stay separate in the DB; the detail just reads the
+    // primary's. Still dedup on source URL to fold any re-scrape repeats
+    // within that one listing.
     const photoRows = await db
       .select()
       .from(listingPhotos)
-      .where(
-        inArray(
-          listingPhotos.listingId,
-          sortedListings.map((l) => l.id)
-        )
-      )
+      .where(eq(listingPhotos.listingId, headlineListing.id))
       .orderBy(listingPhotos.position);
 
-    const listingRank = new Map(sortedListings.map((l, i) => [l.id, i]));
-    const orderedPhotoRows = [...photoRows].sort((a, b) => {
-      const ra = listingRank.get(a.listingId) ?? 0;
-      const rb = listingRank.get(b.listingId) ?? 0;
-      return ra === rb ? a.position - b.position : ra - rb;
-    });
-
-    // Dedup on the SOURCE url, not the resolved path. Every scrape mirrors
-    // each image into its own R2 object, so `resolvePhotoUrl` (which prefers
-    // r2Key) is unique per row and would collapse nothing — a re-scraped or
-    // cross-listing copy of the same source image must dedup to one entry.
     const seenPhotoUrls = new Set<string>();
     const photos: ListingDetailPhoto[] = [];
-    for (const p of orderedPhotoRows) {
+    for (const p of photoRows) {
       if (seenPhotoUrls.has(p.url)) {
         continue;
       }
