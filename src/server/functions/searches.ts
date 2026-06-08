@@ -801,8 +801,7 @@ export type SearchesPortfolio = {
 
 export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
   async (): Promise<SearchesPortfolio> => {
-    const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdScope();
+    const { householdId, currentUserId } = await requireHouseholdScope();
     const db = getDb();
 
     const searchRows = await db
@@ -835,7 +834,7 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       };
     }
 
-    // Fire everything in parallel — seven small queries.
+    // Fire everything in parallel — six small queries.
     const [
       thisWeekListings,
       lastWeekListings,
@@ -843,7 +842,6 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       lastRunRows,
       clusterRows,
       mySwipesRows,
-      householdSkipRows,
     ] = await Promise.all([
       // Listings per search in the last 7d. We also need each row's
       // firstSeenAt so we can bucket the pulse chart in JS.
@@ -910,18 +908,12 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
           )
         ),
       // Current user's swipes (any outcome) — these clusters drop out.
+      // A skip is personal: it only removes the card from the user who
+      // skipped it, so a partner's skip never shrinks this count.
       db
         .select({ clusterId: swipes.clusterId })
         .from(swipes)
         .where(eq(swipes.userId, currentUserId)),
-      // Household-wide skip swipes — asymmetric veto hides cards from
-      // the rest of the household.
-      db
-        .select({ clusterId: swipes.clusterId })
-        .from(swipes)
-        .where(
-          and(inArray(swipes.userId, memberUserIds), eq(swipes.outcome, "skip"))
-        ),
     ]);
 
     const { listingsThisWeekBySearch, pulseLast7Days } = bucketListingsAndPulse(
@@ -932,8 +924,7 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
     const lastRunBySearch = mapLastRun(lastRunRows);
     const queueClustersBySearch = bucketQueueClusters(
       clusterRows,
-      new Set(mySwipesRows.map((s) => s.clusterId)),
-      new Set(householdSkipRows.map((s) => s.clusterId))
+      new Set(mySwipesRows.map((s) => s.clusterId))
     );
 
     const perSearch: SearchesPerSearchStats[] = searchRows.map((s) => ({
@@ -1024,20 +1015,20 @@ function mapLastRun(
 }
 
 /**
- * Per-search distinct cluster ids remaining in the queue, after the
- * household-skip veto + the current user's already-swiped set.
+ * Per-search distinct cluster ids remaining in the queue, after removing
+ * the current user's already-swiped set. A skip is personal, so a
+ * partner's skip leaves the cluster in this count for everyone else.
  */
 function bucketQueueClusters(
   clusterRows: { searchId: string; clusterId: string | null }[],
-  mySwiped: Set<string | null>,
-  householdSkip: Set<string | null>
+  mySwiped: Set<string | null>
 ): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   for (const r of clusterRows) {
     if (!r.clusterId) {
       continue;
     }
-    if (mySwiped.has(r.clusterId) || householdSkip.has(r.clusterId)) {
+    if (mySwiped.has(r.clusterId)) {
       continue;
     }
     const set = out.get(r.searchId) ?? new Set<string>();

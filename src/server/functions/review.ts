@@ -16,11 +16,10 @@
  *   1. The cluster must have at least one listing belonging to a search
  *      this household actively scrapes.
  *   2. The CURRENT user must not have swiped this cluster (any outcome).
- *   3. NO household member may have swiped 'skip' on it
- *      ("asymmetric-hides-from-disappointed-voter" — a single member
- *      vetoing a place hides it from the rest of the household so we
- *      never re-show a card someone already nope'd).
- *   4. Order by listings.first_seen_at DESC (newest first) then
+ *      A skip only hides the card from the user who skipped it — a
+ *      partner's skip never removes it from your queue, so each member
+ *      gets their own independent say (a skip just won't shortlist).
+ *   3. Order by listings.first_seen_at DESC (newest first) then
  *      price_monthly ASC (cheaper wins the tiebreak).
  *
  * The cluster's `listings` set spans multiple portals — the headline
@@ -982,13 +981,13 @@ async function filterCandidatesByTargets(
  *
  * Returns the cluster ids the caller still has to swipe, ordered by
  * the v1 ranking rules (newest-first listing, cheapest-tiebreak), with
- * already-swiped clusters and household-skip clusters removed. The
- * caller hydrates whichever positions it needs.
+ * the current user's own already-swiped clusters removed. A skip is
+ * personal — a partner's skip doesn't drop the cluster from your queue.
+ * The caller hydrates whichever positions it needs.
  */
 async function loadRankedQueueClusterIds(
   db: Db,
   householdId: string,
-  memberUserIds: string[],
   currentUserId: string,
   /**
    * When set, restricts the ranked queue to listings belonging to this
@@ -1062,23 +1061,17 @@ async function loadRankedQueueClusterIds(
     return { clusterIds: [], activeSearches };
   }
 
-  const [mySwipes, householdSkips, deferred] = await Promise.all([
+  const [mySwipes, deferred] = await Promise.all([
+    // The current user's own swipes — any outcome. A skip here hides the
+    // card from *this* user only; a partner's skip is deliberately not
+    // consulted, so the cluster stays visible to everyone who hasn't acted
+    // on it yet (it just won't shortlist unless they also keep it).
     db
       .select({ clusterId: swipes.clusterId })
       .from(swipes)
       .where(
         and(
           eq(swipes.userId, currentUserId),
-          inArray(swipes.clusterId, ranked)
-        )
-      ),
-    db
-      .select({ clusterId: swipes.clusterId })
-      .from(swipes)
-      .where(
-        and(
-          inArray(swipes.userId, memberUserIds),
-          eq(swipes.outcome, "skip"),
           inArray(swipes.clusterId, ranked)
         )
       ),
@@ -1097,10 +1090,9 @@ async function loadRankedQueueClusterIds(
       ),
   ]);
   const mySwipedSet = new Set(mySwipes.map((s) => s.clusterId));
-  const skipSet = new Set(householdSkips.map((s) => s.clusterId));
   const deferredSet = new Set(deferred.map((s) => s.clusterId));
   const clusterIds = ranked.filter(
-    (cid) => !(mySwipedSet.has(cid) || skipSet.has(cid) || deferredSet.has(cid))
+    (cid) => !(mySwipedSet.has(cid) || deferredSet.has(cid))
   );
 
   return { clusterIds, activeSearches };
@@ -1111,14 +1103,12 @@ type Db = ReturnType<typeof getDb>;
 export const getNextReviewCard = createServerFn({ method: "GET" })
   .inputValidator(reviewCardInputSchema)
   .handler(async ({ data }): Promise<ReviewCard | null> => {
-    const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdScope();
+    const { householdId, currentUserId } = await requireHouseholdScope();
     const db = getDb();
 
     const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
       db,
       householdId,
-      memberUserIds,
       currentUserId,
       data?.searchId
     );
@@ -1128,10 +1118,10 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
     const activeSearchIds = activeSearches.map((s) => s.id);
 
     // If the caller explicitly pinned a cluster, hydrate that one as
-    // long as it's still in the queue (i.e. the user hasn't swiped on
-    // it and it hasn't been household-skipped). Otherwise fall back to
-    // the top-of-queue card. This drives the queue-rail click-to-preview
-    // behaviour without going through a separate endpoint.
+    // long as it's still in the queue (i.e. the user hasn't swiped on it
+    // themselves). Otherwise fall back to the top-of-queue card. This
+    // drives the queue-rail click-to-preview behaviour without going
+    // through a separate endpoint.
     const explicit = data?.clusterId;
     const nextClusterId =
       explicit && clusterIds.includes(explicit) ? explicit : clusterIds[0];
@@ -1408,14 +1398,12 @@ export type ReviewQueue = {
 export const getReviewQueue = createServerFn({ method: "GET" })
   .inputValidator(queueFilterSchema)
   .handler(async ({ data }): Promise<ReviewQueue> => {
-    const { householdId, memberUserIds, currentUserId } =
-      await requireHouseholdScope();
+    const { householdId, currentUserId } = await requireHouseholdScope();
     const db = getDb();
 
     const { clusterIds, activeSearches } = await loadRankedQueueClusterIds(
       db,
       householdId,
-      memberUserIds,
       currentUserId,
       data?.searchId
     );

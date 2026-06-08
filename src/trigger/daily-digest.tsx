@@ -10,7 +10,9 @@
  * window never widens.
  *
  * Blind review is preserved — this lists places to review, never a peer's
- * verdict — and household-skipped clusters are excluded (a veto hides it).
+ * verdict. The digest is built per recipient: each member's own skips are
+ * filtered out, but a partner's skip never hides a new place from you (a
+ * skip is personal — it suppresses shortlisting, not visibility).
  */
 import { logger, schedules } from "@trigger.dev/sdk";
 import { and, desc, eq, gt, inArray, isNotNull, } from "drizzle-orm";
@@ -130,10 +132,16 @@ async function loadFirstPhotos(
   return byListing;
 }
 
-/** New in-band, non-vetoed clusters for a household since `since`. */
+/**
+ * New in-band clusters for a household since `since`, built for one
+ * recipient. A skip is personal — it only drops the cluster from the
+ * digest of the user who skipped it, so a partner's skip never hides a
+ * new place from you.
+ */
 async function newClustersForHousehold(
   db: Db,
   householdId: string,
+  recipientUserId: string,
   since: Date
 ): Promise<{ items: DigestItem[]; total: number }> {
   const active = await db
@@ -186,22 +194,21 @@ async function newClustersForHousehold(
     return { items: [], total: 0 };
   }
 
-  // Drop household-vetoed clusters (any member swiped skip).
+  // Drop only the recipient's own skips — a partner's skip stays visible.
   const clusterIds = [...headByCluster.keys()];
   const skips = await db
     .select({ clusterId: swipes.clusterId })
     .from(swipes)
-    .innerJoin(householdMembers, eq(swipes.userId, householdMembers.userId))
     .where(
       and(
-        eq(householdMembers.householdId, householdId),
+        eq(swipes.userId, recipientUserId),
         eq(swipes.outcome, "skip"),
         inArray(swipes.clusterId, clusterIds)
       )
     );
   const skipped = new Set(skips.map((s) => s.clusterId));
 
-  // Newest-first order, vetoes removed.
+  // Newest-first order, the recipient's own skips removed.
   const ordered = clusterIds
     .filter((id) => !skipped.has(id))
     .map((id) => headByCluster.get(id) as NewListingRow)
@@ -242,18 +249,15 @@ export const dailyDigestTask = schedules.task({
 
     for (const h of allHouseholds) {
       const since = h.lastDigestAt ?? new Date(now.getTime() - DAY_MS);
-      const { items, total } = await newClustersForHousehold(db, h.id, since);
-      // Advance the watermark regardless, so the window never widens.
+      // Advance the watermark once per household, so the window never
+      // widens regardless of what any individual member ends up receiving.
       await db
         .update(households)
         .set({ lastDigestAt: now })
         .where(eq(households.id, h.id));
-      if (items.length === 0) {
-        continue;
-      }
 
       const members = await db
-        .select({ email: user.email })
+        .select({ userId: householdMembers.userId, email: user.email })
         .from(householdMembers)
         .innerJoin(user, eq(user.id, householdMembers.userId))
         .where(eq(householdMembers.householdId, h.id));
@@ -262,7 +266,19 @@ export const dailyDigestTask = schedules.task({
       }
 
       const resend = getResend();
+      // Build the digest per recipient: each member's own skips are
+      // filtered out, but a partner's skip never hides a new place.
+      let sentCount = 0;
       for (const member of members) {
+        const { items, total } = await newClustersForHousehold(
+          db,
+          h.id,
+          member.userId,
+          since
+        );
+        if (items.length === 0) {
+          continue;
+        }
         await resend.emails.send({
           from: FROM_EMAIL,
           to: member.email,
@@ -270,11 +286,14 @@ export const dailyDigestTask = schedules.task({
             total === 1 ? "1 new place to review" : `${total} new places to review`,
           react: <DigestEmail count={total} items={items} reviewUrl={reviewUrl} />,
         });
+        sentCount += 1;
       }
-      householdsEmailed += 1;
+      if (sentCount > 0) {
+        householdsEmailed += 1;
+      }
       logger.log("daily-digest: sent", {
         householdId: h.id,
-        total,
+        recipients: sentCount,
         members: members.length,
       });
     }
