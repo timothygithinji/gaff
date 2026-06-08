@@ -28,6 +28,7 @@ import { z } from "zod";
 import { getDb } from "../../../db";
 import {
   clusterMergeDismissals,
+  listingPhotos,
   listings,
   matchNotifications,
   propertyClusters,
@@ -37,27 +38,25 @@ import {
 } from "../../../db/schema";
 import {
   type Coord,
-  coordsCorroborate,
   listingCoord,
 } from "../../lib/cluster/coords";
-import {
-  addressOutcode,
-  isDegenerateStreetKey,
-  priceCorroborates,
-  streetKey,
-  streetKeyHasUnit,
-} from "../../lib/cluster/key";
+import { addressOutcode } from "../../lib/cluster/key";
 import {
   type SwipeOutcome,
   pipelineIncomingWins,
   resolveSwipeOutcome,
 } from "../../lib/cluster/merge";
+import {
+  type ListingPhotoSignals,
+  sameHome,
+} from "../../lib/cluster/photo-match";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
 
 type Db = ReturnType<typeof getDb>;
 
 /** A listing row narrowed to what clustering decisions need. */
 type CandidateRow = {
+  id: string;
   clusterId: string;
   portal: string;
   addressRaw: string;
@@ -71,14 +70,15 @@ type CandidateRow = {
   lng: string | null;
 };
 
+/**
+ * A cluster reduced to the photo signals of its ACTIVE listings — that's all
+ * a duplicate decision needs now. Identity is photos (see `photo-match`), so
+ * two clusters are duplicates when any listing of one is the same home as any
+ * listing of the other; street name / price never decide.
+ */
 type ClusterAgg = {
   id: string;
-  outcodes: Set<string>;
-  bedrooms: Set<number>;
-  keys: Set<string>;
-  prices: number[];
-  portals: Set<string>;
-  coords: Coord[];
+  signals: ListingPhotoSignals[];
 };
 
 /** Average of a cluster's listing coordinates, or null if it has none. */
@@ -93,7 +93,10 @@ function centroid(coords: Coord[]): Coord | null {
   return { lat: sum.lat / coords.length, lng: sum.lng / coords.length };
 }
 
-function aggregate(rows: CandidateRow[]): Map<string, ClusterAgg> {
+function aggregate(
+  rows: CandidateRow[],
+  photoSignals: Map<string, { contentKeys: string[]; phashes: bigint[] }>
+): Map<string, ClusterAgg> {
   const aggs = new Map<string, ClusterAgg>();
   for (const r of rows) {
     if (r.status !== "active") {
@@ -101,73 +104,28 @@ function aggregate(rows: CandidateRow[]): Map<string, ClusterAgg> {
     }
     let a = aggs.get(r.clusterId);
     if (!a) {
-      a = {
-        id: r.clusterId,
-        outcodes: new Set(),
-        bedrooms: new Set(),
-        keys: new Set(),
-        prices: [],
-        portals: new Set(),
-        coords: [],
-      };
+      a = { id: r.clusterId, signals: [] };
       aggs.set(r.clusterId, a);
     }
-    a.outcodes.add(addressOutcode(r.postcode, r.addressRaw));
-    if (r.bedrooms != null) {
-      a.bedrooms.add(r.bedrooms);
-    }
-    a.keys.add(streetKey(r.addressRaw));
-    if (r.priceMonthly != null) {
-      a.prices.push(r.priceMonthly);
-    }
-    a.portals.add(r.portal);
-    const coord = listingCoord({ lat: r.lat, lng: r.lng });
-    if (coord) {
-      a.coords.push(coord);
-    }
+    const ph = photoSignals.get(r.id);
+    a.signals.push({
+      id: r.id,
+      outcode: addressOutcode(r.postcode, r.addressRaw),
+      bedrooms: r.bedrooms,
+      portal: r.portal,
+      contentKeys: ph?.contentKeys ?? [],
+      phashes: ph?.phashes ?? [],
+    });
   }
   return aggs;
 }
 
-const intersects = (a: Set<unknown>, b: Set<unknown>) =>
-  [...a].some((x) => b.has(x));
-
+// Two clusters are duplicates when any listing of one is the SAME physical
+// home as any listing of the other — decided by photos (content-key or
+// perceptual-hash overlap), blocked by outcode + bedrooms. Street name and
+// price never enter: they identify a road, not a home.
 function clustersAreDuplicates(a: ClusterAgg, b: ClusterAgg): boolean {
-  if (!intersects(a.outcodes, b.outcodes) || !intersects(a.bedrooms, b.bedrooms)) {
-    return false;
-  }
-  const sharedKeys = [...a.keys]
-    .filter((k) => !isDegenerateStreetKey(k))
-    .filter((k) => b.keys.has(k));
-  if (sharedKeys.length === 0) {
-    return false;
-  }
-  // Cross-portal only — never collapse two distinct same-portal listings.
-  const samePortalOnly =
-    a.portals.size === 1 &&
-    b.portals.size === 1 &&
-    [...a.portals][0] === [...b.portals][0];
-  if (samePortalOnly) {
-    return false;
-  }
-  // Strong evidence required beyond a shared street: either the rents
-  // corroborate, OR the locations sit within ~30m. Street name alone is
-  // never enough — two homes on the same road are different homes.
-  const priceMatch = a.prices.some((p) =>
-    b.prices.some((q) => priceCorroborates(p, q))
-  );
-  const coordMatch = coordsCorroborate(centroid(a.coords), centroid(b.coords), 30);
-  // When the only thing the two clusters share is a UNIT-LESS street key
-  // ("turnpike lane|" — a road, no flat/house number), price proves
-  // nothing: every flat on the road rents about the same, so a price match
-  // is coincidence, not corroboration. Require an actual location match.
-  // A unit-bearing shared key ("elm street|flat2") still pins a specific
-  // home, so price stays sufficient there.
-  const hasUnitBearingSharedKey = sharedKeys.some(streetKeyHasUnit);
-  if (!hasUnitBearingSharedKey) {
-    return coordMatch;
-  }
-  return priceMatch || coordMatch;
+  return a.signals.some((sa) => b.signals.some((sb) => sameHome(sa, sb)));
 }
 
 /** Canonical key for an unordered cluster pair (lo|hi, lexicographic). */
@@ -227,6 +185,7 @@ async function loadHouseholdClusterRows(
 ): Promise<CandidateRow[]> {
   return db
     .select({
+      id: listings.id,
       clusterId: listings.clusterId,
       portal: listings.portal,
       addressRaw: listings.addressRaw,
@@ -246,6 +205,42 @@ async function loadHouseholdClusterRows(
     .then((rows) =>
       rows.filter((r): r is CandidateRow => r.clusterId != null)
     );
+}
+
+/**
+ * Photo identity signals (content keys + perceptual hashes) for every listing
+ * reachable from the household's searches, keyed by listing id. This is what
+ * makes a merge suggestion: see `clustersAreDuplicates`.
+ */
+async function loadHouseholdPhotoSignals(
+  db: Db,
+  householdId: string
+): Promise<Map<string, { contentKeys: string[]; phashes: bigint[] }>> {
+  const rows = await db
+    .select({
+      listingId: listingPhotos.listingId,
+      contentKey: listingPhotos.contentKey,
+      phash: listingPhotos.phash,
+    })
+    .from(listingPhotos)
+    .innerJoin(listings, eq(listingPhotos.listingId, listings.id))
+    .innerJoin(searches, eq(listings.searchId, searches.id))
+    .where(eq(searches.householdId, householdId));
+  const out = new Map<string, { contentKeys: string[]; phashes: bigint[] }>();
+  for (const r of rows) {
+    let e = out.get(r.listingId);
+    if (!e) {
+      e = { contentKeys: [], phashes: [] };
+      out.set(r.listingId, e);
+    }
+    if (r.contentKey) {
+      e.contentKeys.push(r.contentKey);
+    }
+    if (r.phash) {
+      e.phashes.push(BigInt(r.phash));
+    }
+  }
+  return out;
 }
 
 /** The household's dismissed pairs, as canonical `lo|hi` pair keys. */
@@ -316,11 +311,12 @@ export const listDuplicateSuggestions = createServerFn({ method: "GET" })
   .handler(async (): Promise<DuplicateGroup[]> => {
     const { householdId } = await requireHouseholdScope();
     const db = getDb();
-    const [rows, dismissed] = await Promise.all([
+    const [rows, photoSignals, dismissed] = await Promise.all([
       loadHouseholdClusterRows(db, householdId),
+      loadHouseholdPhotoSignals(db, householdId),
       loadDismissedPairs(db, householdId),
     ]);
-    const groups = groupDuplicates(aggregate(rows), dismissed);
+    const groups = groupDuplicates(aggregate(rows, photoSignals), dismissed);
     return groups.map((ids) => {
       const summaries = ids.map((id) => summarise(id, rows));
       // Suggest the cluster with the most listings as the survivor.
