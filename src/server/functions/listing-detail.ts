@@ -889,7 +889,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
     // home on two portals carries two galleries; showing only the headline
     // listing's dropped the other portal's photos entirely (often the
     // better set). Lead with the headline listing's photos, then the rest
-    // in price order, deduped by resolved URL and re-sequenced into one
+    // in price order, deduped by source URL and re-sequenced into one
     // gallery. (Cross-portal copies of an identical image usually have
     // distinct URLs, so some near-duplicates can remain — acceptable; the
     // win is not losing a whole portal's photos.)
@@ -911,15 +911,22 @@ export const getListingDetail = createServerFn({ method: "GET" })
       return ra === rb ? a.position - b.position : ra - rb;
     });
 
+    // Dedup on the SOURCE url, not the resolved path. Every scrape mirrors
+    // each image into its own R2 object, so `resolvePhotoUrl` (which prefers
+    // r2Key) is unique per row and would collapse nothing — a re-scraped or
+    // cross-listing copy of the same source image must dedup to one entry.
     const seenPhotoUrls = new Set<string>();
     const photos: ListingDetailPhoto[] = [];
     for (const p of orderedPhotoRows) {
-      const url = resolvePhotoUrl(p);
-      if (seenPhotoUrls.has(url)) {
+      if (seenPhotoUrls.has(p.url)) {
         continue;
       }
-      seenPhotoUrls.add(url);
-      photos.push({ url, r2Key: p.r2Key, position: photos.length });
+      seenPhotoUrls.add(p.url);
+      photos.push({
+        url: resolvePhotoUrl(p),
+        r2Key: p.r2Key,
+        position: photos.length,
+      });
     }
 
     // Step 5: floorplan URL — first available across listings.
