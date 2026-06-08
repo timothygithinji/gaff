@@ -25,6 +25,7 @@
  */
 import {
   Clock01Icon,
+  GitMergeIcon,
   House03Icon,
   Logout03Icon,
   UserSettings01Icon,
@@ -234,6 +235,10 @@ function UserAvatar() {
           <DropdownMenuItem render={<Link to="/deferred" />}>
             <HugeiconsIcon icon={Clock01Icon} size={14} />
             Deferred listings
+          </DropdownMenuItem>
+          <DropdownMenuItem render={<Link to="/settings/duplicates" />}>
+            <HugeiconsIcon icon={GitMergeIcon} size={14} />
+            Merge duplicates
           </DropdownMenuItem>
           <DropdownMenuItem render={<Link to="/settings/household" />}>
             <HugeiconsIcon icon={UserSettings01Icon} size={14} />

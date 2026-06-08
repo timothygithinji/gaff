@@ -2,28 +2,20 @@
  * Settings left sub-nav (Paper's "Settings" rail).
  *
  * Shared by every `/settings/*` screen so the rail STAYS as you move
- * between Household and Merge duplicates — previously it only lived on the
- * Household page, so opening Merge duplicates dropped you onto a bare
- * centred page with no way back into settings. It's `sticky` to the top of
- * the scroll region so it stays put while long content scrolls past.
+ * between Household and Account — previously it only lived on the Household
+ * page, so opening another settings screen dropped you onto a bare centred
+ * page with no way back. It's `sticky` to the top of the scroll region so it
+ * stays put while long content scrolls past.
  *
  * Active state is derived from the live pathname (not a hardcoded prop), so
- * each route lights its own item. "Merge duplicates" carries a count badge
- * of outstanding suggestion groups, fed by the shared duplicates query —
- * the same cache the page reads, so badge and page never disagree.
+ * each route lights its own item. "Merge duplicates" is NOT here — it lives
+ * in the account dropdown (see `admin-sidebar.tsx`).
  */
-import {
-  GitMergeIcon,
-  UserCircleIcon,
-  UserGroup03Icon,
-} from "@hugeicons/core-free-icons";
+import { UserCircleIcon, UserGroup03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { FC } from "react";
-import { duplicatesQueryOptions } from "../../lib/duplicates-query";
 import { cn } from "../../lib/utils";
-import { Badge } from "../ui/badge";
 
 type SettingsLink = {
   to: string;
@@ -34,13 +26,10 @@ type SettingsLink = {
 const LINKS: SettingsLink[] = [
   { to: "/settings/household", label: "Household", icon: UserGroup03Icon },
   { to: "/settings/account", label: "Account", icon: UserCircleIcon },
-  { to: "/settings/duplicates", label: "Merge duplicates", icon: GitMergeIcon },
 ];
 
 export const SettingsNav: FC = () => {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { data: groups } = useQuery(duplicatesQueryOptions);
-  const dupeCount = groups?.length ?? 0;
 
   return (
     <nav
@@ -52,7 +41,6 @@ export const SettingsNav: FC = () => {
       </p>
       {LINKS.map((link) => {
         const active = pathname === link.to;
-        const showBadge = link.to === "/settings/duplicates" && dupeCount > 0;
         return (
           <Link
             className={cn(
@@ -66,14 +54,6 @@ export const SettingsNav: FC = () => {
           >
             <HugeiconsIcon icon={link.icon} size={14} strokeWidth={1.5} />
             <span className="grow">{link.label}</span>
-            {showBadge ? (
-              <Badge
-                aria-label={`${dupeCount} duplicate group${dupeCount === 1 ? "" : "s"} to review`}
-                className="h-[18px] min-w-[18px] rounded-full bg-copper px-1 font-bold text-[10px] text-white tabular-nums"
-              >
-                {dupeCount > 9 ? "9+" : dupeCount}
-              </Badge>
-            ) : null}
           </Link>
         );
       })}

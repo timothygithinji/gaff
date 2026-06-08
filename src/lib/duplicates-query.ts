@@ -1,10 +1,11 @@
 /**
  * Shared React Query options for the merge-duplicates suggestions.
  *
- * Lives here (not inline in the route) because two places read it: the
- * `/settings/duplicates` page itself and the settings sub-nav badge, which
- * shows the outstanding-group count from any settings screen. One query
- * key → one fetch → the badge and the page never disagree.
+ * Lives here (not inline in the route) so anything that needs the
+ * outstanding-group count shares one query key → one fetch → no disagreement.
+ * Currently read by the `/settings/duplicates` page (reached from the account
+ * dropdown). The query loads the household's photo signals, so keep it off
+ * always-mounted chrome.
  */
 import { listDuplicateSuggestions } from "../server/functions/clusters";
 import { queryKeys } from "./query-keys";
