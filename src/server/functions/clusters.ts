@@ -45,6 +45,7 @@ import {
   isDegenerateStreetKey,
   priceCorroborates,
   streetKey,
+  streetKeyHasUnit,
 } from "../../lib/cluster/key";
 import {
   type SwipeOutcome,
@@ -135,10 +136,10 @@ function clustersAreDuplicates(a: ClusterAgg, b: ClusterAgg): boolean {
   if (!intersects(a.outcodes, b.outcodes) || !intersects(a.bedrooms, b.bedrooms)) {
     return false;
   }
-  const sharesKey = [...a.keys]
+  const sharedKeys = [...a.keys]
     .filter((k) => !isDegenerateStreetKey(k))
-    .some((k) => b.keys.has(k));
-  if (!sharesKey) {
+    .filter((k) => b.keys.has(k));
+  if (sharedKeys.length === 0) {
     return false;
   }
   // Cross-portal only — never collapse two distinct same-portal listings.
@@ -156,6 +157,16 @@ function clustersAreDuplicates(a: ClusterAgg, b: ClusterAgg): boolean {
     b.prices.some((q) => priceCorroborates(p, q))
   );
   const coordMatch = coordsCorroborate(centroid(a.coords), centroid(b.coords), 30);
+  // When the only thing the two clusters share is a UNIT-LESS street key
+  // ("turnpike lane|" — a road, no flat/house number), price proves
+  // nothing: every flat on the road rents about the same, so a price match
+  // is coincidence, not corroboration. Require an actual location match.
+  // A unit-bearing shared key ("elm street|flat2") still pins a specific
+  // home, so price stays sufficient there.
+  const hasUnitBearingSharedKey = sharedKeys.some(streetKeyHasUnit);
+  if (!hasUnitBearingSharedKey) {
+    return coordMatch;
+  }
   return priceMatch || coordMatch;
 }
 

@@ -135,6 +135,21 @@ export function isDegenerateStreetKey(key: string): boolean {
 }
 
 /**
+ * True when a street key carries a unit/house-number (the part after "|"),
+ * e.g. "elm street|flat2" or "cannon hill|13" — but NOT "turnpike lane|".
+ *
+ * A unit pins the key to one specific home; without it the key names only a
+ * road, and every flat on that road shares it. Callers use this to decide
+ * how much corroboration a merge needs: a unit-bearing key can merge on
+ * price (rents pin a specific home across portals), but a road-only key
+ * must NOT — every flat on the road rents about the same, so price proves
+ * nothing. Road-only keys require coordinate agreement instead.
+ */
+export function streetKeyHasUnit(key: string): boolean {
+  return (key.split("|")[1] ?? "").trim() !== "";
+}
+
+/**
  * Two rents corroborate "same property" when they're within ~4% (floor
  * £75). A null on EITHER side does NOT corroborate — we require a positive
  * price match on the loose cross-portal tier, because a null price was

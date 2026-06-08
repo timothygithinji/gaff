@@ -12,6 +12,7 @@ import {
   isDegenerateStreetKey,
   priceCorroborates,
   streetKey,
+  streetKeyHasUnit,
 } from "./key";
 
 describe("streetKey", () => {
@@ -75,6 +76,21 @@ describe("isDegenerateStreetKey", () => {
   it("accepts a real multi-word road", () => {
     expect(isDegenerateStreetKey("linden way|")).toBe(false);
     expect(isDegenerateStreetKey("cannon hill|13")).toBe(false);
+  });
+});
+
+describe("streetKeyHasUnit", () => {
+  it("is false for a road-only key (no flat/house number)", () => {
+    expect(streetKeyHasUnit(streetKey("Turnpike Lane, London N8"))).toBe(false);
+    expect(streetKeyHasUnit("linden way|")).toBe(false);
+  });
+
+  it("is true once a unit or house number pins a specific home", () => {
+    expect(streetKeyHasUnit(streetKey("Flat 2, 22 Elm Street, NW3 1AA"))).toBe(
+      true
+    );
+    expect(streetKeyHasUnit(streetKey("13 Cannon Hill N14"))).toBe(true);
+    expect(streetKeyHasUnit("cannon hill|13")).toBe(true);
   });
 });
 

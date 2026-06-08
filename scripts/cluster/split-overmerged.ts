@@ -31,7 +31,11 @@ import {
   distanceMetres,
   listingCoord,
 } from "../../src/lib/cluster/coords";
-import { priceCorroborates } from "../../src/lib/cluster/key";
+import {
+  priceCorroborates,
+  streetKey,
+  streetKeyHasUnit,
+} from "../../src/lib/cluster/key";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -92,9 +96,21 @@ function components(ls: L[]): L[][] {
       if (!(a && b)) {
         continue;
       }
-      const same =
-        priceCorroborates(a.price_monthly, b.price_monthly) ||
-        coordsCorroborate(a.coord, b.coord, 30);
+      // Mirror the live merge policy (clustersAreDuplicates): coords within
+      // ~30m always link. Price links too, EXCEPT when both listings carry a
+      // real coordinate yet sit >30m apart on a unit-less road key
+      // ("turnpike lane|") — there every flat rents about the same, so a
+      // price match is coincidence and location is the honest discriminator.
+      // When either side lacks a coordinate we can't place it, so we keep the
+      // price fallback rather than strand a real cross-portal duplicate.
+      const ka = streetKey(a.address_raw);
+      const sameUnitBearingKey =
+        ka === streetKey(b.address_raw) && streetKeyHasUnit(ka);
+      const bothHaveCoords = a.coord != null && b.coord != null;
+      const priceLinks =
+        priceCorroborates(a.price_monthly, b.price_monthly) &&
+        (sameUnitBearingKey || !bothHaveCoords);
+      const same = coordsCorroborate(a.coord, b.coord, 30) || priceLinks;
       if (same) {
         parent[find(i)] = find(j);
       }
