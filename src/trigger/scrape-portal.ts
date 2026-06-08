@@ -272,6 +272,55 @@ const OPENRENT_DETAIL_CAP: Record<ScrapeMode, number> = {
 const OPENRENT_TIME_BUDGET_MS = 8 * 60 * 1000;
 
 /**
+ * How many OpenRent detail pages to fetch concurrently within a run. Zyte
+ * rate-limits by requests-per-MINUTE rather than concurrency (and `fetchPage`
+ * retries 429s with backoff), so a small fan-out multiplies how far one
+ * backfill reaches inside {@link OPENRENT_TIME_BUDGET_MS} without raising the
+ * caps, `maxDuration`, or the Zyte plan. Kept modest because the whole task
+ * already shares the `scrape` queue's concurrency-10 ceiling — a bigger
+ * fan-out here would just starve other scrapes.
+ */
+const OPENRENT_DETAIL_CONCURRENCY = 6;
+
+/**
+ * Fetch + parse a single OpenRent detail page into a summary, returning null
+ * on a fetch or parse failure (a dead listing's "gone" page). Pulled out of
+ * {@link scrapeOpenrentByIdDiff} so the batch loop stays readable — callers
+ * count every call against the detail budget regardless of the outcome.
+ */
+async function fetchOpenrentDetailSummary(
+  id: number,
+  fetchPage: (url: string, storeScope: string | null) => Promise<string>
+): Promise<ListingSummary | null> {
+  const detailUrl = `https://www.openrent.co.uk/${id}`;
+  let detailHtml: string;
+  try {
+    detailHtml = await fetchPage(detailUrl, null);
+  } catch (err) {
+    logger.warn("scrape-portal: OpenRent detail fetch failed", {
+      id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+  try {
+    const detail = parseOpenrentDetail(detailHtml);
+    return {
+      ...detail,
+      portal: "openrent",
+      portalListingId: String(id),
+      url: detailUrl,
+    };
+  } catch (err) {
+    logger.warn("scrape-portal: OpenRent detail parse failed", {
+      id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+/**
  * OpenRent ingest by ID-diff. OpenRent has no recency filter and a
  * non-chronological page order, so we can't window it like RM/ZP. Instead
  * each outcode's search page embeds the COMPLETE set of matching IDs
@@ -345,7 +394,12 @@ async function scrapeOpenrentByIdDiff(deps: {
       .sort((a, b) => b - a);
 
     const summaries: ListingSummary[] = [];
-    for (const id of candidates) {
+    // Fetch detail pages in bounded-concurrency batches rather than one at a
+    // time, so a backfill reaches far deeper inside the time budget. The
+    // budget/clock are re-checked between batches, not mid-batch, so a run can
+    // overshoot the wall-clock stop by at most one batch's render time — still
+    // well short of `maxDuration`.
+    for (let i = 0; i < candidates.length; i += OPENRENT_DETAIL_CONCURRENCY) {
       if (detailBudget <= 0) {
         logger.warn("scrape-portal: OpenRent detail budget exhausted", {
           searchId,
@@ -366,36 +420,24 @@ async function scrapeOpenrentByIdDiff(deps: {
         timedOut = true;
         break;
       }
-      const key = String(id);
-      processed.add(key);
-      // Every fetch attempt consumes the budget — a parse/fetch failure (a
-      // dead listing's "gone" page) is just as slow as a success, so it has
-      // to count or the cap never bounds the run.
-      detailBudget--;
-      const detailUrl = `https://www.openrent.co.uk/${id}`;
-      let detailHtml: string;
-      try {
-        detailHtml = await fetchPage(detailUrl, null);
-      } catch (err) {
-        logger.warn("scrape-portal: OpenRent detail fetch failed", {
-          id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        continue;
+      // Take a full batch, but never more than the remaining budget — every
+      // fetch attempt consumes the budget (a dead listing's "gone" page is
+      // just as slow as a success), so the slice size is what we spend.
+      const batch = candidates.slice(
+        i,
+        i + Math.min(OPENRENT_DETAIL_CONCURRENCY, detailBudget)
+      );
+      detailBudget -= batch.length;
+      for (const id of batch) {
+        processed.add(String(id));
       }
-      try {
-        const detail = parseOpenrentDetail(detailHtml);
-        summaries.push({
-          ...detail,
-          portal: "openrent",
-          portalListingId: key,
-          url: detailUrl,
-        });
-      } catch (err) {
-        logger.warn("scrape-portal: OpenRent detail parse failed", {
-          id,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      const batchSummaries = await Promise.all(
+        batch.map((id) => fetchOpenrentDetailSummary(id, fetchPage))
+      );
+      for (const s of batchSummaries) {
+        if (s) {
+          summaries.push(s);
+        }
       }
     }
     // Ingest whatever this outcode collected — including a partial batch
