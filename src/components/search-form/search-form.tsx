@@ -24,6 +24,7 @@ import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { z } from "zod";
 import type { Portal } from "../../lib/cost-estimate";
+import { DEFAULT_ANCHOR_HOUR, findCadenceById } from "../../lib/cron-presets";
 import type { SearchLocation } from "../../lib/search-location";
 import { cn } from "../../lib/utils";
 import {
@@ -50,6 +51,7 @@ import { PortalToggles } from "./portal-toggles";
 import { PriceSlider } from "./price-slider";
 import { PropertyTypePills } from "./property-type-pills";
 import { RadiusSlider } from "./radius-slider";
+import { TimeOfDayPicker } from "./time-of-day-picker";
 import {
   type TransportTarget,
   TransportTargetsList,
@@ -72,6 +74,8 @@ export type SearchFormValues = {
   transportTargets: TransportTarget[];
   portals: Portal[];
   cadenceId: string;
+  /** Anchor hour (0–23) for anchored cadences ("Daily", "Every 12h"). */
+  anchorHour: number;
 };
 
 export const DEFAULT_FORM_VALUES: SearchFormValues = {
@@ -93,6 +97,7 @@ export const DEFAULT_FORM_VALUES: SearchFormValues = {
   transportTargets: [],
   portals: ["rightmove", "zoopla", "openrent"],
   cadenceId: "daily",
+  anchorHour: DEFAULT_ANCHOR_HOUR,
 };
 
 const DEFAULT_BED: BedOption = { id: "2+", label: "2", min: 2, max: null };
@@ -167,6 +172,7 @@ export function SearchForm({
   const minPrice = useStore(form.store, (s) => s.values.minPrice);
   const maxPrice = useStore(form.store, (s) => s.values.maxPrice);
   const name = useStore(form.store, (s) => s.values.name);
+  const cadenceId = useStore(form.store, (s) => s.values.cadenceId);
   const allValues = useStore(form.store, (s) => s.values);
 
   useEffect(() => {
@@ -435,6 +441,17 @@ export function SearchForm({
           />
         )}
       </form.Field>
+      {findCadenceById(cadenceId).anchored && (
+        <form.Field name="anchorHour">
+          {(field) => (
+            <TimeOfDayPicker
+              cadenceId={cadenceId}
+              onChange={(hour) => field.handleChange(hour)}
+              value={field.state.value}
+            />
+          )}
+        </form.Field>
+      )}
     </SectionCard>
   );
 

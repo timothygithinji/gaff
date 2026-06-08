@@ -36,7 +36,12 @@ import {
   SkeletonPageHeader,
 } from "../../components/ui/patterns/skeletons";
 import { requireSession } from "../../lib/auth-guard";
-import { findCadenceByCron, findCadenceById } from "../../lib/cron-presets";
+import {
+  DEFAULT_ANCHOR_HOUR,
+  buildCron,
+  findCadenceById,
+  parseCron,
+} from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
 import { listSchedules } from "../../server/functions/schedules";
 import {
@@ -128,7 +133,6 @@ function EditSearchPage() {
     mutationFn: (values: SearchFormValues) => {
       const beds = bedOptionFor(values.bedsId);
       const baths = bathOptionFor(values.bathsId);
-      const cadence = findCadenceById(values.cadenceId);
       if (!values.location) {
         throw new Error("location is required");
       }
@@ -152,7 +156,7 @@ function EditSearchPage() {
           exclusions: values.exclusions,
           commuteTargets: values.commuteTargets,
           transportTargets: values.transportTargets,
-          cron: cadence.cron,
+          cron: buildCron(values.cadenceId, values.anchorHour),
         },
       });
     },
@@ -470,7 +474,9 @@ function toFormValues(
       : pickBedsId(search.minBedrooms);
   const bathsId = pickBathsId(search.minBathrooms, search.maxBathrooms);
   const cron = matching ? matching.generator.expression : null;
-  const cadence = matching ? findCadenceByCron(cron) : findCadenceById("off");
+  const parsed = matching
+    ? parseCron(cron)
+    : { id: "off", hour: DEFAULT_ANCHOR_HOUR };
 
   return {
     name: search.name,
@@ -488,7 +494,8 @@ function toFormValues(
     commuteTargets: search.commuteTargets,
     transportTargets: search.transportTargets,
     portals: search.portals as SearchFormValues["portals"],
-    cadenceId: cadence.id,
+    cadenceId: parsed.id,
+    anchorHour: parsed.hour,
   };
 }
 

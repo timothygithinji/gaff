@@ -21,7 +21,7 @@ import {
   bedOptionFor,
 } from "../../components/search-form/search-form";
 import { requireSession } from "../../lib/auth-guard";
-import { findCadenceById } from "../../lib/cron-presets";
+import { buildCron, findCadenceById } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
 import { type SearchRow, createSearch } from "../../server/functions/searches";
 
@@ -45,7 +45,6 @@ function NewSearchPage() {
     mutationFn: (values: SearchFormValues) => {
       const beds = bedOptionFor(values.bedsId);
       const baths = bathOptionFor(values.bathsId);
-      const cadence = findCadenceById(values.cadenceId);
       if (!values.location) {
         // canSubmit gates this, but TypeScript needs the narrow.
         throw new Error("location is required");
@@ -69,7 +68,7 @@ function NewSearchPage() {
           exclusions: values.exclusions,
           commuteTargets: values.commuteTargets,
           transportTargets: values.transportTargets,
-          cron: cadence.cron,
+          cron: buildCron(values.cadenceId, values.anchorHour),
         },
       });
     },

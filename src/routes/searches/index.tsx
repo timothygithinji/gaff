@@ -18,13 +18,14 @@ import type { ScheduleObject } from "@trigger.dev/core/v3";
 import { useEffect, useState } from "react";
 import { AdminSidebar } from "../../components/layout/admin-sidebar";
 import { BottomNav } from "../../components/layout/bottom-nav";
+import { formatHour } from "../../components/search-form/time-of-day-picker";
 import { DesktopSearches } from "../../components/searches/desktop-searches";
 import { subline } from "../../components/searches/desktop-searches";
 import { PageShell } from "../../components/ui/patterns/page-shell";
 import { skeletonIds } from "../../components/ui/patterns/skeletons";
 import { Skeleton } from "../../components/ui/skeleton";
 import { requireSession } from "../../lib/auth-guard";
-import { findCadenceByCron } from "../../lib/cron-presets";
+import { findCadenceById, parseCron } from "../../lib/cron-presets";
 import { queryKeys } from "../../lib/query-keys";
 import { cn } from "../../lib/utils";
 import { listSchedules } from "../../server/functions/schedules";
@@ -172,8 +173,14 @@ function cadenceLabelMap(schedules: ScheduleObject[]): Map<string, string> {
     if (!s.externalId) {
       continue;
     }
-    const cadence = findCadenceByCron(s.generator.expression);
-    out.set(s.externalId, cadence.label);
+    const { id, hour } = parseCron(s.generator.expression);
+    const cadence = findCadenceById(id);
+    // Anchored cadences (Daily, Every 12h) append their fire time so the
+    // list reflects the user's chosen hour, e.g. "Daily · 2pm".
+    const label = cadence.anchored
+      ? `${cadence.label} · ${formatHour(hour)}`
+      : cadence.label;
+    out.set(s.externalId, label);
   }
   return out;
 }
