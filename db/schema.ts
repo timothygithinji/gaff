@@ -700,6 +700,19 @@ export const shortlistPipeline = pgTable(
      */
     notes: text("notes"),
     /**
+     * Scheduled viewing for this property — set from the card's notes /
+     * viewing modal. Optional; NULL until the household books one. Stored
+     * as a full timestamp so a viewing can carry a time of day, not just
+     * a date.
+     */
+    viewingDate: timestamp("viewing_date"),
+    /**
+     * Length of the booked viewing, in minutes. NULL until a viewing is
+     * set; drives the end time of the one-click "add to Google Calendar"
+     * event. Defaults applied in the UI, not the column.
+     */
+    viewingDurationMinutes: integer("viewing_duration_minutes"),
+    /**
      * Audit columns — who last moved it and when. Drives the
      * "Moved 2 days ago by Alice" line on each kanban card so the
      * household can see who's pushing things forward.

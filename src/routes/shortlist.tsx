@@ -11,9 +11,9 @@
  *   2 members → Pipeline · Yours · <other>'s
  *   N members → Pipeline · Yours · <each other member>'s
  *
- * Card moves and archives flow through `setPipelineStatus`. Notes are
- * a v2.1 add — the schema column exists, but the UI for editing notes
- * isn't wired here yet.
+ * Card moves and archives flow through `setPipelineStatus`. Notes and a
+ * viewing date are edited per-card via the "Notes & viewing" modal
+ * (`setPipelineDetails`), reachable from each card's ⋯ menu.
  */
 import { Add01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";

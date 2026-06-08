@@ -190,6 +190,13 @@
       "when": 1780864944960,
       "tag": "0026_needy_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1780914851463,
+      "tag": "0027_chunky_madripoor",
+      "breakpoints": true
     }
   ]
 }

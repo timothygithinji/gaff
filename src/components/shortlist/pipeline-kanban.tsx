@@ -34,6 +34,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import {
+  Calendar03Icon,
   Cancel01Icon,
   Clock01Icon,
   MoreHorizontalIcon,
@@ -60,10 +61,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { NotesViewingDialog } from "./notes-viewing-dialog";
 import {
   ARCHIVED_REASON_LABELS,
+  NotesDot,
   STAGE_LABEL,
   StageCountPill,
+  ViewingChip,
   formatPrice,
   metaLine,
   useAuditLine,
@@ -297,6 +301,7 @@ function Card({
     disabled,
   });
   const [hovered, setHovered] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // Collapse the moment a scroll starts; the pointer is parked over a
   // card, so we also wait for a fresh mouse move (not just the lingering
   // hover) before expanding again — otherwise it pops the instant the
@@ -355,9 +360,15 @@ function Card({
           card={card}
           disabled={disabled}
           onArchive={onArchive}
+          onEditDetails={() => setDetailsOpen(true)}
           onMove={onMove}
         />
       </div>
+      <NotesViewingDialog
+        card={card}
+        onOpenChange={setDetailsOpen}
+        open={detailsOpen}
+      />
     </motion.article>
   );
 }
@@ -448,9 +459,10 @@ function CardBody({
   );
 }
 
-/** Footnote on lead cards: a copper-tinted "clock" pill for viewing /
- * offer stages (Paper), otherwise a plain audit line. */
-function StatusFootnote({
+/** The lead line of a card footnote: archived reason, booked-viewing date
+ * (copper pill), a copper clock pill for viewing / offer stages (Paper),
+ * or a plain audit line — in that priority order. */
+function PrimaryFootnote({
   card,
   audit,
 }: {
@@ -463,6 +475,9 @@ function StatusFootnote({
         {ARCHIVED_REASON_LABELS[card.archivedReason]}
       </span>
     );
+  }
+  if (card.viewingDate) {
+    return <ViewingChip date={card.viewingDate} />;
   }
   if (card.status === "viewing_booked" || card.status === "offer_made") {
     return (
@@ -480,13 +495,36 @@ function StatusFootnote({
   return <span className="text-[11px] text-slate leading-[14px]">{audit}</span>;
 }
 
+/** Card footnote: the primary line plus a short notes preview underneath. */
+function StatusFootnote({
+  card,
+  audit,
+}: {
+  card: PipelineCard;
+  audit: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <PrimaryFootnote audit={audit} card={card} />
+      {card.notes ? (
+        <span className="flex items-start gap-1.5 text-[11px] text-slate leading-[15px]">
+          <NotesDot className="mt-0.5" />
+          <span className="line-clamp-2">{card.notes}</span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function CardMenu({
   card,
   onMove,
   onArchive,
+  onEditDetails,
   disabled,
 }: {
   card: PipelineCard;
+  onEditDetails: () => void;
 } & Pick<Props, "onMove" | "onArchive" | "disabled">) {
   return (
     <DropdownMenu>
@@ -498,6 +536,13 @@ function CardMenu({
         <HugeiconsIcon icon={MoreHorizontalIcon} size={16} strokeWidth={2} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onEditDetails}>
+            <HugeiconsIcon icon={Calendar03Icon} size={12} strokeWidth={2} />
+            Notes &amp; viewing
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuLabel>Move to</DropdownMenuLabel>
           {BOARD_STATUSES.filter((s) => s !== card.status).map((s) => (

@@ -67,6 +67,21 @@ const setPipelineStatusSchema = z
     path: ["archivedReason"],
   });
 
+const setPipelineDetailsSchema = z.object({
+  clusterId: z.string().trim().min(1),
+  /** Free-text notes; empty string clears them (stored as NULL). */
+  notes: z.string().max(4000),
+  /**
+   * Viewing date+time as an ISO-ish string (`<input type="datetime-local">`
+   * emits `YYYY-MM-DDTHH:mm`), or null to clear. Parsed to a Date server-
+   * side — we keep it a string on the wire so the value survives the
+   * server-fn round-trip without serializer surprises.
+   */
+  viewingDate: z.string().min(1).nullable(),
+  /** Viewing length in minutes (drives the calendar event's end). */
+  viewingDurationMinutes: z.number().int().min(5).max(480).nullable(),
+});
+
 // -----------------------------------------------------------------------------
 // Wire types
 // -----------------------------------------------------------------------------
@@ -87,6 +102,10 @@ export type PipelineCard = MutualMatch & {
   lastMovedAt: Date;
   lastMovedBy: PipelineLastMovedBy;
   notes: string | null;
+  /** Scheduled viewing (date + time), or null if none booked yet. */
+  viewingDate: Date | null;
+  /** Viewing length in minutes, or null. */
+  viewingDurationMinutes: number | null;
   archivedReason: PipelineArchivedReason | null;
 };
 
@@ -205,6 +224,8 @@ export const listPipeline = createServerFn({ method: "GET" }).handler(
         lastMovedAt: pipeline?.row.lastMovedAt ?? m.matchedAt,
         lastMovedBy: pipeline?.mover ?? null,
         notes: pipeline?.row.notes ?? null,
+        viewingDate: pipeline?.row.viewingDate ?? null,
+        viewingDurationMinutes: pipeline?.row.viewingDurationMinutes ?? null,
         archivedReason: pipeline?.row.archivedReason ?? null,
       };
       columns[card.status].push(card);
@@ -291,6 +312,86 @@ export const setPipelineStatus = createServerFn({ method: "POST" })
           lastMovedByUserId: currentUserId,
           updatedAt: now,
         },
+      });
+
+    return { ok: true };
+  });
+
+/**
+ * Set the household's notes + viewing date for a cluster.
+ *
+ * Unlike {@link setPipelineStatus}, this never touches `status` or the
+ * move-audit columns — editing notes isn't a stage move, so it mustn't
+ * reorder the board or rewrite "moved 2 days ago by Alice". A card still
+ * in the derived "shortlisted" state has no row yet; the first edit
+ * creates one at `shortlisted` (a no-op status-wise), seeding the audit
+ * columns from this edit since there's no prior move to preserve.
+ */
+export const setPipelineDetails = createServerFn({ method: "POST" })
+  .inputValidator(setPipelineDetailsSchema)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    const { householdId, currentUserId } = await requireHouseholdScope();
+    const db = getDb();
+
+    // Same authz as a move: the cluster must already be in the household's
+    // pipeline (mutual match OR an existing row) before we'll annotate it.
+    const [mutualMatch, existing] = await Promise.all([
+      db
+        .select({ clusterId: vMutualMatches.clusterId })
+        .from(vMutualMatches)
+        .where(
+          and(
+            eq(vMutualMatches.householdId, householdId),
+            eq(vMutualMatches.clusterId, data.clusterId)
+          )
+        )
+        .limit(1),
+      db
+        .select({ id: shortlistPipeline.id })
+        .from(shortlistPipeline)
+        .where(
+          and(
+            eq(shortlistPipeline.householdId, householdId),
+            eq(shortlistPipeline.clusterId, data.clusterId)
+          )
+        )
+        .limit(1),
+    ]);
+
+    if (mutualMatch.length === 0 && existing.length === 0) {
+      throw new Error("cluster_not_in_pipeline");
+    }
+
+    const trimmedNotes = data.notes.trim();
+    const notes = trimmedNotes.length > 0 ? trimmedNotes : null;
+    const viewingDate = data.viewingDate ? new Date(data.viewingDate) : null;
+    if (viewingDate && Number.isNaN(viewingDate.getTime())) {
+      throw new Error("invalid_viewing_date");
+    }
+    // Duration only means something with a date; clear it otherwise.
+    const viewingDurationMinutes = viewingDate
+      ? data.viewingDurationMinutes
+      : null;
+
+    const now = new Date();
+    await db
+      .insert(shortlistPipeline)
+      .values({
+        id: nanoid(),
+        householdId,
+        clusterId: data.clusterId,
+        status: "shortlisted",
+        notes,
+        viewingDate,
+        viewingDurationMinutes,
+        lastMovedAt: now,
+        lastMovedByUserId: currentUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [shortlistPipeline.householdId, shortlistPipeline.clusterId],
+        // Only the annotation columns — leave status + move-audit intact.
+        set: { notes, viewingDate, viewingDurationMinutes, updatedAt: now },
       });
 
     return { ok: true };

@@ -15,12 +15,14 @@
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  Calendar03Icon,
   Cancel01Icon,
   Clock01Icon,
   Loading03Icon,
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 import {
   PIPELINE_ARCHIVED_REASONS,
   PIPELINE_STATUSES,
@@ -40,11 +42,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { NotesViewingDialog } from "./notes-viewing-dialog";
 import {
   ARCHIVED_REASON_LABELS,
   AvatarStack,
+  NotesDot,
   STAGE_LABEL,
   StageCountPill,
+  ViewingChip,
   formatPrice,
   metaLine,
   useAuditLine,
@@ -301,7 +306,9 @@ function RowCard({
   );
 }
 
-function StatusFootnote({
+/** Lead line of the mobile footnote — archived reason, booked-viewing
+ * date, or a clock pill for viewing / offer stages; null otherwise. */
+function PrimaryFootnote({
   card,
   audit,
 }: {
@@ -313,6 +320,14 @@ function StatusFootnote({
       <span className="inline-flex w-fit rounded-full border border-line bg-card px-2 py-0.5 font-semibold text-[10px] text-slate">
         {ARCHIVED_REASON_LABELS[card.archivedReason]}
       </span>
+    );
+  }
+  if (card.viewingDate) {
+    return (
+      <ViewingChip
+        className="px-3 py-2.5 text-[12px] leading-4"
+        date={card.viewingDate}
+      />
     );
   }
   if (card.status === "viewing_booked" || card.status === "offer_made") {
@@ -331,6 +346,35 @@ function StatusFootnote({
   return null;
 }
 
+function StatusFootnote({
+  card,
+  audit,
+}: {
+  card: PipelineCard;
+  audit: string;
+}) {
+  const hasFootnote =
+    card.archivedReason ||
+    card.viewingDate ||
+    card.status === "viewing_booked" ||
+    card.status === "offer_made" ||
+    card.notes;
+  if (!hasFootnote) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <PrimaryFootnote audit={audit} card={card} />
+      {card.notes ? (
+        <span className="flex items-start gap-1.5 text-[12px] text-slate leading-4">
+          <NotesDot className="mt-0.5" />
+          <span className="line-clamp-2">{card.notes}</span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /** Per-card action footer — quick back / forward + the full ⋯ menu. */
 function Footer({
   card,
@@ -343,6 +387,7 @@ function Footer({
 } & Pick<Props, "onMove" | "onArchive" | "pendingMove" | "disabled">) {
   const prev = previousStatus(card.status);
   const next = nextStatus(card.status);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const isPending =
     pendingMove?.clusterId === card.clusterId &&
     pendingMove?.to !== card.status;
@@ -372,6 +417,13 @@ function Footer({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => setDetailsOpen(true)}>
+              <HugeiconsIcon icon={Calendar03Icon} size={12} strokeWidth={2} />
+              Notes &amp; viewing
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
             <DropdownMenuLabel>Move to</DropdownMenuLabel>
             {PIPELINE_STATUSES.filter(
               (s) => s !== card.status && s !== "archived"
@@ -399,6 +451,11 @@ function Footer({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      <NotesViewingDialog
+        card={card}
+        onOpenChange={setDetailsOpen}
+        open={detailsOpen}
+      />
     </footer>
   );
 }

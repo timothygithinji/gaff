@@ -4,6 +4,11 @@
  * and the small avatar stack all live here so the desktop board and the
  * mobile stacked-stage view stay in visual lockstep with Paper.
  */
+import {
+  Calendar03Icon,
+  Note01Icon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 import type {
   PipelineArchivedReason,
@@ -141,6 +146,98 @@ export function useAuditLine(card: PipelineCard): string {
     return `${ago} · by ${firstNameOf(card.lastMovedBy.name)}`;
   }
   return ago;
+}
+
+/* ---------------- Viewing date ---------------- */
+
+/** Default viewing length when none is set on the card. */
+export const DEFAULT_VIEWING_DURATION_MINUTES = 30;
+
+/** Friendly "Tue 10 Jun, 14:00" (en-GB, 24h). Timezone-sensitive, so
+ * render it inside {@link ViewingChip} which holds it client-only. */
+function formatViewingDate(date: Date): string {
+  return new Date(date).toLocaleString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** UTC `YYYYMMDDTHHMMSSZ` stamp for a Google Calendar template URL. */
+function gcalStamp(date: Date): string {
+  return `${new Date(date).toISOString().replace(/[-:]/g, "").split(".")[0]}Z`;
+}
+
+/**
+ * Build a Google Calendar "create event" template URL for a viewing.
+ * Start = the viewing date; end = start + `durationMinutes`. The address
+ * seeds the title + location so the event is useful at a glance.
+ */
+export function buildGoogleCalendarUrl(opts: {
+  address: string;
+  start: Date;
+  durationMinutes: number;
+  details?: string;
+}): string {
+  const start = new Date(opts.start);
+  const end = new Date(start.getTime() + opts.durationMinutes * 60_000);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Viewing — ${opts.address}`,
+    dates: `${gcalStamp(start)}/${gcalStamp(end)}`,
+    location: opts.address,
+  });
+  if (opts.details) {
+    params.set("details", opts.details);
+  }
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+/** Copper clock-pill showing a booked viewing's date+time. Client-only
+ * (timezone-dependent formatting) so it can't drift the SSR hydration. */
+export function ViewingChip({
+  date,
+  className,
+}: {
+  date: Date;
+  className?: string;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center gap-1.5 rounded-sm bg-[#d77a4a1a] px-2.5 py-1.5 text-[11px] text-navy leading-[14px]",
+        className
+      )}
+    >
+      <HugeiconsIcon
+        className="shrink-0 text-[#d77a4a]"
+        icon={Calendar03Icon}
+        size={12}
+        strokeWidth={1.5}
+      />
+      {mounted ? formatViewingDate(date) : "Viewing booked"}
+    </span>
+  );
+}
+
+/** Tiny "has notes" affordance — a note glyph, used on compact cards. */
+export function NotesDot({ className }: { className?: string }) {
+  return (
+    <HugeiconsIcon
+      aria-label="Has notes"
+      className={cn("shrink-0 text-slate", className)}
+      icon={Note01Icon}
+      size={12}
+      strokeWidth={1.5}
+    />
+  );
 }
 
 /* ---------------- Atoms ---------------- */
