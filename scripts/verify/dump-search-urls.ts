@@ -5,7 +5,6 @@
  * URL actually carries the search's filters (esp. propertyTypes).
  */
 import { neon } from "@neondatabase/serverless";
-import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "../../db/schema";
 import {
