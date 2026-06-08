@@ -2,9 +2,11 @@
  * Desktop / laptop / tablet kanban for the shortlist pipeline.
  *
  * Four active columns — Both kept, In conversation, Viewing booked,
- * Offer placed (Paper "Shortlist · Desktop" 37K-0). Archived is NOT a
- * column; it needs a reason, so it lives in the ⋯ menu and removes the
- * card from the board.
+ * Offer placed (Paper "Shortlist · Desktop" 37K-0) — followed by two
+ * read-out lanes for cards out of the running: Passed (archived with
+ * reason `passed`) and Archived (every other archive reason, each card
+ * showing its reason). The ⋯ menu still archives with a specific reason;
+ * dropping onto Archived files the card as `other`.
  *
  * Responsive grid: 4 cols at `xl` (laptop/desktop), 2 cols at `md`
  * (tablet — Paper shows two columns with the rest scrolling), all
@@ -96,20 +98,31 @@ const BOARD_STATUSES: PipelineStatus[] = [
 /**
  * Board columns left-to-right. "passed" is a pseudo-column: it isn't a
  * status but a view onto archived cards whose reason is `passed`, given
- * its own lane at the right so a passed pick is visibly out of the running
- * (rather than vanishing into the ⋯ menu). Other archive reasons stay
- * hidden. Dropping a card here archives it as `passed`.
+ * its own lane so a passed pick is visibly out of the running (rather than
+ * vanishing into the ⋯ menu). Dropping a card here archives it as `passed`.
  */
 const PASSED_COLUMN = "passed" as const;
+/**
+ * The catch-all archive lane at the far right: every archived card whose
+ * reason ISN'T `passed` (those live in the Passed lane), each card showing
+ * its reason. Dropping here archives as `other`; use the ⋯ menu to pick a
+ * specific reason. It's the real `archived` status, so card moves out of it
+ * (back to an active stage) un-archive cleanly.
+ */
+const ARCHIVED_COLUMN = "archived" as const;
 type BoardColumnId = PipelineStatus | typeof PASSED_COLUMN;
-const BOARD_COLUMNS: BoardColumnId[] = [...BOARD_STATUSES, PASSED_COLUMN];
+const BOARD_COLUMNS: BoardColumnId[] = [
+  ...BOARD_STATUSES,
+  PASSED_COLUMN,
+  ARCHIVED_COLUMN,
+];
 
 const EMPTY_HINTS: Record<BoardColumnId, string> = {
   shortlisted: "Picks you both kept land here",
   contacted: "Drop a card here once you've reached out",
   viewing_booked: "Drop a card here once a viewing's booked",
   offer_made: "Drop a card here once you've offered",
-  archived: "",
+  archived: "Cards you've archived show up here",
   passed: "Drop a card here when you've passed on it",
 };
 
@@ -119,13 +132,17 @@ function columnLabel(col: BoardColumnId): string {
 }
 
 /** Cards rendered in a board column — `passed` filters the archived
- * bucket down to the passed reason; every other column is its status. */
+ * bucket down to the passed reason, `archived` takes every other archive
+ * reason, and every active column is just its status. */
 function cardsForColumn(
   columns: PipelineColumns,
   col: BoardColumnId
 ): PipelineCard[] {
   if (col === PASSED_COLUMN) {
     return columns.archived.filter((c) => c.archivedReason === "passed");
+  }
+  if (col === ARCHIVED_COLUMN) {
+    return columns.archived.filter((c) => c.archivedReason !== "passed");
   }
   return columns[col];
 }
@@ -153,6 +170,30 @@ function findCard(
     }
   }
   return null;
+}
+
+/** What a drop of `card` onto column `to` should do — kept pure so the
+ * drag handler stays a thin dispatch. `null` means a no-op. */
+type DropAction =
+  | { kind: "move"; to: PipelineStatus }
+  | { kind: "archive"; reason: PipelineArchivedReason };
+
+function resolveDrop(card: PipelineCard, to: BoardColumnId): DropAction | null {
+  // Passed lane: archive as `passed` (no-op if it already is).
+  if (to === PASSED_COLUMN) {
+    return card.archivedReason === "passed"
+      ? null
+      : { kind: "archive", reason: "passed" };
+  }
+  // Catch-all Archived lane: file as `other`. A card already filed under a
+  // non-passed reason stays put; a passed card drops the `passed` flavour.
+  if (to === ARCHIVED_COLUMN) {
+    return card.status === "archived" && card.archivedReason !== "passed"
+      ? null
+      : { kind: "archive", reason: "other" };
+  }
+  // Any active lane is a plain status move (also un-archives the card).
+  return card.status === to ? null : { kind: "move", to };
 }
 
 export function PipelineKanban({
@@ -185,18 +226,12 @@ export function PipelineKanban({
     if (!card) {
       return;
     }
-    // Dropping onto the Passed lane archives with reason `passed`.
-    if (to === PASSED_COLUMN) {
-      if (card.archivedReason !== "passed") {
-        onArchive(clusterId, "passed");
-      }
-      return;
+    const action = resolveDrop(card, to);
+    if (action?.kind === "move") {
+      onMove(clusterId, action.to);
+    } else if (action?.kind === "archive") {
+      onArchive(clusterId, action.reason);
     }
-    // Any other lane is a status move (also un-passes an archived card).
-    if (card.status === to) {
-      return;
-    }
-    onMove(clusterId, to);
   }
 
   return (
@@ -485,6 +520,13 @@ function CardBody({
         {meta ? (
           <span className="truncate text-[11px] text-slate leading-[14px]">
             {meta}
+          </span>
+        ) : null}
+        {/* Compact reason chip for archived cards — keeps the "why" visible
+            at rest; the expanded footnote leads with the same reason. */}
+        {!expanded && card.archivedReason ? (
+          <span className="mt-0.5 inline-flex w-fit rounded-full border border-line bg-card px-1.5 py-0.5 font-semibold text-[10px] text-slate">
+            {ARCHIVED_REASON_LABELS[card.archivedReason]}
           </span>
         ) : null}
         <AnimatePresence initial={false}>
