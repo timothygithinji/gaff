@@ -34,6 +34,8 @@ import { nanoid } from "nanoid";
 import sharp from "sharp";
 import { getDb } from "../../db";
 import * as schema from "../../db/schema";
+import { perceptualHash } from "../lib/cluster/dhash";
+import { photoContentKey } from "../lib/cluster/photo-identity";
 import { env } from "../lib/env";
 import { PHOTO_WIDTH_BUCKETS, variantKey } from "../lib/photo-size";
 import { photoQueue } from "./queues";
@@ -347,9 +349,15 @@ async function cacheOnePhoto(args: {
       listingId,
       photoId: row.id,
     });
+    // Identity signals, computed from the same bytes we just downloaded: the
+    // content key is free (CDN basename), the perceptual hash decodes once
+    // more via sharp. Both feed cross-portal/re-list clustering; a null phash
+    // (undecodable input) just means "no signal" for that image.
+    const contentKey = photoContentKey(row.url) || null;
+    const phash = await perceptualHash(Buffer.from(buf));
     await db
       .update(schema.listingPhotos)
-      .set({ r2Key: key })
+      .set({ r2Key: key, contentKey, phash })
       .where(eq(schema.listingPhotos.id, row.id));
     return "cached";
   } catch (err) {

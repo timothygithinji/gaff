@@ -450,8 +450,27 @@ export const listingPhotos = pgTable(
     url: text("url").notNull(),
     r2Key: text("r2_key"),
     position: integer("position").notNull(),
+    /**
+     * Portal CDN content key — the image basename (see `photoContentKey`).
+     * Zoopla serves from `lid.zoocdn.com/<w>/<h>/<sha1>.jpg`, so equal keys
+     * mean byte-identical images: the FREE same-portal identity signal that
+     * collapses re-lists and the same-listing-scraped-twice rows. NULL until
+     * `cache-photos` (or the backfill) sets it.
+     */
+    contentKey: text("content_key"),
+    /**
+     * 64-bit perceptual hash (dHash) of the decoded image, stored as the
+     * unsigned decimal text of a bigint. Robust to the resize/recompress a
+     * portal applies when it rehosts, so it's the CROSS-portal identity
+     * signal (content keys never collide across CDNs). NULL until
+     * `cache-photos` computes it; see `phashesMatch`.
+     */
+    phash: text("phash"),
   },
-  (t) => [index("listing_photos_listing_id_idx").on(t.listingId)]
+  (t) => [
+    index("listing_photos_listing_id_idx").on(t.listingId),
+    index("listing_photos_content_key_idx").on(t.contentKey),
+  ]
 );
 
 export const aiRuns = pgTable("ai_runs", {
