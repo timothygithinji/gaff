@@ -1,9 +1,9 @@
 /**
  * Per-listing clustering task.
  *
- * Triggered from `scrapePortalTask` (fire-and-forget `batchTrigger`, NOT
- * `batchTriggerAndWait`) after a portal sweep finishes inserting fresh
- * `listings` rows. For every listing in the payload:
+ * Triggered from `scrapePortalTask` (via `batchTriggerAndWait`, part of the
+ * true join rooted at scrape-search) after a portal sweep finishes inserting
+ * fresh `listings` rows. For every listing in the payload:
  *
  *   1. Read the address fields off the listings row.
  *   2. Run it through `findOrCreateCluster` (normalised-address dedupe
@@ -14,14 +14,15 @@
  *      haven't yet pulled the rich (photos, description, agent, lat/lng)
  *      page for.
  *
- * After clustering, batchTrigger the per-listing detail scrape for the
- * NEW listings (whether or not their cluster is new — we still want the
- * detail row even if the building was already known from another portal).
- *
- * PR 6 wiring: this task's `onSuccess` fans out `enrichEpcTask` for
- * every cluster in `newClusterIds` (one EPC lookup per unique
- * building). AI enrichment fires from `scrapeDetailTask.onSuccess`
- * because its inputs are listing-scoped — see `enrich-ai.ts`.
+ * Then, in the run body:
+ *   • fire-and-forget the per-cluster geo enrichers (EPC, commute, …) for
+ *     every NEW cluster — they're on the SAME `enrich` queue, so we can't
+ *     wait on them without risking a same-queue deadlock; firing them now
+ *     lets them run alongside the detail+AI subtree;
+ *   • `batchTriggerAndWait` the per-listing detail scrape for the NEW
+ *     listings (it's on the `scrape` queue, so waiting is deadlock-free and
+ *     suspends cheaply), which itself waits on AI enrichment — so this task
+ *     only returns once the whole sub-chain for these listings is done.
  */
 
 import { logger, task } from "@trigger.dev/sdk";
@@ -69,40 +70,6 @@ export const clusterTask = task({
   id: "cluster",
   queue: enrichQueue,
   maxDuration: 300,
-
-  /**
-   * PR 6 wiring: fan out EPC enrichment for every cluster that was
-   * newly created during this batch. EPC is per-cluster (one external
-   * lookup per unique building's postcode), so we deliberately don't
-   * re-trigger for clusters the listing landed in but that already
-   * existed — those would already have had their EPC pulled when they
-   * were first created. AI enrichment is fired separately from
-   * `scrapeDetailTask.onSuccess` because its inputs (description +
-   * key features) are listing-scoped, not building-scoped.
-   *
-   * fire-and-forget batchTrigger (NOT batchTriggerAndWait): clustering
-   * already returned by the time onSuccess runs, and enrichment can
-   * take its own sweet time without holding up the next sweep.
-   */
-  onSuccess: async ({ output }: { output: ClusterOutput }) => {
-    if (output.newClusterIds.length === 0) {
-      return;
-    }
-    const payloads = output.newClusterIds.map((clusterId) => ({
-      payload: { clusterId },
-    }));
-    // Seven independent enrichment fan-outs. fire-and-forget; the cluster
-    // task has already done its job by the time onSuccess runs.
-    await Promise.all([
-      enrichEpcTask.batchTrigger(payloads),
-      enrichCommuteTask.batchTrigger(payloads),
-      enrichAmenitiesTask.batchTrigger(payloads),
-      enrichBroadbandTask.batchTrigger(payloads),
-      enrichCouncilTaxTask.batchTrigger(payloads),
-      enrichStationRoutesTask.batchTrigger(payloads),
-      enrichNearbyTransitTask.batchTrigger(payloads),
-    ]);
-  },
 
   run: async (payload: ClusterPayload): Promise<ClusterOutput> => {
     const db = getDb();
@@ -171,23 +138,45 @@ export const clusterTask = task({
       newClusters: newClusterIds.length,
     });
 
-    // Fire-and-forget the per-listing detail scrape for every successfully
-    // clustered listing. batchTrigger (NOT batchTriggerAndWait) so the
-    // cluster task doesn't block on detail-scrape duration — clustering
-    // is cheap, detail-scrape involves another Zyte round trip per
-    // listing and routes through the enrichQueue's concurrency cap.
+    // Fan out per-cluster geo enrichment (EPC, commute, amenities, …) for
+    // every NEW cluster — one external lookup per unique building, so we
+    // skip clusters the listing landed in but that already existed.
+    //
+    // Fire-and-forget on purpose: these run on the SAME `enrich` queue as
+    // this task, so we must NOT wait on them (a same-queue parent→child
+    // wait risks a concurrency deadlock). Firing them HERE — before we
+    // suspend on the detail scrape below — lets them run in parallel with
+    // detail + AI, so they've landed by the time the join returns.
+    if (newClusterIds.length > 0) {
+      const enrichPayloads = newClusterIds.map((clusterId) => ({
+        payload: { clusterId },
+      }));
+      await Promise.all([
+        enrichEpcTask.batchTrigger(enrichPayloads),
+        enrichCommuteTask.batchTrigger(enrichPayloads),
+        enrichAmenitiesTask.batchTrigger(enrichPayloads),
+        enrichBroadbandTask.batchTrigger(enrichPayloads),
+        enrichCouncilTaxTask.batchTrigger(enrichPayloads),
+        enrichStationRoutesTask.batchTrigger(enrichPayloads),
+        enrichNearbyTransitTask.batchTrigger(enrichPayloads),
+      ]);
+    }
+
+    // Per-listing detail scrape for every clustered listing.
+    // batchTriggerAndWait (NOT fire-and-forget): this is part of the true
+    // join rooted at scrape-search, which waits on the whole chain before
+    // firing the digest. scrape-detail is on a DIFFERENT queue (`scrape`),
+    // so we checkpoint and release our `enrich` slot while suspended — no
+    // deadlock, no compute spend. A child failure surfaces as a non-ok run,
+    // not a throw, so it can't fail clustering.
     if (detailListingIds.length > 0) {
-      await scrapeDetailTask.batchTrigger(
+      await scrapeDetailTask.batchTriggerAndWait(
         detailListingIds.map((listingId) => ({
           payload: { listingId },
         }))
       );
     }
 
-    // `newClusterIds` is read by this task's onSuccess to fan out
-    // `enrichEpcTask` per new cluster (PR 6). AI enrichment is fired
-    // from `scrapeDetailTask.onSuccess` instead — listing-scoped, not
-    // cluster-scoped.
     return {
       clustered,
       newClusters: newClusterIds.length,

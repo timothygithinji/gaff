@@ -198,37 +198,51 @@ function buildListingPatch(
   return patch;
 }
 
+/**
+ * Fan out the work that follows a successful detail scrape. Kept off the
+ * run body so neither dispatch can fail the (already-recorded) scrape, and
+ * to keep the run's branching low.
+ *
+ *  • Photo cache — fire-and-forget on the separate `photo` queue. A caching
+ *    failure (R2 creds, a 404'd URL) must not fail the scrape, and it isn't
+ *    on the digest's critical path.
+ *  • AI enrichment — batchTriggerAndWait, part of the true join rooted at
+ *    scrape-search: the AI summary/pros-cons is the richness the digest
+ *    promises, so the chain waits for it before emailing. enrich-ai is on a
+ *    DIFFERENT queue (`ai`), so we checkpoint and release our `scrape` slot
+ *    while it runs (no deadlock, no compute spend). A failed enrichment
+ *    comes back as a non-ok run; if the wait itself errors we swallow it —
+ *    the 3-hourly enrich-ai-sweep retries, and the listing is already
+ *    reviewable without the AI summary.
+ */
+async function dispatchDownstream(
+  listingId: string,
+  photoCount: number
+): Promise<void> {
+  if (photoCount > 0) {
+    try {
+      await cachePhotosTask.batchTrigger([{ payload: { listingId } }]);
+    } catch (err) {
+      logger.warn("scrape-detail: cache-photos dispatch failed", {
+        listingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  try {
+    await enrichAiTask.batchTriggerAndWait([{ payload: { listingId } }]);
+  } catch (err) {
+    logger.warn("scrape-detail: enrich-ai wait errored; sweep will retry", {
+      listingId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export const scrapeDetailTask = task({
   id: "scrape-detail",
   queue: scrapeQueue,
   maxDuration: 120,
-
-  /**
-   * onSuccess fires after the run body returns. We use it to fire-and-forget
-   * the photo-cache task — same pattern as scrape-portal → cluster. The child
-   * runs on `photoQueue`, so caching throughput is independent of the Zyte
-   * scrape cap.
-   *
-   * Splitting this off from the run body matters because cache-photos can
-   * fail (R2 creds missing, photo URL 404s) WITHOUT failing the detail
-   * scrape — the parsed-and-stored listing data is still a valid output
-   * regardless of whether the photos cached.
-   */
-  onSuccess: async ({ output }: { output: ScrapeDetailOutput }) => {
-    if (output.photoCount > 0) {
-      await cachePhotosTask.batchTrigger([
-        { payload: { listingId: output.listingId } },
-      ]);
-    }
-    // PR 6 wiring: fire-and-forget the AI enrichment now that
-    // `listings.rawJson` is populated with the rich ListingDetail. The
-    // enrich-ai task runs on `enrichQueue` (concurrencyLimit 15), which
-    // doubles as a bound on Anthropic spend rate. EPC enrichment fires from
-    // cluster.onSuccess instead — it's per-cluster, not per-listing.
-    await enrichAiTask.batchTrigger([
-      { payload: { listingId: output.listingId } },
-    ]);
-  },
 
   /**
    * Mirrors the scrape-portal pattern: we INSERT the scrape_runs row
@@ -417,6 +431,11 @@ export const scrapeDetailTask = task({
       photoCount,
       costUsd: cost,
     });
+
+    // The scrape is already recorded as a success above; fan out the
+    // downstream work (photo cache + AI enrichment) without letting a
+    // trigger hiccup flip this successful scrape into a failure.
+    await dispatchDownstream(listingId, photoCount);
 
     return {
       runId,

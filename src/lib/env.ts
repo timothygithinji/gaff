@@ -85,7 +85,7 @@ const envSchema = z.object({
   TRIGGER_SECRET_KEY: z.string().min(1),
 
   // Resend (transactional email) — OPTIONAL, same reasoning as R2 below.
-  // Only the notification tasks (send-match-email, daily-digest) read it,
+  // Only the notification tasks (send-match-email, household-digest) read it,
   // and they run on Trigger.dev workers. Marking it required would make
   // env() throw on any worker that hasn't had the secret staged yet,
   // re-running the secret-drift 500 we've already been bitten by. The

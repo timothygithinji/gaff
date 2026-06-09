@@ -19,6 +19,7 @@
 import { logger, schedules } from "@trigger.dev/sdk";
 import { getDb } from "../../db";
 import type { Portal } from "../lib/parsers/types";
+import { householdDigestTask } from "./household-digest";
 import { scrapePortalTask } from "./scrape-portal";
 
 export const scrapeSearchTask = schedules.task({
@@ -81,5 +82,31 @@ export const scrapeSearchTask = schedules.task({
         });
       }
     }
+
+    // The batch above is a TRUE JOIN: each scrape-portal run waits on its
+    // whole cluster → detail → enrich sub-chain (see those tasks), so by
+    // the time we get here every listing this search touched has been
+    // scraped, clustered, detailed and AI-enriched — the rows are rich.
+    // Now, and only now, queue the household digest.
+    //
+    // Debounced per household: a household with several searches finishing
+    // around the same cadence collapses into ONE "new places to review"
+    // email per window instead of one per search. Each finishing search
+    // pushes the delayed run later (capped by maxDelay), so the email lands
+    // shortly after the LAST search in the window completes.
+    await householdDigestTask.trigger(
+      { householdId: search.householdId },
+      {
+        debounce: {
+          key: `household-digest:${search.householdId}`,
+          delay: "2m",
+          maxDelay: "20m",
+        },
+      }
+    );
+    logger.log("scrape-search: queued household digest", {
+      searchId,
+      householdId: search.householdId,
+    });
   },
 });

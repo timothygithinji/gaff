@@ -1201,11 +1201,14 @@ export const scrapePortalTask = task({
     //   • freshly INSERTed rows (always clusterId IS NULL),
     //   • old rows the previous cluster task missed.
     //
-    // `batchTrigger` (NOT `batchTriggerAndWait`): clustering is downstream
-    // work that doesn't need to gate this task's success. If we waited
-    // here, a single search with 50 new listings across 3 portals would
-    // pin scrape-portal alive for tens of seconds. Trigger's tracing
-    // links the runs anyway.
+    // `batchTriggerAndWait` (NOT fire-and-forget `batchTrigger`): the
+    // scheduled run is a TRUE JOIN — scrape-search waits on us so it can
+    // fire the digest only once the whole scrape→cluster→detail→enrich
+    // chain has finished and the rows are rich. Waiting is cheap: cluster
+    // is on a DIFFERENT queue (`enrich`), so we checkpoint and release our
+    // `scrape` concurrency slot here (no deadlock) and burn no compute
+    // while suspended. A child failure surfaces as a non-ok run, not a
+    // throw, so it can't fail this scrape.
     const listingIdsToCluster = await loadListingIdsToCluster(
       db,
       searchId,
@@ -1213,14 +1216,14 @@ export const scrapePortalTask = task({
       allTouchedPortalListingIds
     );
     if (listingIdsToCluster.length > 0) {
-      await clusterTask.batchTrigger([
-        { payload: { listingIds: listingIdsToCluster } },
-      ]);
-      logger.log("scrape-portal: dispatched cluster task", {
+      logger.log("scrape-portal: dispatching cluster task", {
         portal,
         searchId,
         clusterListingCount: listingIdsToCluster.length,
       });
+      await clusterTask.batchTriggerAndWait([
+        { payload: { listingIds: listingIdsToCluster } },
+      ]);
     }
 
     return {
