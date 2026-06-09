@@ -327,6 +327,14 @@ export type ListingDetailPayload = {
   photos: ListingDetailPhoto[];
   floorplan?: { url: string };
   features?: Features;
+  /**
+   * The agent's free-text listing description, as raw portal HTML
+   * (`<p>`-wrapped on Rightmove, `<br>`-strung on Zoopla / OpenRent).
+   * Composed from the first listing in the cluster that carries one. The
+   * UI strips the markup to clean paragraphs at render time — never fed
+   * to `dangerouslySetInnerHTML`. Null when no portal published a body.
+   */
+  description: string | null;
   summary: string | null;
   highlights: ListingDetailHighlight[];
   watchouts: ListingDetailWatchout[];
@@ -924,6 +932,18 @@ export const getListingDetail = createServerFn({ method: "GET" })
       }
     }
 
+    // Listing description — first non-empty body across the cluster's
+    // listings (a Rightmove twin often carries richer copy than the
+    // OpenRent original, so we don't tie it to the headline listing).
+    let description: string | null = null;
+    for (const l of sortedListings) {
+      const body = readDetail(l.rawJson)?.description;
+      if (typeof body === "string" && body.trim().length > 0) {
+        description = body;
+        break;
+      }
+    }
+
     // Step 6: enrichment — latest prompt version.
     const enrichmentRows = await db
       .select()
@@ -1089,6 +1109,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
       photos,
       ...(floorplanUrl ? { floorplan: { url: floorplanUrl } } : {}),
       ...(features ? { features } : {}),
+      description,
       summary,
       highlights,
       watchouts,

@@ -62,6 +62,7 @@ import { PortalList, toPortalRows } from "../ui/patterns/portal-list";
 import { PriceBlock } from "../ui/patterns/price-block";
 import { ActivityCard } from "./activity";
 import { CostsCard } from "./costs";
+import { DescriptionCard } from "./description";
 import { FineprintCard } from "./fineprint";
 import { GalleryLightbox } from "./gallery-lightbox";
 import { MapCommute } from "./map-commute";
@@ -347,6 +348,7 @@ function MainColumn({ data }: { data: ListingDetailPayload }) {
         summary={data.summary}
         watchouts={data.watchouts}
       />
+      <DescriptionCard description={data.description} />
       <MediaCard
         brochureUrl={data.agentExtras?.brochureUrl}
         floorplanUrl={data.floorplan?.url}

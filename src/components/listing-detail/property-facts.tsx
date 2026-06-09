@@ -22,6 +22,7 @@
  * `propertyFacts === undefined`).
  */
 
+import { htmlToPlainText } from "../../lib/html-text";
 import type {
   ListingDetailAgentExtras,
   ListingDetailPropertyFacts,
@@ -34,38 +35,6 @@ type Props = {
 };
 
 type Row = { label: string; value: string };
-
-const HTML_TAG_RE = /<[^>]+>/g;
-const HTML_ENTITY_NBSP_RE = /&nbsp;/g;
-const HTML_ENTITY_AMP_RE = /&amp;/g;
-const HTML_ENTITY_LT_RE = /&lt;/g;
-const HTML_ENTITY_GT_RE = /&gt;/g;
-const HTML_ENTITY_QUOT_RE = /&quot;/g;
-const HTML_ENTITY_APOS_RE = /&#39;|&apos;/g;
-const MULTI_NEWLINE_RE = /\n{3,}/g;
-
-/**
- * Strip HTML tags and decode the common entities so portal-supplied
- * marketing copy renders as plain text. We deliberately avoid
- * `dangerouslySetInnerHTML` for this content even though Rightmove's
- * customer-description field is "curated agent copy" — agents type it
- * themselves and there's no guarantee a script tag couldn't sneak in.
- * Plain text is the safe choice; the small UX hit (no paragraph breaks
- * beyond `\n`) is acceptable for an `About the agent` collapsible.
- */
-function stripHtml(html: string): string {
-  return html
-    .replace(/<(p|br|div|li)\b[^>]*>/gi, "\n")
-    .replace(HTML_TAG_RE, "")
-    .replace(HTML_ENTITY_NBSP_RE, " ")
-    .replace(HTML_ENTITY_AMP_RE, "&")
-    .replace(HTML_ENTITY_LT_RE, "<")
-    .replace(HTML_ENTITY_GT_RE, ">")
-    .replace(HTML_ENTITY_QUOT_RE, '"')
-    .replace(HTML_ENTITY_APOS_RE, "'")
-    .replace(MULTI_NEWLINE_RE, "\n\n")
-    .trim();
-}
 
 function materialInfoRows(
   mi: NonNullable<ListingDetailPropertyFacts["materialInfo"]> | null
@@ -180,7 +149,7 @@ function PropertyFactsBody({ facts, agent }: Props) {
             About the agent
           </summary>
           <p className="mt-2 max-h-48 overflow-auto whitespace-pre-line rounded-md bg-muted p-3 text-[12px] leading-[140%]">
-            {stripHtml(agent.descriptionHtml)}
+            {htmlToPlainText(agent.descriptionHtml)}
           </p>
         </details>
       ) : null}
