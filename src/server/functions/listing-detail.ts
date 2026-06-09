@@ -330,9 +330,11 @@ export type ListingDetailPayload = {
   /**
    * The agent's free-text listing description, as raw portal HTML
    * (`<p>`-wrapped on Rightmove, `<br>`-strung on Zoopla / OpenRent).
-   * Composed from the first listing in the cluster that carries one. The
-   * UI strips the markup to clean paragraphs at render time — never fed
-   * to `dangerouslySetInnerHTML`. Null when no portal published a body.
+   * Sourced from the headline listing only — the same one the agent
+   * block (name / phone / blurb / brochure) comes from — so the two can
+   * never disagree on a multi-agent cluster. The UI strips the markup to
+   * clean paragraphs at render time, never via `dangerouslySetInnerHTML`.
+   * Null when the headline listing has no body.
    */
   description: string | null;
   summary: string | null;
@@ -932,17 +934,17 @@ export const getListingDetail = createServerFn({ method: "GET" })
       }
     }
 
-    // Listing description — first non-empty body across the cluster's
-    // listings (a Rightmove twin often carries richer copy than the
-    // OpenRent original, so we don't tie it to the headline listing).
-    let description: string | null = null;
-    for (const l of sortedListings) {
-      const body = readDetail(l.rawJson)?.description;
-      if (typeof body === "string" && body.trim().length > 0) {
-        description = body;
-        break;
-      }
-    }
+    // Listing description — tied to the headline listing, the same one
+    // the agent block (name / phone / blurb / brochure) is sourced from.
+    // A cluster can pool listings from different agents; pulling the body
+    // off a sibling would let "About this property" disagree with the
+    // agent shown above it, so we deliberately don't fall back here.
+    const headlineDescription = readDetail(headlineListing.rawJson)?.description;
+    const description =
+      typeof headlineDescription === "string" &&
+      headlineDescription.trim().length > 0
+        ? headlineDescription
+        : null;
 
     // Step 6: enrichment — latest prompt version.
     const enrichmentRows = await db
