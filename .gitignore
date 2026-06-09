@@ -77,3 +77,6 @@ worktrees/
 # Claude Code local project memory
 .claude/projects/
 .fallow/
+
+# React Email studio build cache
+.react-email/

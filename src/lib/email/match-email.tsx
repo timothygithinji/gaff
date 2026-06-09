@@ -2,8 +2,8 @@
  * "You both want this" email — sent the instant a cluster becomes a
  * mutual match (every household member has kept/shortlisted it). This is
  * the one notification that fires immediately rather than waiting for the
- * daily digest: a match is the rare "enquire now" moment, and UK lets go
- * fast. Rendered by `send-match-email`.
+ * per-household digest: a match is the rare "enquire now" moment, and UK
+ * lets go fast. Rendered by `send-match-email`.
  *
  * Styling tracks the maritime + all-Inter design system (the "Gaff" Paper
  * file → globals.css). Email clients can't read CSS variables, so the
@@ -40,11 +40,27 @@ export type MatchEmailProps = {
 const NAVY = "#0e2235"; // ink: headings, body, primary button
 const GROUND = "#eef1f4"; // page background + primary-button text
 const WHITE = "#ffffff"; // card surface
-const COPPER = "#d77a4a"; // the one accent — small-caps label
-const SLATE = "#1f3a5f"; // muted body text
+const SLATE = "#1f3a5f"; // small-caps kicker + muted body text
 const STEEL = "#5a7596"; // captions / tertiary
 const LINE = "#c9d3dc"; // hairline borders
 const SANS = "Inter, Helvetica, Arial, sans-serif";
+
+/**
+ * Small-screen polish. The table layout is already fluid (max-width + 100%
+ * shrink to the viewport); this only refines phones — full-width shell, a
+ * shorter hero, and slightly smaller display type. Apple Mail and the Gmail
+ * app honour `<style>` media queries; desktop Outlook ignores them and
+ * renders the fluid base, which is never the narrow case.
+ */
+const MOBILE_CSS = `
+  @media only screen and (max-width: 600px) {
+    .gaff-shell { width: 100% !important; max-width: 100% !important; }
+    .gaff-hero { height: 200px !important; }
+    .gaff-h1 { font-size: 21px !important; }
+    .gaff-price { font-size: 24px !important; }
+    .gaff-pad { padding-left: 20px !important; padding-right: 20px !important; }
+  }
+`;
 
 export function MatchEmail({
   partnerName,
@@ -58,17 +74,22 @@ export function MatchEmail({
   const bedLabel = beds == null ? "" : `${beds} bed · `;
   return (
     <Html>
-      <Head />
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/** biome-ignore lint/security/noDangerouslySetInnerHtml: media-query <style> is the only way to add responsive rules to an HTML email. */}
+        <style dangerouslySetInnerHTML={{ __html: MOBILE_CSS }} />
+      </Head>
       <Preview>{`You both want ${address} — ${price}`}</Preview>
       <Body
         style={{
           backgroundColor: GROUND,
           fontFamily: SANS,
           margin: 0,
-          padding: "24px 0",
+          padding: "24px 16px",
         }}
       >
         <Container
+          className="gaff-shell"
           style={{
             backgroundColor: WHITE,
             border: `1px solid ${LINE}`,
@@ -81,17 +102,24 @@ export function MatchEmail({
           {photoUrl ? (
             <Img
               alt={address}
+              className="gaff-hero"
               src={photoUrl}
-              style={{ width: "100%", height: "240px", objectFit: "cover" }}
+              style={{
+                width: "100%",
+                height: "240px",
+                maxWidth: "100%",
+                objectFit: "cover",
+                display: "block",
+              }}
             />
           ) : null}
-          <Section style={{ padding: "24px 28px" }}>
+          <Section className="gaff-pad" style={{ padding: "24px 28px" }}>
             <Text
               style={{
-                color: COPPER,
-                fontSize: "12px",
+                color: SLATE,
+                fontSize: "10px",
                 fontWeight: 600,
-                letterSpacing: "0.08em",
+                letterSpacing: "0.14em",
                 textTransform: "uppercase",
                 margin: "0 0 8px",
               }}
@@ -99,6 +127,7 @@ export function MatchEmail({
               It's a match
             </Text>
             <Heading
+              className="gaff-h1"
               style={{
                 color: NAVY,
                 fontFamily: SANS,
@@ -116,6 +145,7 @@ export function MatchEmail({
               {outcode || "—"}
             </Text>
             <Text
+              className="gaff-price"
               style={{
                 color: NAVY,
                 fontFamily: SANS,
@@ -134,7 +164,7 @@ export function MatchEmail({
               href={listingUrl}
               style={{
                 backgroundColor: NAVY,
-                borderRadius: "8px",
+                borderRadius: "12px",
                 color: GROUND,
                 display: "inline-block",
                 fontSize: "15px",
@@ -147,7 +177,7 @@ export function MatchEmail({
             </Button>
           </Section>
           <Hr style={{ borderColor: LINE, margin: 0 }} />
-          <Section style={{ padding: "16px 28px" }}>
+          <Section className="gaff-pad" style={{ padding: "16px 28px" }}>
             <Text style={{ color: STEEL, fontSize: "12px", margin: 0 }}>
               You're getting this because you and {partnerName} both
               shortlisted this place in Gaff.
