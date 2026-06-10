@@ -26,7 +26,6 @@
  * listing is the cheapest, the others surface in the "ALSO ON" badge.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { tasks } from "@trigger.dev/sdk";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -64,6 +63,7 @@ import {
 } from "./reviewable-queue";
 import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
+import { tasks } from "./trigger.server";
 
 const swipeOutcomeSchema = z.enum(["keep", "skip", "shortlist"]);
 
@@ -714,31 +714,35 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
     }
 
     // Step 4: hydrate the chosen cluster — listings, photos, features.
-    const cluster = await db.query.propertyClusters.findFirst({
-      where: (c, { eq: eqOp }) => eqOp(c.id, nextClusterId),
-    });
+    // The cluster row and its listings are independent reads keyed off the
+    // same id, so `db.batch` ships them as one HTTP request (one
+    // subrequest) instead of two.
+    const [cluster, clusterListings] = await db.batch([
+      db.query.propertyClusters.findFirst({
+        where: (c, { eq: eqOp }) => eqOp(c.id, nextClusterId),
+      }),
+      db
+        .select()
+        .from(listings)
+        .where(
+          and(
+            eq(listings.clusterId, nextClusterId),
+            inArray(listings.searchId, activeSearchIds)
+          )
+        )
+        .orderBy(
+          // Cheapest listing wins the headline slot. NULL prices sink to
+          // the bottom — `NULLS LAST` would be ideal but drizzle's
+          // `orderBy()` doesn't expose it; the JS-level resort below
+          // handles it.
+          listings.priceMonthly
+        ),
+    ]);
     if (!cluster) {
       // Shouldn't be reachable — the SQL above filters by listings
       // whose cluster_id is non-null. Guard anyway.
       return null;
     }
-
-    const clusterListings = await db
-      .select()
-      .from(listings)
-      .where(
-        and(
-          eq(listings.clusterId, nextClusterId),
-          inArray(listings.searchId, activeSearchIds)
-        )
-      )
-      .orderBy(
-        // Cheapest listing wins the headline slot. NULL prices sink to
-        // the bottom — `NULLS LAST` would be ideal but drizzle's
-        // `orderBy()` doesn't expose it; the JS-level resort below
-        // handles it.
-        listings.priceMonthly
-      );
 
     // Read-time guard: only consider listings within their own search's
     // band on price, beds, and category exclusions — so the headline (and
@@ -795,25 +799,26 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
       return null;
     }
 
-    // Pull photos for the headline listing only. The "ALSO ON" cards
-    // don't currently surface their own photos.
-    const photos = await db
-      .select()
-      .from(listingPhotos)
-      .where(eq(listingPhotos.listingId, headline.id))
-      .orderBy(listingPhotos.position);
-
+    // Photos + enrichments for the headline listing — both keyed on the
+    // same listing id and independent of each other, so fetch them in one
+    // round-trip. Photos: headline only (the "ALSO ON" cards don't
+    // surface their own). Enrichments: the unique (listing_id,
+    // prompt_version) means there can be many versions; we take the
+    // lexically-greatest version string, which works for the `v1.0.0`
+    // semver shape used today.
+    const [photos, enrichmentRows] = await db.batch([
+      db
+        .select()
+        .from(listingPhotos)
+        .where(eq(listingPhotos.listingId, headline.id))
+        .orderBy(listingPhotos.position),
+      db
+        .select()
+        .from(enrichments)
+        .where(eq(enrichments.listingId, headline.id))
+        .orderBy(desc(enrichments.promptVersion)),
+    ]);
     const photoUrls = photos.map(resolvePhotoUrl);
-
-    // Pull the most recent enrichments row for the headline listing.
-    // The unique (listing_id, prompt_version) means there can be many
-    // versions; we take the lexically-greatest version string, which
-    // works for the `v1.0.0` semver shape used today.
-    const enrichmentRows = await db
-      .select()
-      .from(enrichments)
-      .where(eq(enrichments.listingId, headline.id))
-      .orderBy(desc(enrichments.promptVersion));
     const enrichment = enrichmentRows[0];
 
     // "ALSO ON" portals — every listing under this cluster other than

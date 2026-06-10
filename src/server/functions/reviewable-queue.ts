@@ -28,6 +28,7 @@ import {
   clusterPassesSearch,
   searchHasTargets,
 } from "../../lib/queue-targets";
+import { requestMemo } from "./request-cache.server";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -349,7 +350,31 @@ async function filterCandidatesByTargets(
  * personal — a partner's skip doesn't drop the cluster from your queue.
  * The caller hydrates whichever positions it needs.
  */
-export async function loadRankedQueueClusterIds(
+export function loadRankedQueueClusterIds(
+  db: Db,
+  householdId: string,
+  currentUserId: string,
+  filterSearchId?: string
+): Promise<{
+  clusterIds: string[];
+  activeSearches: (typeof searches.$inferSelect)[];
+}> {
+  // Memoized per request: the `/` loader resolves the next card and the
+  // queue in parallel and both compute this ranked queue — the heaviest
+  // query on the page. The cache collapses that to a single pass.
+  return requestMemo(
+    `ranked-queue:${householdId}:${currentUserId}:${filterSearchId ?? "all"}`,
+    () =>
+      loadRankedQueueClusterIdsUncached(
+        db,
+        householdId,
+        currentUserId,
+        filterSearchId
+      )
+  );
+}
+
+async function loadRankedQueueClusterIdsUncached(
   db: Db,
   householdId: string,
   currentUserId: string,
@@ -421,7 +446,9 @@ export async function loadRankedQueueClusterIds(
     return { clusterIds: [], activeSearches };
   }
 
-  const [mySwipes, deferred] = await Promise.all([
+  // Independent reads — `db.batch` ships both in one HTTP request to Neon
+  // (one subrequest), not two.
+  const [mySwipes, deferred] = await db.batch([
     // The current user's own swipes — any outcome. A skip here hides the
     // card from *this* user only; a partner's skip is deliberately not
     // consulted, so the cluster stays visible to everyone who hasn't acted

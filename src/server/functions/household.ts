@@ -64,24 +64,28 @@ async function loadHouseholdFor(userId: string): Promise<HouseholdPayload> {
     throw new Error("no_household");
   }
 
-  const household = await db.query.households.findFirst({
-    where: (h, { eq: eqOp }) => eqOp(h.id, membership.householdId),
-  });
+  // Household row and member list both key off the resolved household id
+  // and don't depend on each other — `db.batch` ships them as a single
+  // HTTP request to Neon (one subrequest), not two.
+  const [household, rows] = await db.batch([
+    db.query.households.findFirst({
+      where: (h, { eq: eqOp }) => eqOp(h.id, membership.householdId),
+    }),
+    db
+      .select({
+        id: householdMembers.id,
+        userId: householdMembers.userId,
+        role: householdMembers.role,
+        email: user.email,
+        name: user.name,
+      })
+      .from(householdMembers)
+      .innerJoin(user, eq(user.id, householdMembers.userId))
+      .where(eq(householdMembers.householdId, membership.householdId)),
+  ]);
   if (!household) {
     throw new Error("household_missing");
   }
-
-  const rows = await db
-    .select({
-      id: householdMembers.id,
-      userId: householdMembers.userId,
-      role: householdMembers.role,
-      email: user.email,
-      name: user.name,
-    })
-    .from(householdMembers)
-    .innerJoin(user, eq(user.id, householdMembers.userId))
-    .where(eq(householdMembers.householdId, household.id));
 
   return {
     household,
@@ -102,6 +106,38 @@ export const getHousehold = createServerFn({ method: "GET" }).handler(
       throw new Error("unauthorized");
     }
     return loadHouseholdFor(session.userId);
+  }
+);
+
+/**
+ * Root `beforeLoad` bootstrap: the current user id *and* their household
+ * in one server round-trip (previously a user-id fetch followed by a
+ * separate household prefetch). Lives here — next to `loadHouseholdFor`
+ * and the DB code — rather than in `__root.tsx` so the client only ever
+ * sees the RPC stub; importing the DB-touching helper into the
+ * client-reachable root would drag Neon + Drizzle into the browser
+ * bundle. Both fields are null with no session (the layout still renders,
+ * auth-gated children redirect themselves); a session with no household
+ * (shouldn't happen — the sign-up hook auto-creates one) yields a null
+ * household and the provider re-fetches.
+ */
+export const getRootBootstrap = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{
+    userId: string | null;
+    household: HouseholdPayload | null;
+  }> => {
+    const session = await getCurrentUser();
+    if (!session) {
+      return { userId: null, household: null };
+    }
+    try {
+      return {
+        userId: session.userId,
+        household: await loadHouseholdFor(session.userId),
+      };
+    } catch {
+      return { userId: session.userId, household: null };
+    }
   }
 );
 

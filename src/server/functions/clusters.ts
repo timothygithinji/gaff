@@ -21,7 +21,6 @@
  * searches.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { tasks } from "@trigger.dev/sdk";
 import { eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -51,6 +50,7 @@ import {
   sameHome,
 } from "../../lib/cluster/photo-match";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
+import { tasks } from "./trigger.server";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -440,7 +440,7 @@ export const mergeClusters = createServerFn({ method: "POST" })
       await assertClustersInHousehold(db, householdId, involved);
 
       const absorbedSet = new Set(absorbed);
-      const [sw, pp, nt, clusterRows] = await Promise.all([
+      const [sw, pp, nt, clusterRows] = await db.batch([
         db.select().from(swipes).where(inArray(swipes.clusterId, involved)),
         db
           .select()

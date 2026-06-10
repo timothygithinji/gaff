@@ -44,7 +44,6 @@
  */
 import { env } from "cloudflare:workers";
 import { createServerFn } from "@tanstack/react-start";
-import { auth, tasks } from "@trigger.dev/sdk";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -65,6 +64,7 @@ import {
   resolveZoopla,
   resolveZooplaOutcode,
 } from "../../lib/portal-locations";
+import { findScheduleByExternalId } from "../../lib/schedule-lookup.server";
 import {
   type OpenrentLocationRef,
   type RightmoveLocationRef,
@@ -75,11 +75,11 @@ import {
 import {
   createSchedule,
   deactivateSchedule,
-  findScheduleByExternalId,
   updateSchedule,
 } from "./schedules";
 import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
+import { auth, tasks } from "./trigger.server";
 
 const SCRAPE_TASK_ID = "scrape-search";
 const SCHEDULE_TIMEZONE = "Europe/London";
@@ -834,7 +834,8 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       };
     }
 
-    // Fire everything in parallel — six small queries.
+    // Six small queries shipped as one `db.batch` — a single HTTP request
+    // to Neon (one subrequest) rather than six.
     const [
       thisWeekListings,
       lastWeekListings,
@@ -842,7 +843,7 @@ export const getSearchesPortfolio = createServerFn({ method: "GET" }).handler(
       lastRunRows,
       clusterRows,
       mySwipesRows,
-    ] = await Promise.all([
+    ] = await db.batch([
       // Listings per search in the last 7d. We also need each row's
       // firstSeenAt so we can bucket the pulse chart in JS.
       db

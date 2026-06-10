@@ -5,7 +5,6 @@ import {
   Scripts,
   createRootRouteWithContext,
 } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
 import { type ReactNode, useEffect } from "react";
 import faviconSvg from "../assets/favicon.svg?url";
 import { HotkeyHelp } from "../components/hotkey-help";
@@ -14,7 +13,7 @@ import {
   HouseholdProvider,
   householdQueryOptions,
 } from "../lib/household-context";
-import { getCurrentUser } from "../server/functions/session";
+import { getRootBootstrap } from "../server/functions/household";
 import globalsCss from "../styles/globals.css?url";
 
 // react-grab: in-app element picker that pipes context to AI coding tools.
@@ -27,20 +26,6 @@ function useReactGrab() {
     }
   }, []);
 }
-
-/**
- * Server function that returns just the current user id, so the root
- * route loader can prime the HouseholdProvider without a second
- * round-trip on first paint. Returns null when there's no session
- * (the layout still renders — auth-gated children handle their own
- * redirects).
- */
-const getCurrentUserId = createServerFn({ method: "GET" }).handler(
-  async (): Promise<{ userId: string | null }> => {
-    const session = await getCurrentUser();
-    return { userId: session?.userId ?? null };
-  }
-);
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -57,12 +42,16 @@ export const Route = createRootRouteWithContext<{
     ],
   }),
   beforeLoad: async ({ context }) => {
-    const { userId } = await getCurrentUserId();
-    // Pre-fetch the household on the server so SSR paints the real
-    // shell, not the HouseholdProvider's loading skeleton. Skipped
-    // when no session — login/signup don't need it.
-    if (userId) {
-      await context.queryClient.prefetchQuery(householdQueryOptions);
+    const { userId, household } = await getRootBootstrap();
+    // Fold the household straight into the query cache so the
+    // HouseholdProvider paints the real shell on first frame without a
+    // second round-trip. Skipped when there's no session (login/signup
+    // don't need it) or no household (the provider re-fetches).
+    if (household) {
+      context.queryClient.setQueryData(
+        householdQueryOptions.queryKey,
+        household
+      );
     }
     return { currentUserId: userId };
   },

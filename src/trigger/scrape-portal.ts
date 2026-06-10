@@ -59,7 +59,7 @@ import {
 } from "../lib/portal-urls";
 import { listingMatchesPropertyTypes } from "../lib/property-kind";
 import { storeRawHtml } from "../lib/raw-html";
-import { findScheduleByExternalId } from "../lib/schedule-lookup";
+import { findScheduleByExternalId } from "../lib/schedule-lookup.server";
 import {
   type SearchLocation,
   asPortalRefArray,

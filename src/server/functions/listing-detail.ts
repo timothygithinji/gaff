@@ -25,7 +25,6 @@
  * to a search owned by the caller's household. Anything else 404s.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { tasks } from "@trigger.dev/sdk";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
@@ -63,6 +62,7 @@ import type { ListingDetail, NearestStation } from "../../lib/parsers/types";
 import { resolvePhotoUrl } from "./photo-url";
 import { type PropertyKind, classifyPropertyKind } from "./review";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
+import { tasks } from "./trigger.server";
 
 // -----------------------------------------------------------------------------
 // Wire types

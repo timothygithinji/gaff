@@ -8,17 +8,17 @@
  * them locally so the dashboard and the search edit screen all stay
  * in sync.
  *
- * `findScheduleByExternalId` lives in `src/lib/schedule-lookup.ts` so
- * the Trigger worker can import it without pulling `@tanstack/react-start`
- * into the worker bundle. We re-export it here so existing web-side
- * callers keep working without import-path churn.
+ * `findScheduleByExternalId` lives in `src/lib/schedule-lookup.server.ts`
+ * so the Trigger worker can import it without pulling
+ * `@tanstack/react-start` into the worker bundle. Web-side callers import
+ * it directly from there — we no longer re-export it here, because a bare
+ * re-export of a `.server` binding from this (client-reachable) module
+ * trips TanStack's import-protection.
  */
 import { createServerFn } from "@tanstack/react-start";
 import type { ScheduleObject } from "@trigger.dev/core/v3";
-import { schedules } from "@trigger.dev/sdk";
 import { z } from "zod";
-
-export { findScheduleByExternalId } from "../../lib/schedule-lookup";
+import { schedules } from "./trigger.server";
 
 const cronPatternSchema = z.string().trim().min(1, "cron expression required");
 const timezoneSchema = z.string().trim().min(1).max(64).optional();

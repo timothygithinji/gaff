@@ -50,6 +50,19 @@ export function createAuth(env: AuthEnv) {
     emailAndPassword: {
       enabled: true,
     },
+    // Store the validated session in a short-lived, signed cookie so
+    // `getSession` reads it straight from the request instead of hitting
+    // the database on every server function. On the Review screen alone
+    // session resolution ran 5–6× per page load (root `beforeLoad` plus
+    // each loader query) — all of those now skip the DB. Revocation /
+    // expiry still invalidate within `maxAge`; pass `disableCookieCache`
+    // where a guaranteed-fresh read is needed.
+    session: {
+      cookieCache: {
+        enabled: true,
+        maxAge: 300,
+      },
+    },
     databaseHooks: {
       user: {
         create: {

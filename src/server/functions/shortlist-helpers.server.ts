@@ -23,6 +23,7 @@ import {
 } from "../../../db/schema";
 import { classifyPropertyKind } from "../../lib/property-kind";
 import { resolvePhotoUrl } from "./photo-url";
+import { requestMemo } from "./request-cache.server";
 import { getCurrentUser } from "./session";
 import type { MutualMatch, ShortlistMember } from "./shortlist";
 
@@ -178,20 +179,35 @@ export async function requireHouseholdScope(): Promise<{
   if (!session) {
     throw new Error("unauthorized");
   }
-  const db = getDb();
-  const myMembership = await db.query.householdMembers.findFirst({
-    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
+  // Memoized per request: every server function on a page calls this, so
+  // without the cache the same two membership lookups ran once per query
+  // (4× on the Review screen). Keyed by user so a household member's
+  // request never reuses another's scope.
+  return requestMemo(`household-scope:${session.userId}`, async () => {
+    const db = getDb();
+    // One round-trip instead of two: the subquery resolves the user's
+    // household id, and the outer query returns every member of it (the
+    // user included). Empty result ⇒ the user has no household.
+    const householdIdFor = db
+      .select({ id: householdMembers.householdId })
+      .from(householdMembers)
+      .where(eq(householdMembers.userId, session.userId))
+      .limit(1);
+    const members = await db
+      .select({
+        householdId: householdMembers.householdId,
+        userId: householdMembers.userId,
+      })
+      .from(householdMembers)
+      .where(inArray(householdMembers.householdId, householdIdFor));
+    const householdId = members[0]?.householdId;
+    if (!householdId) {
+      throw new Error("no_household");
+    }
+    return {
+      householdId,
+      memberUserIds: members.map((m) => m.userId),
+      currentUserId: session.userId,
+    };
   });
-  if (!myMembership) {
-    throw new Error("no_household");
-  }
-  const members = await db
-    .select({ userId: householdMembers.userId })
-    .from(householdMembers)
-    .where(eq(householdMembers.householdId, myMembership.householdId));
-  return {
-    householdId: myMembership.householdId,
-    memberUserIds: members.map((m) => m.userId),
-    currentUserId: session.userId,
-  };
 }

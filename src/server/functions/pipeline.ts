@@ -1,21 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-/**
- * Shortlist pipeline server functions.
- *
- * Powers the kanban on `/shortlist`. A household's "Shortlisted"
- * column is derived from `v_mutual_matches` (every member has kept-or-
- * shortlisted a cluster). Stages beyond that (Contacted, Viewing
- * booked, Offer made, Archived) require an explicit row in
- * `shortlist_pipeline`. The list endpoint merges both sources so the
- * kanban always reflects:
- *
- *   - every mutual match that's NOT in `shortlist_pipeline` → Shortlisted
- *   - every row in `shortlist_pipeline` → the row's status
- *
- * Writes go through `setPipelineStatus`; the first transition out of
- * Shortlisted creates the row, subsequent transitions update it.
- */
-import { tasks } from "@trigger.dev/sdk";
 import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -51,6 +34,23 @@ import {
   hydrateClusterSummary,
   requireHouseholdScope,
 } from "./shortlist-helpers.server";
+/**
+ * Shortlist pipeline server functions.
+ *
+ * Powers the kanban on `/shortlist`. A household's "Shortlisted"
+ * column is derived from `v_mutual_matches` (every member has kept-or-
+ * shortlisted a cluster). Stages beyond that (Contacted, Viewing
+ * booked, Offer made, Archived) require an explicit row in
+ * `shortlist_pipeline`. The list endpoint merges both sources so the
+ * kanban always reflects:
+ *
+ *   - every mutual match that's NOT in `shortlist_pipeline` → Shortlisted
+ *   - every row in `shortlist_pipeline` → the row's status
+ *
+ * Writes go through `setPipelineStatus`; the first transition out of
+ * Shortlisted creates the row, subsequent transitions update it.
+ */
+import { tasks } from "./trigger.server";
 
 // -----------------------------------------------------------------------------
 // Input schemas
@@ -152,7 +152,7 @@ export const listPipeline = createServerFn({ method: "GET" }).handler(
     // pipeline row in one pair of queries. We merge in JS — the row set
     // is bounded by the household's shortlisted volume (low double-
     // digit clusters in practice).
-    const [mutualRows, pipelineRows] = await Promise.all([
+    const [mutualRows, pipelineRows] = await db.batch([
       db
         .select({
           clusterId: vMutualMatches.clusterId,
@@ -284,7 +284,7 @@ export const setPipelineStatus = createServerFn({ method: "POST" })
     // Authz: the cluster must already be part of the household's
     // pipeline (either via mutual match OR via an existing row). We
     // don't let a caller move a cluster the household never agreed on.
-    const [mutualMatch, existing] = await Promise.all([
+    const [mutualMatch, existing] = await db.batch([
       db
         .select({ clusterId: vMutualMatches.clusterId })
         .from(vMutualMatches)
@@ -359,7 +359,7 @@ export const setPipelineDetails = createServerFn({ method: "POST" })
 
     // Same authz as a move: the cluster must already be in the household's
     // pipeline (mutual match OR an existing row) before we'll annotate it.
-    const [mutualMatch, existing] = await Promise.all([
+    const [mutualMatch, existing] = await db.batch([
       db
         .select({ clusterId: vMutualMatches.clusterId })
         .from(vMutualMatches)
