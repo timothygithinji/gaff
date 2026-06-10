@@ -20,8 +20,13 @@
  * classes we touch — the full `@types/google.maps` is ~10MB we don't
  * otherwise need.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useGoogleMaps } from "../../hooks/use-google-maps";
+import {
+  fetchLineGeometry,
+  lineColor,
+  tflLineId,
+} from "../../lib/tfl-line-routes";
 
 type LatLng = { lat: number; lng: number };
 
@@ -131,6 +136,10 @@ interface GMapsDirectionsRenderer {
   setMap(map: GMapsMap | null): void;
   setDirections(result: unknown): void;
 }
+interface GMapsPolyline {
+  setMap(map: GMapsMap | null): void;
+  addListener(event: string, handler: (e?: GMapsMouseEvent) => void): void;
+}
 interface GMapsDirectionsService {
   route(
     request: Record<string, unknown>,
@@ -144,6 +153,7 @@ interface GMapsApi {
   DirectionsRenderer: new (
     opts: Record<string, unknown>
   ) => GMapsDirectionsRenderer;
+  Polyline: new (opts: Record<string, unknown>) => GMapsPolyline;
   TravelMode?: { WALKING: unknown; TRANSIT: unknown };
   SymbolPath?: { CIRCLE: unknown };
   Point?: new (x: number, y: number) => unknown;
@@ -226,6 +236,8 @@ export function MapView({
   const pointMarkersRef = useRef<Map<string, GMapsMarker>>(new Map());
   /** id → the drawn walking-route renderer (present only while selected). */
   const renderersRef = useRef<Map<string, GMapsDirectionsRenderer>>(new Map());
+  /** stopId → its drawn transit-line polylines (present only while selected). */
+  const lineRoutesRef = useRef<Map<string, GMapsPolyline[]>>(new Map());
   /** id → already-computed times, so re-selecting doesn't refetch. */
   const routeCacheRef = useRef<Map<string, RouteTimes>>(new Map());
 
@@ -241,6 +253,33 @@ export function MapView({
     onRouteComputedRef.current = onRouteComputed;
     titleRef.current = title;
   }, [onTogglePoint, onRouteComputed, title]);
+
+  // Reveal which line a hovered route polyline is. Stable identity so the
+  // selection effect can pass it straight through without re-running.
+  const showLineTip = useCallback(
+    (
+      info: { name: string; detail: string; color: string } | null,
+      e?: GMapsMouseEvent
+    ) => {
+      if (!info) {
+        setHover(null);
+        return;
+      }
+      const dom = e?.domEvent;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!dom || !rect) {
+        return;
+      }
+      setHover({
+        name: info.name,
+        detail: info.detail,
+        color: info.color,
+        x: dom.clientX - rect.left,
+        y: dom.clientY - rect.top,
+      });
+    },
+    []
+  );
 
   // Build the map once the SDK is ready. Guarded by `mapRef.current` so the
   // listed deps can change without rebuilding it.
@@ -370,6 +409,7 @@ export function MapView({
     const pointById = new Map((points ?? []).map((p) => [p.id, p]));
     const layers: SelectionLayers = {
       renderers: renderersRef.current,
+      lineRoutes: lineRoutesRef.current,
       markers: pointMarkersRef.current,
       cache: routeCacheRef.current,
     };
@@ -382,9 +422,10 @@ export function MapView({
       selected,
       pointById,
       layers,
-      onRouteComputedRef.current
+      onRouteComputedRef.current,
+      showLineTip
     );
-  }, [selectedIds, points, lat, lng]);
+  }, [selectedIds, points, lat, lng, showLineTip]);
 
   // Live theme swap — restyle the existing map rather than rebuilding it.
   useEffect(() => {
@@ -397,6 +438,7 @@ export function MapView({
   useEffect(() => {
     const pointMarkers = pointMarkersRef.current;
     const renderers = renderersRef.current;
+    const lineRoutes = lineRoutesRef.current;
     return () => {
       propertyMarkerRef.current?.setMap(null);
       for (const m of pointMarkers.values()) {
@@ -405,8 +447,14 @@ export function MapView({
       for (const r of renderers.values()) {
         r.setMap(null);
       }
+      for (const polylines of lineRoutes.values()) {
+        for (const poly of polylines) {
+          poly.setMap(null);
+        }
+      }
       pointMarkers.clear();
       renderers.clear();
+      lineRoutes.clear();
       propertyMarkerRef.current = null;
       serviceRef.current = null;
       mapRef.current = null;
@@ -495,6 +543,8 @@ function HoverCard({ tip, dark }: { tip: HoverTip; dark: boolean }) {
 /** The mutable per-stop map layers the selection effect drives. */
 type SelectionLayers = {
   renderers: Map<string, GMapsDirectionsRenderer>;
+  /** stopId → its transit-line polylines (where its services run). */
+  lineRoutes: Map<string, GMapsPolyline[]>;
   markers: Map<string, GMapsMarker>;
   cache: Map<string, RouteTimes>;
 };
@@ -518,9 +568,51 @@ function eraseUnselectedRoutes(
       marker.setIcon(markerIcon(api, p.color ?? CATEGORY_COLOR[p.category], false));
     }
   }
+  // Pull the transit-line polylines for any stop no longer selected. Deleting
+  // the key also cancels any still-in-flight geometry fetch (it checks for it).
+  for (const [id, polylines] of layers.lineRoutes) {
+    if (selected.has(id)) {
+      continue;
+    }
+    for (const poly of polylines) {
+      poly.setMap(null);
+    }
+    layers.lineRoutes.delete(id);
+  }
 }
 
-/** Highlight + draw the walking route for each selected stop (once). */
+/** Reveal which line a hovered route is (passed through to the polylines). */
+type LineHover = (
+  info: { name: string; detail: string; color: string } | null,
+  e?: GMapsMouseEvent
+) => void;
+
+/** How many lines off a single stop we'll draw — a busy bus stop can list a
+ * dozen routes; past a handful the map turns to spaghetti. */
+const MAX_LINES_PER_STOP = 8;
+
+/** A stop's drawable lines (id + display name), deduped, capped. */
+function pointLineIds(
+  point: TransitPoint
+): { id: string; name: string }[] {
+  if (point.category !== "transport" || !point.lines?.length) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: { id: string; name: string }[] = [];
+  for (const name of point.lines.slice(0, MAX_LINES_PER_STOP)) {
+    const id = tflLineId(name);
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    out.push({ id, name });
+  }
+  return out;
+}
+
+/** Highlight + draw the walking route AND the transit lines for each selected
+ * stop (once). */
 function drawSelectedRoutes(
   api: GMapsApi,
   map: GMapsMap,
@@ -529,7 +621,8 @@ function drawSelectedRoutes(
   selected: Set<string>,
   pointById: Map<string, TransitPoint>,
   layers: SelectionLayers,
-  onComputed?: (id: string, times: RouteTimes) => void
+  onComputed?: (id: string, times: RouteTimes) => void,
+  onLineHover?: LineHover
 ) {
   for (const id of selected) {
     const p = pointById.get(id);
@@ -537,6 +630,11 @@ function drawSelectedRoutes(
       continue;
     }
     layers.markers.get(id)?.setIcon(markerIcon(api, p.color ?? CATEGORY_COLOR[p.category], true));
+    // Where this stop's services actually run — drawn independently of the
+    // walking-route Directions call (and not gated on `service`).
+    if (!layers.lineRoutes.has(id)) {
+      drawLineRoutes(api, map, id, p, layers, onLineHover);
+    }
     if (layers.renderers.has(id) || !service) {
       continue;
     }
@@ -548,6 +646,68 @@ function drawSelectedRoutes(
         layers.cache.set(id, times);
       }
       onComputed?.(id, times);
+    });
+  }
+}
+
+/** One coloured route polyline, wired for hover-to-identify. */
+function buildLinePolyline(
+  api: GMapsApi,
+  map: GMapsMap,
+  path: LatLng[],
+  info: { name: string; detail: string; color: string },
+  onLineHover?: LineHover
+): GMapsPolyline {
+  const poly = new api.Polyline({
+    map,
+    path,
+    strokeColor: info.color,
+    strokeOpacity: 0.85,
+    strokeWeight: 5,
+    zIndex: 40,
+  });
+  if (onLineHover) {
+    poly.addListener("mouseover", (e) => onLineHover(info, e));
+    poly.addListener("mousemove", (e) => onLineHover(info, e));
+    poly.addListener("mouseout", () => onLineHover(null));
+  }
+  return poly;
+}
+
+/**
+ * Draw the route geometry for each TfL line serving a stop, as coloured
+ * polylines. The slot in `layers.lineRoutes` is reserved synchronously so a
+ * deselection that arrives mid-fetch (which deletes the key) cancels the draw.
+ */
+function drawLineRoutes(
+  api: GMapsApi,
+  map: GMapsMap,
+  stopId: string,
+  point: TransitPoint,
+  layers: SelectionLayers,
+  onLineHover?: LineHover
+) {
+  const lines = pointLineIds(point);
+  if (lines.length === 0) {
+    return;
+  }
+  const isBus = point.kind === "bus";
+  // Reserve the bucket up front — its presence is the "still selected" signal.
+  layers.lineRoutes.set(stopId, []);
+  for (const line of lines) {
+    const info = {
+      name: isBus ? `Bus ${line.name}` : line.name,
+      detail: isBus ? "Bus route" : "Line",
+      color: lineColor(line.id),
+    };
+    fetchLineGeometry(line.id).then((paths) => {
+      const bucket = layers.lineRoutes.get(stopId);
+      if (!bucket) {
+        return; // deselected while the geometry was loading
+      }
+      for (const path of paths) {
+        bucket.push(buildLinePolyline(api, map, path, info, onLineHover));
+      }
     });
   }
 }
