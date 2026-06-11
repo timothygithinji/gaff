@@ -165,12 +165,21 @@ export type ReviewCardHeadlineListing = {
    * lives on the listing detail page.
    */
   floodDisclosure: { floodedInLastFiveYears: boolean | null } | null;
+  /**
+   * Letting agent / branch on THIS listing (from `rawJson.agentName`),
+   * null for direct lets (OpenRent) or when unscraped. Per-portal — each
+   * row in the spread carries its own, since a cluster can pool listings
+   * marketed by different agents.
+   */
+  agentName: string | null;
 };
 
 export type ReviewCardAlsoOn = {
   portal: string;
   priceMonthly: number | null;
   url: string;
+  /** Letting agent on this portal's listing (`rawJson.agentName`); null = direct. */
+  agentName: string | null;
 };
 
 /**
@@ -183,6 +192,18 @@ export type ReviewCardStation = {
   name: string;
   distanceMiles: number | null;
   walkMinutes: number | null;
+};
+
+/**
+ * A nearby rail/tube/tram station with coordinates, lifted off the
+ * `enrich-nearby-transit` sweep so the review "where it sits" map can dot
+ * it. Bus stops are excluded — the squat map would drown in them.
+ */
+export type ReviewCardMapStation = {
+  name: string;
+  lat: number;
+  lng: number;
+  kind: "tube" | "rail" | "tram";
 };
 
 /**
@@ -212,6 +233,11 @@ export type ReviewCard = {
   commuteMinutes: number | null;
   /** Closest scraped station (with derived walk minutes). */
   nearestStation: ReviewCardStation | null;
+  /**
+   * Nearby rail/tube/tram stations with coordinates, for the review map's
+   * dots. Empty until `enrich-nearby-transit` has run for the cluster.
+   */
+  mapStations: ReviewCardMapStation[];
   broadband: ReviewCardBroadband | null;
   /** Council tax band (A–H) published on the headline listing; null if unknown. */
   councilTaxBand: string | null;
@@ -522,6 +548,74 @@ function pickNearestStation(
   };
 }
 
+/**
+ * Letting agent / branch name off a listing's `rawJson` (e.g. "De Vere
+ * Letting Bureau, Barnet"), or null for direct lets / unscraped. Mirrors
+ * `readAgent` on the listing-detail path so the review spread and the detail
+ * page name the same agent.
+ */
+function readAgentName(rawJson: unknown): string | null {
+  if (!rawJson || typeof rawJson !== "object") {
+    return null;
+  }
+  const obj = rawJson as Record<string, unknown>;
+  const candidate = obj.agentName ?? obj.agent_name ?? obj.agentCompany;
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : null;
+}
+
+/** Rail/tube/tram station kinds we dot on the review map (no buses). */
+const MAP_STATION_KINDS = new Set(["tube", "rail", "tram"]);
+
+/**
+ * Coerce one `enrichments.nearbyTransit` entry into a map station, or null
+ * when it isn't a rail/tube/tram station with finite coordinates.
+ */
+function parseMapStation(entry: unknown): ReviewCardMapStation | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const r = entry as Record<string, unknown>;
+  const kind = typeof r.kind === "string" ? r.kind : "";
+  if (r.category !== "transport" || !MAP_STATION_KINDS.has(kind)) {
+    return null;
+  }
+  const name = typeof r.name === "string" ? r.name.trim() : "";
+  const lat = typeof r.lat === "number" ? r.lat : Number.NaN;
+  const lng = typeof r.lng === "number" ? r.lng : Number.NaN;
+  if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+  return { name, lat, lng, kind: kind as ReviewCardMapStation["kind"] };
+}
+
+/**
+ * Extract station pins (with coordinates) from the `enrichments.nearbyTransit`
+ * sweep for the review map's dots. Transport stations only — bus stops are
+ * dropped so the squat band doesn't clutter — deduped by name.
+ */
+function pickMapStations(nearbyTransit: unknown): ReviewCardMapStation[] {
+  if (!Array.isArray(nearbyTransit)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: ReviewCardMapStation[] = [];
+  for (const entry of nearbyTransit) {
+    const station = parseMapStation(entry);
+    if (!station) {
+      continue;
+    }
+    const key = station.name.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(station);
+  }
+  return out;
+}
+
 function asBroadband(value: unknown): ReviewCardBroadband | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -829,6 +923,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         portal: l.portal,
         priceMonthly: l.priceMonthly,
         url: l.url,
+        agentName: readAgentName(l.rawJson),
       }));
 
     const headlineSearch = activeSearches.find(
@@ -892,6 +987,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         floorplanUrl: readFloorplanUrl(headline.rawJson),
         listedBuilding: readBool(headline.rawJson, "listedBuilding"),
         floodDisclosure: readFloodDisclosureForBadges(headline.rawJson),
+        agentName: readAgentName(headline.rawJson),
       },
       portalsAlsoOn,
       // Strip generic-noise highlights/watchouts via the shared filter
@@ -914,6 +1010,7 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         headline.rawJson,
         enrichment?.stationRoutes
       ),
+      mapStations: pickMapStations(enrichment?.nearbyTransit),
       broadband: asBroadband(enrichment?.broadband),
       councilTaxBand: headline.councilTaxBand ?? null,
       propertyKind: classifyPropertyKind(headline.propertyType, headline.title),

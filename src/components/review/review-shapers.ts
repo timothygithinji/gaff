@@ -37,7 +37,7 @@ export function reviewToPortalRows(card: ReviewCard): {
       portal: headline.portal,
       url: headline.url,
       priceMonthly: headlinePrice,
-      agentName: null,
+      agentName: headline.agentName,
       agentEmail: null,
       deltaFromHeadline: null,
       isHeadline: true,
@@ -46,7 +46,7 @@ export function reviewToPortalRows(card: ReviewCard): {
       portal: p.portal,
       url: p.url,
       priceMonthly: p.priceMonthly,
-      agentName: null,
+      agentName: p.agentName,
       agentEmail: null,
       deltaFromHeadline:
         headlinePrice != null && p.priceMonthly != null

@@ -1024,6 +1024,7 @@ function buildHero(card: ReviewCard): DesktopReviewData["hero"] {
     stats: toStatCells(card),
     lat: parseCoord(card.cluster.lat),
     lng: parseCoord(card.cluster.lng),
+    stations: card.mapStations,
   };
 }
 

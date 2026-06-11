@@ -40,6 +40,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -51,7 +52,7 @@ import { sizedPhoto } from "../../lib/photo-size";
 import { propertyKindLabel } from "../../lib/property-kind";
 import { cn } from "../../lib/utils";
 import { AdminSidebar } from "../layout/admin-sidebar";
-import { MapView } from "../listing-detail/map-view";
+import { MapView, type TransitPoint } from "../listing-detail/map-view";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "../ui/dialog";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { type Pill, severityToken } from "../ui/patterns/feature-pills";
@@ -134,6 +135,13 @@ export type DesktopReviewData = {
     /** Property coordinates for the "where it sits" map; null when unknown. */
     lat: number | null;
     lng: number | null;
+    /** Nearby rail/tube/tram stations to dot on the "where it sits" map. */
+    stations: {
+      name: string;
+      lat: number;
+      lng: number;
+      kind: "tube" | "rail" | "tram";
+    }[];
   };
   /** "98% match" or null when we can't score the cluster. */
   matchPct: string | null;
@@ -435,27 +443,49 @@ function MainColumn({
           <WhatStandsOutCard signals={hero.signals} />
           <StatRow stats={hero.stats} variant="card" />
         </div>
-        <WhereItSitsMap lat={hero.lat} lng={hero.lng} title={hero.title} />
+        <WhereItSitsMap
+          lat={hero.lat}
+          lng={hero.lng}
+          stations={hero.stations}
+          title={hero.title}
+        />
       </div>
     </section>
   );
 }
 
 /**
- * A short "where it sits" map under the review cards — just the property pin,
- * no transit chips. Deliberately squat (a wide band, not a tall map) so it
- * orients without pushing the decision actions off-screen. Renders nothing
- * when the cluster has no coordinates.
+ * A short "where it sits" map under the review cards — the property pin plus
+ * a dot for each nearby rail/tube/tram station (no route-drawing chips; the
+ * full interactive version lives on the detail page). Deliberately squat (a
+ * wide band, not a tall map) so it orients without pushing the decision
+ * actions off-screen. Renders nothing when the cluster has no coordinates.
  */
 function WhereItSitsMap({
   lat,
   lng,
   title,
+  stations,
 }: {
   lat: number | null;
   lng: number | null;
   title: string;
+  stations: DesktopReviewData["hero"]["stations"];
 }) {
+  // Memoised so MapView's marker effect doesn't rebuild the dots on every
+  // parent re-render (it keys on the `points` array identity).
+  const points = useMemo<TransitPoint[]>(
+    () =>
+      stations.map((s) => ({
+        id: `station:${s.name}`,
+        name: s.name,
+        category: "transport" as const,
+        kind: s.kind,
+        lat: s.lat,
+        lng: s.lng,
+      })),
+    [stations]
+  );
   if (lat == null || lng == null) {
     return null;
   }
@@ -464,7 +494,7 @@ function WhereItSitsMap({
       className="h-[200px] w-full shrink-0 overflow-hidden rounded-[6px] border border-line"
       placeholder={<div className="h-full w-full bg-[#c9d3dc]" />}
     >
-      <MapView lat={lat} lng={lng} title={title} />
+      <MapView lat={lat} lng={lng} points={points} title={title} />
     </MountWhenVisible>
   );
 }
@@ -1109,6 +1139,10 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
     ],
     lat: 51.5503,
     lng: -0.1642,
+    stations: [
+      { name: "Belsize Park", lat: 51.5504, lng: -0.1644, kind: "tube" },
+      { name: "Hampstead Heath", lat: 51.5552, lng: -0.1655, kind: "rail" },
+    ],
   },
   matchPct: "98%",
   portals: [
