@@ -1,7 +1,7 @@
 /**
  * "Property facts" — statutory disclosures the portal published.
  *
- * Three independently-optional blocks rolled into one card so the page
+ * Independently-optional blocks rolled into one card so the page
  * doesn't grow extra empty sections for portals that don't expose any
  * of these fields (Zoopla, OpenRent):
  *
@@ -13,25 +13,35 @@
  *     records section.
  *   - Listed-building flag — has real implications (alterations,
  *     external aerials, satellite dishes restricted).
- *   - Agent extras: brochure PDF link, branch description (HTML — already
- *     escaped server-side by the parser; we render via dangerouslySet
- *     since the portal markup is curated copy), affiliations badges.
+ *   - Fees disclosure (Tenant Fees Act 2019) — the agent's "permitted
+ *     payments" statement. An agent disclosure, so it lives here rather
+ *     than in the tenancy fine-print rail.
+ *
+ * Agent-attributed extras (branch description, affiliation badges) are
+ * deliberately omitted: a cluster pools listings from several portals
+ * that may each have a different estate agent, so tying one agent's blurb
+ * to the merged listing would be misleading.
  *
  * The card renders only what's present. When everything is null the
  * caller already omits the section (the server returns
  * `propertyFacts === undefined`).
  */
 
+import { PoundCircleIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { htmlToPlainText } from "../../lib/html-text";
-import type {
-  ListingDetailAgentExtras,
-  ListingDetailPropertyFacts,
-} from "../../server/functions/listing-detail";
+import type { ListingDetailPropertyFacts } from "../../server/functions/listing-detail";
 import { SectionLabel } from "./section-label";
 
 type Props = {
   facts?: ListingDetailPropertyFacts;
-  agent?: ListingDetailAgentExtras;
+  /**
+   * The Tenant Fees Act 2019 "permitted payments" disclosure (Rightmove's
+   * `feesApplyText`), raw portal HTML. Lives here — not in the tenancy
+   * fine-print rail — because it's something the agent discloses, not a
+   * tenancy term. Stripped to plain text before render.
+   */
+  feesText?: string | null;
 };
 
 type Row = { label: string; value: string };
@@ -92,7 +102,7 @@ function floodSummary(
   return null;
 }
 
-function PropertyFactsBody({ facts, agent }: Props) {
+function PropertyFactsBody({ facts, feesText }: Props) {
   const miRows = facts ? materialInfoRows(facts.materialInfo) : [];
   const flood = facts ? floodSummary(facts.floodDisclosure) : null;
   const listed = facts?.listedBuilding === true;
@@ -130,34 +140,27 @@ function PropertyFactsBody({ facts, agent }: Props) {
         </p>
       ) : null}
 
-      {agent?.affiliations && agent.affiliations.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {agent.affiliations.map((a) => (
-            <span
-              className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-              key={a}
-            >
-              {a}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {agent?.descriptionHtml ? (
-        <details className="text-[12px] text-muted-foreground">
-          <summary className="cursor-pointer text-foreground">
-            About the agent
-          </summary>
-          <p className="mt-2 max-h-48 overflow-auto whitespace-pre-line rounded-md bg-muted p-3 text-[12px] leading-[140%]">
-            {htmlToPlainText(agent.descriptionHtml)}
+      {feesText ? (
+        <div className="flex items-start gap-2">
+          <HugeiconsIcon
+            className="mt-0.5 shrink-0 text-muted-foreground"
+            icon={PoundCircleIcon}
+            size={14}
+            strokeWidth={1.8}
+          />
+          <p className="whitespace-pre-line text-[12px] text-muted-foreground leading-[145%]">
+            {htmlToPlainText(feesText)}
           </p>
-        </details>
+        </div>
       ) : null}
     </div>
   );
 }
 
-function hasAnything({ facts, agent }: Props): boolean {
+function hasAnything({ facts, feesText }: Props): boolean {
+  if (feesText) {
+    return true;
+  }
   if (facts) {
     if (facts.materialInfo) {
       return true;
@@ -166,14 +169,6 @@ function hasAnything({ facts, agent }: Props): boolean {
       return true;
     }
     if (facts.listedBuilding === true) {
-      return true;
-    }
-  }
-  if (agent) {
-    if (agent.descriptionHtml) {
-      return true;
-    }
-    if (agent.affiliations.length > 0) {
       return true;
     }
   }

@@ -433,10 +433,10 @@ function ListingDetailPage() {
         {/* "Public records" */}
         <PublicRecords epc={epc} publicRecords={publicRecords} />
 
-        {/* Material info + flood/listed disclosures + agent extras */}
-        <PropertyFacts agent={agentExtras} facts={propertyFacts} />
+        {/* Material info + flood/listed + fees disclosures */}
+        <PropertyFacts facts={propertyFacts} feesText={fineprint.feesText} />
 
-        {/* Tenancy terms / agent contact / fees disclosure */}
+        {/* Tenancy terms / fine print */}
         <Fineprint fineprint={fineprint} />
 
         {/* Household activity — swipe timeline (parity with desktop rail) */}

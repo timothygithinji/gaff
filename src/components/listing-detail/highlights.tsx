@@ -26,6 +26,14 @@ type Props = {
 };
 
 export function Highlights({ items, watchouts, summary }: Props) {
+  const pills = [...highlightsToPills(items), ...watchoutsToPills(watchouts)];
+  // Mirror desktop's AiCard: render nothing until enrichment yields a summary
+  // or at least one pill. A summary with no pills shows the summary alone (the
+  // `FeatureList` renders null) — never the "enrichment hasn't run" placeholder,
+  // which contradicts a summary that proves it has.
+  if (pills.length === 0 && !summary) {
+    return null;
+  }
   return (
     <section className="flex flex-col gap-3.5 px-5 pb-5">
       <SectionLabel>What stands out</SectionLabel>
@@ -34,10 +42,7 @@ export function Highlights({ items, watchouts, summary }: Props) {
         <p className="text-[13px] text-slate leading-[19px]">{summary}</p>
       ) : null}
 
-      <FeatureList
-        emptyHint="Reading the description… highlights will appear here once enrichment runs."
-        items={[...highlightsToPills(items), ...watchoutsToPills(watchouts)]}
-      />
+      <FeatureList items={pills} />
     </section>
   );
 }

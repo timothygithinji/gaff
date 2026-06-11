@@ -8,18 +8,16 @@
  *   - Council tax band
  *   - Bills included
  *   - Service charge / ground rent (leasehold)
- *   - Agent name / phone / branch
- *   - Fees disclosure (Tenant Fees Act 2019)
+ *
+ * The agent name / phone is deliberately *not* shown: a cluster pools
+ * listings from several portals, each of which may have a different
+ * estate agent, so attributing one agent to the merged listing would be
+ * misleading. The Tenant Fees Act "permitted payments" disclosure lives
+ * with the other agent disclosures (see `property-facts.tsx`), not here.
  *
  * Everything renders as a definition list; rows with no value are
  * skipped so we don't paint a column of "—".
  */
-import {
-  Calendar03Icon,
-  ContactIcon,
-  PoundCircleIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { ListingDetailFineprint } from "../../server/functions/listing-detail";
 import { SectionLabel } from "./section-label";
 
@@ -113,24 +111,20 @@ function CouncilTaxTable({
           const isListing = b.band === councilTax.listingBand;
           return (
             <li
-              className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-[13px] ${
+              className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] ${
                 isListing
                   ? "bg-primary/10 font-semibold text-foreground"
                   : "text-muted-foreground"
               }`}
               key={b.band}
             >
-              <span className="flex w-16 shrink-0 items-center gap-1.5">
-                <span className={isListing ? "text-foreground" : ""}>
-                  Band {b.band}
+              <span className="w-14 shrink-0">Band {b.band}</span>
+              {isListing ? (
+                <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-px font-medium text-[9px] text-primary uppercase tracking-[0.06em]">
+                  This home
                 </span>
-                {isListing ? (
-                  <span className="rounded-full bg-primary/15 px-1.5 py-px font-medium text-[9px] text-primary uppercase tracking-[0.06em]">
-                    This home
-                  </span>
-                ) : null}
-              </span>
-              <span className="tabular-nums">
+              ) : null}
+              <span className="ml-auto shrink-0 tabular-nums">
                 ~£{b.annualPounds.toLocaleString("en-GB")}/yr
               </span>
               <span className="w-20 shrink-0 text-right tabular-nums">
@@ -150,17 +144,12 @@ function CouncilTaxTable({
 
 /** True when the fineprint has at least one renderable block. */
 function hasFineprint(fineprint: ListingDetailFineprint): boolean {
-  return (
-    buildRows(fineprint).length > 0 ||
-    Boolean(fineprint.agentName) ||
-    Boolean(fineprint.feesText) ||
-    Boolean(fineprint.councilTax)
-  );
+  return buildRows(fineprint).length > 0 || Boolean(fineprint.councilTax);
 }
 
-/** The fineprint blocks (def-list + council tax + agent + fees + stations),
- * shared by the mobile section and the desktop card. Each block is its own
- * bordered sub-card, so neither shell adds an outer border. */
+/** The fineprint blocks (def-list + council tax), shared by the mobile section
+ * and the desktop card. Each block is its own bordered sub-card, so neither
+ * shell adds an outer border. */
 function FineprintBody({ fineprint }: Props) {
   const rows = buildRows(fineprint);
   return (
@@ -183,77 +172,6 @@ function FineprintBody({ fineprint }: Props) {
       {fineprint.councilTax ? (
         <CouncilTaxTable councilTax={fineprint.councilTax} />
       ) : null}
-
-      {fineprint.agentName ? (
-        <div className="flex flex-col gap-1 rounded-md border border-line bg-card p-4">
-          <div className="flex items-center gap-2">
-            <HugeiconsIcon
-              className="text-muted-foreground"
-              icon={ContactIcon}
-              size={14}
-              strokeWidth={1.8}
-            />
-            <span className="font-medium text-[14px] text-foreground">
-              {fineprint.agentName}
-            </span>
-          </div>
-          {fineprint.agentPhone ? (
-            <a
-              className="text-[13px] text-muted-foreground hover:text-foreground"
-              href={`tel:${fineprint.agentPhone}`}
-            >
-              {fineprint.agentPhone}
-            </a>
-          ) : null}
-        </div>
-      ) : null}
-
-      {fineprint.feesText ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-border bg-card p-4">
-          <HugeiconsIcon
-            className="mt-0.5 shrink-0 text-muted-foreground"
-            icon={PoundCircleIcon}
-            size={14}
-            strokeWidth={1.8}
-          />
-          <p className="text-[12px] text-muted-foreground leading-[145%]">
-            {fineprint.feesText}
-          </p>
-        </div>
-      ) : null}
-
-      {fineprint.nearestStations.length > 0 ? (
-        <div className="rounded-md border border-line bg-card p-4">
-          <p className="font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.08em]">
-            <HugeiconsIcon
-              className="-mt-0.5 inline text-muted-foreground"
-              icon={Calendar03Icon}
-              size={12}
-              strokeWidth={2}
-            />
-            <span className="ml-1">Nearest stations</span>
-          </p>
-          <ul className="mt-2 flex flex-col gap-1.5">
-            {fineprint.nearestStations.slice(0, 4).map((s) => {
-              const dist = s.distanceMiles ?? null;
-              const walkMin =
-                dist !== null ? Math.max(1, Math.round(dist * 20)) : null;
-              return (
-                <li
-                  className="flex items-center justify-between text-[13px]"
-                  key={s.name}
-                >
-                  <span className="text-foreground">{s.name}</span>
-                  <span className="text-muted-foreground">
-                    {dist !== null ? `${dist.toFixed(1)} mi` : "—"}
-                    {walkMin !== null ? ` · ${walkMin}-min walk` : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
     </>
   );
 }
@@ -271,15 +189,15 @@ export function Fineprint({ fineprint }: Props) {
   );
 }
 
-/** Desktop variant: a labelled group of the same bordered blocks (no outer
- * border — the blocks are already cards, so wrapping would double-border). */
+/** Desktop variant: a group of the same bordered blocks (no outer border —
+ * the blocks are already cards, so wrapping would double-border). No section
+ * label: the side-rail blocks read for themselves. */
 export function FineprintCard({ fineprint }: Props) {
   if (!hasFineprint(fineprint)) {
     return null;
   }
   return (
     <div className="flex flex-col gap-3.5">
-      <SectionLabel>Tenancy terms · fine print</SectionLabel>
       <FineprintBody fineprint={fineprint} />
     </div>
   );

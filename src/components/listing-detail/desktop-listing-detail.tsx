@@ -363,7 +363,10 @@ function MainColumn({ data }: { data: ListingDetailPayload }) {
         postcode={headline.postcode ?? cluster.postcode}
         stationRoutes={data.stationRoutes}
       />
-      <PropertyFactsCard agent={data.agentExtras} facts={data.propertyFacts} />
+      <PropertyFactsCard
+        facts={data.propertyFacts}
+        feesText={data.fineprint.feesText}
+      />
     </section>
   );
 }
@@ -923,10 +926,9 @@ function buildRecordRows(
   // EPC always shows — falls back to an "Unknown" placeholder when we have
   // neither a certificate nor a postcode estimate.
   rows.push(epcRecordRow(epc));
-  const broadband = broadbandRecordRow(publicRecords?.broadband);
-  if (broadband) {
-    rows.push(broadband);
-  }
+  // Broadband always shows too — an "Unknown" placeholder when the Ofcom
+  // lookup hasn't landed, so the row never silently disappears.
+  rows.push(broadbandRecordRow(publicRecords?.broadband));
   const amenities = amenitiesRecordRow(publicRecords?.amenities);
   if (amenities) {
     rows.push(amenities);
@@ -957,9 +959,11 @@ function epcRecordRow(epc: ListingDetailPayload["epc"]): RecordRow {
 
 function broadbandRecordRow(
   bb: ListingDetailPublicRecords["broadband"]
-): RecordRow | null {
+): RecordRow {
+  // No Ofcom coverage row yet — show the slot with an "Unknown" placeholder
+  // (mirrors the EPC row) rather than dropping it.
   if (!bb) {
-    return null;
+    return { label: "Broadband", value: "Unknown" };
   }
   const tech = bb.technology ?? "Unknown";
   const speed = bb.downloadMbps ? `${bb.downloadMbps} Mbps` : "Speed pending";
