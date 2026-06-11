@@ -121,6 +121,8 @@ export type ReviewCardHeadlineListing = {
   priceMonthly: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
+  /** Reception/living rooms (Zoopla only), pooled across the cluster. */
+  receptions: number | null;
   propertyType: string | null;
   photos: string[];
   outcode: string;
@@ -971,6 +973,8 @@ export const getNextReviewCard = createServerFn({ method: "GET" })
         priceMonthly: headline.priceMonthly,
         bedrooms: headline.bedrooms,
         bathrooms: headline.bathrooms,
+        receptions:
+          sortedListings.find((l) => l.receptions != null)?.receptions ?? null,
         propertyType: headline.propertyType,
         photos: photoUrls,
         outcode: outcodeOf(headline.postcode ?? cluster.postcode),
@@ -1043,6 +1047,8 @@ export type ReviewQueueItem = {
   outcode: string;
   bedrooms: number | null;
   bathrooms: number | null;
+  /** Reception/living rooms (Zoopla only), pooled across the cluster. */
+  receptions: number | null;
   priceMonthly: number | null;
   /** Move-in date as ISO string; null = unknown or "available immediately". */
   availableFrom: string | null;
@@ -1132,6 +1138,7 @@ async function hydrateQueueItems(
       postcode: listings.postcode,
       bedrooms: listings.bedrooms,
       bathrooms: listings.bathrooms,
+      receptions: listings.receptions,
       priceMonthly: listings.priceMonthly,
       propertyType: listings.propertyType,
       councilTaxBand: listings.councilTaxBand,
@@ -1221,6 +1228,7 @@ async function hydrateQueueItems(
         outcode: outcodeOf(g.headline.postcode),
         bedrooms: g.headline.bedrooms,
         bathrooms: g.headline.bathrooms,
+        receptions: g.headline.receptions,
         priceMonthly: g.headline.priceMonthly,
         availableFrom: headlineAvail.iso,
         availableNow: headlineAvail.now,

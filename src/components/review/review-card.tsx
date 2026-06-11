@@ -45,6 +45,9 @@ function subSpec(card: ReviewCardData): string {
   if (hl.bathrooms != null) {
     parts.push(`${hl.bathrooms} bath`);
   }
+  if (hl.receptions != null) {
+    parts.push(`${hl.receptions} reception`);
+  }
   if (hl.sizeSqFt != null) {
     parts.push(`${hl.sizeSqFt.toLocaleString("en-GB")} sqft`);
   }

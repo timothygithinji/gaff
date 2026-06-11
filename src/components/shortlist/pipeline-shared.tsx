@@ -274,6 +274,9 @@ export function metaLine(card: PipelineCard): string {
   if (card.headline.bathrooms !== null) {
     parts.push(`${card.headline.bathrooms} bath`);
   }
+  if (card.headline.receptions !== null) {
+    parts.push(`${card.headline.receptions} reception`);
+  }
   return parts.join(" · ");
 }
 

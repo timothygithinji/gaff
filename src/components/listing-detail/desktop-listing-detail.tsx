@@ -318,6 +318,7 @@ function ListingTitle({ data }: { data: ListingDetailPayload }) {
     propertyKindLabel(headline.propertyKind),
     headline.bedrooms != null ? `${headline.bedrooms} bed` : null,
     headline.bathrooms != null ? `${headline.bathrooms} bath` : null,
+    headline.receptions != null ? `${headline.receptions} reception` : null,
     data.fineprint.sizeSqFt
       ? `${data.fineprint.sizeSqFt.toLocaleString("en-GB")} sqft`
       : null,

@@ -201,7 +201,12 @@ function FeaturedBanner({
             {title}
           </h2>
           <p className="text-[13px] text-white/65">
-            {locationLine(headline.postcode, headline.bedrooms, headline.bathrooms)}
+            {locationLine(
+              headline.postcode,
+              headline.bedrooms,
+              headline.bathrooms,
+              headline.receptions
+            )}
           </p>
           <div className="mt-2 flex items-baseline gap-1.5">
             <span className='font-semibold text-[#eef1f4] text-[30px] leading-none tracking-[-0.02em]'>
@@ -321,7 +326,12 @@ function PickCard({
           </span>
         </div>
         <span className="text-[11px] text-slate">
-          {locationLine(headline.postcode, headline.bedrooms, headline.bathrooms)}
+          {locationLine(
+              headline.postcode,
+              headline.bedrooms,
+              headline.bathrooms,
+              headline.receptions
+            )}
         </span>
         {isMutual ? (
           <span className="text-[11px] text-success">
@@ -372,7 +382,8 @@ function portalLabel(portal: string): string {
 function locationLine(
   postcode: string | null,
   beds: number | null,
-  baths: number | null
+  baths: number | null,
+  receptions: number | null
 ): string {
   const parts: string[] = [];
   if (postcode) {
@@ -383,6 +394,9 @@ function locationLine(
   }
   if (baths !== null) {
     parts.push(`${baths} bath`);
+  }
+  if (receptions !== null) {
+    parts.push(`${receptions} reception`);
   }
   return parts.join(" · ");
 }

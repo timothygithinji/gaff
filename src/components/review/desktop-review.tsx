@@ -32,6 +32,7 @@ import {
   BathtubIcon,
   BedIcon,
   Cancel01Icon,
+  Sofa01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useHotkey } from "@tanstack/react-hotkeys";
@@ -82,6 +83,8 @@ export type DesktopReviewQueueItem = {
   outcode: string;
   beds: number | null;
   bathrooms: number | null;
+  /** Reception/living rooms (Zoopla only); null = unknown. */
+  receptions: number | null;
   /** Pre-formatted move-in chip, e.g. "Avail now" / "Avail 12 Jun"; null = unknown. */
   availability: string | null;
   /** Days until move-in; 0 = now, null = unknown. Drives the move-in facet. */
@@ -361,22 +364,28 @@ function QueueCard({
             .filter(Boolean)
             .join(" · ")}
         </p>
-        <QueueSpec baths={item.bathrooms} beds={item.beds} />
+        <QueueSpec
+          baths={item.bathrooms}
+          beds={item.beds}
+          receptions={item.receptions}
+        />
         <QueueMeta availability={item.availability} furnished={item.furnished} />
       </div>
     </button>
   );
 }
 
-/** Beds + baths row with icons (skips a value we don't have). */
+/** Beds + baths + receptions row with icons (skips a value we don't have). */
 function QueueSpec({
   beds,
   baths,
+  receptions,
 }: {
   beds: number | null;
   baths: number | null;
+  receptions: number | null;
 }) {
-  if (beds == null && baths == null) {
+  if (beds == null && baths == null && receptions == null) {
     return null;
   }
   return (
@@ -391,6 +400,12 @@ function QueueSpec({
         <span className="flex items-center gap-1">
           <HugeiconsIcon icon={BathtubIcon} size={11} strokeWidth={1.8} />
           {baths}
+        </span>
+      ) : null}
+      {receptions != null ? (
+        <span className="flex items-center gap-1">
+          <HugeiconsIcon icon={Sofa01Icon} size={11} strokeWidth={1.8} />
+          {receptions}
         </span>
       ) : null}
     </span>
@@ -1003,6 +1018,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         outcode: "NW3",
         beds: 2,
         bathrooms: 1,
+        receptions: 1,
         availability: "Avail now",
         availableInDays: 0,
         furnished: "Furnished",
@@ -1022,6 +1038,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         outcode: "NW1",
         beds: 1,
         bathrooms: 1,
+        receptions: null,
         availability: "Avail 12 Jun",
         availableInDays: 10,
         furnished: "Unfurnished",
@@ -1041,6 +1058,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         outcode: "N6",
         beds: 2,
         bathrooms: 1,
+        receptions: 1,
         availability: "Avail now",
         availableInDays: 0,
         furnished: "Part furnished",
@@ -1060,6 +1078,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         outcode: "NW5",
         beds: 2,
         bathrooms: 2,
+        receptions: 2,
         availability: "Avail 1 Jul",
         availableInDays: 28,
         furnished: "Furnished",
@@ -1079,6 +1098,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         outcode: "N19",
         beds: 2,
         bathrooms: 1,
+        receptions: 1,
         availability: "Avail now",
         availableInDays: 0,
         furnished: "Unfurnished",
@@ -1098,6 +1118,7 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
         outcode: "NW3",
         beds: 3,
         bathrooms: 1,
+        receptions: 2,
         availability: "Avail 20 Jun",
         availableInDays: 18,
         furnished: "Furnished",

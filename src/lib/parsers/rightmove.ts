@@ -766,6 +766,9 @@ export function parseRightmoveDetail(html: string): ListingDetail {
     postcode,
     bedrooms: toNumber(pd.bedrooms),
     bathrooms: bathroomCount(pd.bathrooms),
+    // `livingRooms` is a flat scalar on propertyData (often null). Reuse the
+    // positive-int normalisation so a 0/missing value reads as "not stated".
+    receptions: bathroomCount(pd.livingRooms),
     priceMonthly: rightmoveDetailPrice(prices),
     propertyType,
     lat: toNumber(location.latitude),

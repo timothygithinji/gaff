@@ -536,6 +536,7 @@ export const addListingByUrl = createServerFn({ method: "POST" })
         postcode: detail.postcode ?? null,
         bedrooms: detail.bedrooms ?? null,
         bathrooms: detail.bathrooms ?? null,
+        receptions: detail.receptions ?? null,
         priceMonthly: detail.priceMonthly ?? null,
         propertyType: detail.propertyType ?? null,
         lat,

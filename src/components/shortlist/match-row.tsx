@@ -34,7 +34,11 @@ function outcodeOf(postcode: string | null): string {
   return idx === -1 ? trimmed : trimmed.slice(0, idx);
 }
 
-function bedBathSummary(beds: number | null, baths: number | null): string {
+function bedBathSummary(
+  beds: number | null,
+  baths: number | null,
+  receptions: number | null
+): string {
   const parts: string[] = [];
   if (beds !== null) {
     parts.push(`${beds} bed`);
@@ -42,13 +46,20 @@ function bedBathSummary(beds: number | null, baths: number | null): string {
   if (baths !== null) {
     parts.push(`${baths} bath`);
   }
+  if (receptions !== null) {
+    parts.push(`${receptions} reception`);
+  }
   return parts.join(" · ");
 }
 
 export function MatchRow({ match, ageLabel, memberCount, onOpen }: Props) {
   const { headline, members } = match;
   const outcode = outcodeOf(headline.postcode);
-  const bedBath = bedBathSummary(headline.bedrooms, headline.bathrooms);
+  const bedBath = bedBathSummary(
+    headline.bedrooms,
+    headline.bathrooms,
+    headline.receptions
+  );
   let keptLabel = "Kept";
   if (memberCount === 2) {
     keptLabel = "Both kept";

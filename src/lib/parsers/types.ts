@@ -65,6 +65,11 @@ export interface ListingDetail extends ListingSummary {
 
   /** Floor area in square feet. Rightmove `sizings` / Zoopla `floorArea`. */
   sizeSqFt?: number;
+  /**
+   * Reception / living-room count. Zoopla `counts.numLivingRooms` only —
+   * Rightmove and OpenRent don't publish it structurally.
+   */
+  receptions?: number;
   /** Council tax band letter (A–H typically). Rightmove `livingCosts.councilTaxBand`. */
   councilTaxBand?: string;
   /** When the listing was first published on the portal. ISO 8601 string. */

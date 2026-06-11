@@ -86,6 +86,8 @@ export type ListingDetailHeadline = {
   priceMonthly: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
+  /** Reception/living rooms, pooled across the cluster. Null if unknown. */
+  receptions: number | null;
   propertyType: string | null;
   /** Coarse kind (flat/house/studio/share/other) for the title chip. */
   propertyKind: PropertyKind;
@@ -453,6 +455,23 @@ function pickCouncilTaxBand(
     const band = d?.councilTaxBand ?? l.councilTaxBand ?? null;
     if (band) {
       return band;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reception/living-room count for the cluster. Only Zoopla publishes it,
+ * so scan every portal row and take the first non-null — lets a Zoopla
+ * sibling fill the figure even when the headline (cheapest) row is from
+ * Rightmove/OpenRent.
+ */
+function pickPortalReceptions(
+  clusterListings: (typeof listings.$inferSelect)[]
+): number | null {
+  for (const l of clusterListings) {
+    if (l.receptions != null) {
+      return l.receptions;
     }
   }
   return null;
@@ -1118,6 +1137,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
         priceMonthly: headlineListing.priceMonthly,
         bedrooms: headlineListing.bedrooms,
         bathrooms: headlineListing.bathrooms,
+        receptions: pickPortalReceptions(sortedListings),
         propertyType: headlineListing.propertyType,
         propertyKind: classifyPropertyKind(
           headlineListing.propertyType,

@@ -602,6 +602,11 @@ export function parseZooplaDetail(html: string): ListingDetail {
   const bathrooms = bathroomCount(
     toNumber(counts?.numBathrooms) ?? toNumber(c.numBathrooms)
   );
+  // Reuse `bathroomCount`'s positive-int normalisation: Zoopla uses 0 as
+  // the "not stated" sentinel, which would otherwise read as "0 receptions".
+  const receptions = bathroomCount(
+    toNumber(counts?.numLivingRooms) ?? toNumber(c.numLivingRooms)
+  );
 
   const lat = toNumber(location?.coordinates?.latitude) ?? toNumber(c.latitude);
   const lng =
@@ -671,6 +676,7 @@ export function parseZooplaDetail(html: string): ListingDetail {
     postcode,
     bedrooms,
     bathrooms,
+    receptions,
     priceMonthly: zooplaDetailPrice(c),
     propertyType,
     lat,

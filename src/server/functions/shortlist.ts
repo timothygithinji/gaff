@@ -59,6 +59,8 @@ export type ShortlistHeadline = {
   priceMonthly: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
+  /** Reception/living rooms (Zoopla only), pooled across the cluster. */
+  receptions: number | null;
   propertyType: string | null;
   /** Coarse kind (flat / house / studio / share / other) classified from
    * {@link propertyType} + title — drives the card subtitle and the

@@ -43,13 +43,20 @@ function portalLabel(portal: string): string {
   return portal;
 }
 
-function bedBathSummary(beds: number | null, baths: number | null): string {
+function bedBathSummary(
+  beds: number | null,
+  baths: number | null,
+  receptions: number | null
+): string {
   const parts: string[] = [];
   if (beds !== null) {
     parts.push(`${beds} bed`);
   }
   if (baths !== null) {
     parts.push(`${baths} bath`);
+  }
+  if (receptions !== null) {
+    parts.push(`${receptions} reception`);
   }
   return parts.join(" · ");
 }
@@ -74,7 +81,7 @@ export function MatchCard({
   const outcode = outcodeOf(headline.postcode);
   const subtitle = [
     outcode,
-    bedBathSummary(headline.bedrooms, headline.bathrooms),
+    bedBathSummary(headline.bedrooms, headline.bathrooms, headline.receptions),
   ]
     .filter(Boolean)
     .join(" · ");

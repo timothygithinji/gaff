@@ -389,6 +389,13 @@ export const listings = pgTable(
     postcode: text("postcode"),
     bedrooms: integer("bedrooms"),
     bathrooms: integer("bathrooms"),
+    /**
+     * Reception / living rooms. Only Zoopla exposes this as a structured
+     * count (`counts.numLivingRooms`); Rightmove and OpenRent don't, so
+     * this is null for most rows. Pooled across the cluster at read time
+     * so a Zoopla sibling fills it in for the whole cluster.
+     */
+    receptions: integer("receptions"),
     priceMonthly: integer("price_monthly"),
     propertyType: text("property_type"),
     lat: numeric("lat", { precision: 9, scale: 6 }),

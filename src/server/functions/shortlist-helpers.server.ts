@@ -203,6 +203,8 @@ export async function hydrateClusterSummaries(
         priceMonthly: headlineListing.priceMonthly,
         bedrooms: headlineListing.bedrooms,
         bathrooms: headlineListing.bathrooms,
+        receptions:
+          sortedListings.find((l) => l.receptions != null)?.receptions ?? null,
         propertyType: headlineListing.propertyType,
         propertyKind: classifyPropertyKind(
           headlineListing.propertyType,
