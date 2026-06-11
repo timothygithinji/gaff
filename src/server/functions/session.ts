@@ -17,13 +17,26 @@ import { getRequest, getResponseHeaders } from "@tanstack/react-start/server";
 import { createAuth } from "../../lib/auth";
 import { hasCloudflareAccessToken } from "../../lib/auth/cloudflare-access";
 import type { Env } from "../../server";
+import { requestMemo } from "./request-cache.server";
 
 export type CurrentUser = {
   userId: string;
   email: string;
 };
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+/**
+ * Resolve the current user. Memoized per request: a single SSR render fans
+ * out to several server functions (the `/` loader alone fires four) and each
+ * independently re-validates the session — rebuilding `createAuth` and, on a
+ * cookie-cache miss, hitting the session table every time. `requestMemo`
+ * collapses all of those to one resolution per request. On the client (no
+ * stable request scope) `requestMemo` falls through to running uncached.
+ */
+export function getCurrentUser(): Promise<CurrentUser | null> {
+  return requestMemo("current-user", resolveCurrentUser);
+}
+
+async function resolveCurrentUser(): Promise<CurrentUser | null> {
   const request = getRequest();
   const auth = createAuth(env as unknown as Env);
 

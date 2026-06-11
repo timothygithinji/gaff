@@ -77,7 +77,6 @@ import {
   deactivateSchedule,
   updateSchedule,
 } from "./schedules";
-import { getCurrentUser } from "./session";
 import { requireHouseholdScope } from "./shortlist-helpers.server";
 import { auth, tasks } from "./trigger.server";
 
@@ -90,18 +89,11 @@ const SCHEDULE_TIMEZONE = "Europe/London";
  * authz gate.
  */
 async function requireHouseholdId(): Promise<string> {
-  const session = await getCurrentUser();
-  if (!session) {
-    throw new Error("unauthorized");
-  }
-  const db = getDb();
-  const membership = await db.query.householdMembers.findFirst({
-    where: (hm, { eq: eqOp }) => eqOp(hm.userId, session.userId),
-  });
-  if (!membership) {
-    throw new Error("no_household");
-  }
-  return membership.householdId;
+  // Delegate to the request-memoized scope resolver so search-scoped
+  // functions share the household lookup the review/shortlist paths already
+  // did this request, instead of each issuing their own membership query.
+  const { householdId } = await requireHouseholdScope();
+  return householdId;
 }
 
 /**

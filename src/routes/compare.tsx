@@ -53,12 +53,15 @@ export const Route = createFileRoute("/compare")({
   },
   loaderDeps: ({ search }) => ({ a: search.a, b: search.b }),
   loader: async ({ context, deps }) => {
-    if (deps.a) {
-      await context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.a));
-    }
-    if (deps.b) {
-      await context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.b));
-    }
+    // Prefetch both sides concurrently. Each `getListingDetail` is itself a
+    // chain of DB round-trips, so awaiting them in series doubled the
+    // loader's latency for no reason.
+    await Promise.all([
+      deps.a &&
+        context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.a)),
+      deps.b &&
+        context.queryClient.ensureQueryData(listingDetailQueryOptions(deps.b)),
+    ]);
   },
   pendingComponent: PendingCompare,
   component: ComparePage,

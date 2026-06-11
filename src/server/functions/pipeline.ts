@@ -31,7 +31,7 @@ import {
 import { zyteFetch } from "../../lib/zyte";
 import type { MutualMatch } from "./shortlist";
 import {
-  hydrateClusterSummary,
+  hydrateClusterSummaries,
   requireHouseholdScope,
 } from "./shortlist-helpers.server";
 /**
@@ -190,7 +190,6 @@ export const listPipeline = createServerFn({ method: "GET" }).handler(
     // stays in the pipeline (durable household decision) until they
     // archive it.
     const seen = new Set<string>();
-    const summaries: Array<MutualMatch | null> = [];
     const meta: Array<{
       clusterId: string;
       searchId: string;
@@ -200,14 +199,6 @@ export const listPipeline = createServerFn({ method: "GET" }).handler(
     for (const m of mutualRows) {
       seen.add(m.clusterId);
       meta.push(m);
-      summaries.push(
-        await hydrateClusterSummary(db, {
-          clusterId: m.clusterId,
-          searchId: m.searchId,
-          matchedAt: m.matchedAt,
-          householdMemberUserIds: memberUserIds,
-        })
-      );
     }
     for (const [clusterId, p] of pipelineByCluster) {
       if (seen.has(clusterId)) {
@@ -220,15 +211,14 @@ export const listPipeline = createServerFn({ method: "GET" }).handler(
         searchId: "",
         matchedAt: p.row.lastMovedAt,
       });
-      summaries.push(
-        await hydrateClusterSummary(db, {
-          clusterId,
-          searchId: "",
-          matchedAt: p.row.lastMovedAt,
-          householdMemberUserIds: memberUserIds,
-        })
-      );
     }
+
+    // Hydrate every cluster in two round-trips total (vs ~3 per cluster,
+    // serially, before) — see `hydrateClusterSummaries`. Aligned to `meta`.
+    const summaries = await hydrateClusterSummaries(
+      db,
+      meta.map((m) => ({ ...m, householdMemberUserIds: memberUserIds }))
+    );
 
     const columns: PipelineColumns = {
       shortlisted: [],

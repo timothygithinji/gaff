@@ -28,13 +28,13 @@
  * pulls in `cloudflare:workers` via `session.ts`).
  */
 import { createServerFn } from "@tanstack/react-start";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../../../db";
 import { swipes, userState, vMutualMatches } from "../../../db/schema";
 import type { PropertyKind } from "../../lib/property-kind";
 import {
-  hydrateClusterSummary,
+  hydrateClusterSummaries,
   requireHouseholdScope,
 } from "./shortlist-helpers.server";
 
@@ -156,15 +156,16 @@ async function listOutcomesFor(
     .groupBy(swipes.clusterId, swipes.searchId)
     .orderBy(sql`MAX(${swipes.createdAt}) DESC`);
 
-  const summaries = await Promise.all(
-    rows.map((r) =>
-      hydrateClusterSummary(db, {
-        clusterId: r.clusterId,
-        searchId: r.searchId,
-        matchedAt: r.matchedAt,
-        householdMemberUserIds,
-      })
-    )
+  // One batched hydration (two round-trips) rather than 3 queries per
+  // cluster — see `hydrateClusterSummaries`.
+  const summaries = await hydrateClusterSummaries(
+    db,
+    rows.map((r) => ({
+      clusterId: r.clusterId,
+      searchId: r.searchId,
+      matchedAt: r.matchedAt,
+      householdMemberUserIds,
+    }))
   );
   return summaries.filter((s): s is MutualMatch => s !== null);
 }
@@ -188,11 +189,11 @@ export const unreadMatchCount = createServerFn({ method: "GET" }).handler(
     // surfaces as unread. The user gets a meaningful badge on first
     // open instead of an inaccurate zero.
     if (stateRow.length === 0) {
-      const allRows = await db
-        .select({ clusterId: vMutualMatches.clusterId })
+      const [row] = await db
+        .select({ value: count() })
         .from(vMutualMatches)
         .where(eq(vMutualMatches.householdId, householdId));
-      return { count: allRows.length };
+      return { count: row?.value ?? 0 };
     }
 
     const lastSeen = stateRow[0]?.lastSeen;
@@ -200,8 +201,8 @@ export const unreadMatchCount = createServerFn({ method: "GET" }).handler(
       return { count: 0 };
     }
 
-    const newRows = await db
-      .select({ clusterId: vMutualMatches.clusterId })
+    const [row] = await db
+      .select({ value: count() })
       .from(vMutualMatches)
       .where(
         and(
@@ -209,7 +210,7 @@ export const unreadMatchCount = createServerFn({ method: "GET" }).handler(
           gt(vMutualMatches.matchedAt, lastSeen)
         )
       );
-    return { count: newRows.length };
+    return { count: row?.value ?? 0 };
   }
 );
 

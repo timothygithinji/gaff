@@ -813,24 +813,58 @@ export const getListingDetail = createServerFn({ method: "GET" })
       await requireHouseholdScope();
     const db = getDb();
 
-    // Step 1: pull the household's active searches.
-    const householdSearches = await db
-      .select({ id: searches.id })
-      .from(searches)
-      .where(eq(searches.householdId, householdId));
+    // Level 1 — four independent reads shipped as one db.batch (a single
+    // HTTP round-trip instead of four serial ones): the household's
+    // searches, the cluster row, every member's swipe on this cluster, and
+    // the household roster. None depends on another; all are keyed off the
+    // scope we already resolved. (`swipeRows`/`memberRows` are consumed much
+    // further down, in Steps 7–8.)
+    const [householdSearches, clusterRows, swipeRows, memberRows] =
+      await db.batch([
+        db
+          .select({ id: searches.id })
+          .from(searches)
+          .where(eq(searches.householdId, householdId)),
+        db
+          .select()
+          .from(propertyClusters)
+          .where(eq(propertyClusters.id, data.clusterId))
+          .limit(1),
+        db
+          .select({
+            userId: swipes.userId,
+            outcome: swipes.outcome,
+            createdAt: swipes.createdAt,
+          })
+          .from(swipes)
+          .where(
+            and(
+              eq(swipes.clusterId, data.clusterId),
+              inArray(swipes.userId, memberUserIds)
+            )
+          ),
+        db
+          .select({
+            memberId: householdMembers.id,
+            userId: householdMembers.userId,
+            name: user.name,
+          })
+          .from(householdMembers)
+          .innerJoin(user, eq(user.id, householdMembers.userId))
+          .where(eq(householdMembers.householdId, householdId)),
+      ]);
+
     const searchIds = householdSearches.map((s) => s.id);
     if (searchIds.length === 0) {
       throw new Error("not_found");
     }
-
-    // Step 2: load the cluster + listings.
-    const cluster = await db.query.propertyClusters.findFirst({
-      where: (c, { eq: eqOp }) => eqOp(c.id, data.clusterId),
-    });
+    const cluster = clusterRows[0];
     if (!cluster) {
       throw new Error("not_found");
     }
 
+    // Level 2 — the cluster's listings, scoped to the household's searches
+    // (needs `searchIds` from Level 1).
     const clusterListings = await db
       .select()
       .from(listings)
@@ -868,6 +902,25 @@ export const getListingDetail = createServerFn({ method: "GET" })
 
     const headlinePrice = headlineListing.priceMonthly;
 
+    // Level 3 — the two headline-keyed reads (gallery photos + latest
+    // enrichment) in one db.batch. Both depend only on the headline id, and
+    // neither depends on the other. Council-tax (Step 8) stays a separate,
+    // conditional read since it's only issued when the cluster has a billing
+    // authority. Consumed in Steps 4 and 6 below.
+    const [photoRows, enrichmentRows] = await db.batch([
+      db
+        .select()
+        .from(listingPhotos)
+        .where(eq(listingPhotos.listingId, headlineListing.id))
+        .orderBy(listingPhotos.position),
+      db
+        .select()
+        .from(enrichments)
+        .where(eq(enrichments.listingId, headlineListing.id))
+        .orderBy(desc(enrichments.promptVersion))
+        .limit(1),
+    ]);
+
     // Step 3: dedup portal spread.
     const seenPortalListings = new Set<string>();
     const dedupedListings = sortedListings.filter((l) => {
@@ -902,14 +955,8 @@ export const getListingDetail = createServerFn({ method: "GET" })
     // up 283 photos — and even on a correct cluster, stitching two portals'
     // sets together duplicates the same rooms under different CDN URLs.
     // Per-listing photos stay separate in the DB; the detail just reads the
-    // primary's. Still dedup on source URL to fold any re-scrape repeats
-    // within that one listing.
-    const photoRows = await db
-      .select()
-      .from(listingPhotos)
-      .where(eq(listingPhotos.listingId, headlineListing.id))
-      .orderBy(listingPhotos.position);
-
+    // primary's (fetched in Level 3 above). Still dedup on source URL to fold
+    // any re-scrape repeats within that one listing.
     const seenPhotoUrls = new Set<string>();
     const photos: ListingDetailPhoto[] = [];
     for (const p of photoRows) {
@@ -946,13 +993,7 @@ export const getListingDetail = createServerFn({ method: "GET" })
         ? headlineDescription
         : null;
 
-    // Step 6: enrichment — latest prompt version.
-    const enrichmentRows = await db
-      .select()
-      .from(enrichments)
-      .where(eq(enrichments.listingId, headlineListing.id))
-      .orderBy(desc(enrichments.promptVersion))
-      .limit(1);
+    // Step 6: enrichment — latest prompt version (fetched in Level 3 above).
     const enrichment = enrichmentRows[0];
     // Pull the persisted features, then strip generic-noise items via
     // the shared filter. Lets the v2.0.0 enrichments that pre-date the
@@ -982,34 +1023,12 @@ export const getListingDetail = createServerFn({ method: "GET" })
     const broadband = asBroadband(enrichment?.broadband);
     const amenities = asAmenities(enrichment?.amenities);
 
-    // Step 7: swipe state for every household member.
-    const swipeRows = await db
-      .select({
-        userId: swipes.userId,
-        outcome: swipes.outcome,
-        createdAt: swipes.createdAt,
-      })
-      .from(swipes)
-      .where(
-        and(
-          eq(swipes.clusterId, data.clusterId),
-          inArray(swipes.userId, memberUserIds)
-        )
-      );
+    // Step 7: swipe state for every household member (rows fetched in
+    // Level 1 above).
     const swipeByUser = new Map(swipeRows.map((s) => [s.userId, s.outcome]));
     const swipeAtByUser = new Map(
       swipeRows.map((s) => [s.userId, s.createdAt])
     );
-
-    const memberRows = await db
-      .select({
-        memberId: householdMembers.id,
-        userId: householdMembers.userId,
-        name: user.name,
-      })
-      .from(householdMembers)
-      .innerJoin(user, eq(user.id, householdMembers.userId))
-      .where(eq(householdMembers.householdId, householdId));
 
     const partnerSwipes: ListingDetailPartnerSwipe[] = memberRows
       .filter((m) => m.userId !== currentUserId)
