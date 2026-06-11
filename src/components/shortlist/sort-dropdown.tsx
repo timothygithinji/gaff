@@ -1,9 +1,10 @@
 /**
  * Sort dropdown — right-aligned next to the "Other mutual picks"
- * eyebrow. Two options for v1: cheapest (default) and newest.
+ * eyebrow. Two options for v1: newest (default) and cheapest.
  *
- * Built on shadcn's DropdownMenu (Radix under the hood) so the trigger
- * lifts focus and supports keyboard navigation out of the box.
+ * Built on our `DropdownMenu` (`@base-ui` Menu under the hood), whose
+ * `Menu.Item` activates via `onClick` — NOT Radix's `onSelect`, which is
+ * silently ignored here.
  */
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -17,8 +18,8 @@ import {
 export type SortKey = "cheapest" | "newest";
 
 const OPTIONS: Array<{ id: SortKey; label: string }> = [
-  { id: "cheapest", label: "Sort: cheapest" },
   { id: "newest", label: "Sort: newest" },
+  { id: "cheapest", label: "Sort: cheapest" },
 ];
 
 type Props = {
@@ -39,7 +40,7 @@ export function SortDropdown({ value, onChange }: Props) {
         {OPTIONS.map((opt) => (
           <DropdownMenuItem
             key={opt.id}
-            onSelect={() => onChange(opt.id)}
+            onClick={() => onChange(opt.id)}
             data-active={opt.id === value}
             className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
           >

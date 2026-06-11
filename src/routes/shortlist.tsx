@@ -442,7 +442,7 @@ function ShortlistPage() {
   }, [columns, memberCount, mine.length, otherMemberQueries]);
 
   const [activeTab, setActiveTab] = useState<string>(PIPELINE_TAB_ID);
-  const [sort, setSort] = useState<SortKey>("cheapest");
+  const [sort, setSort] = useState<SortKey>("newest");
   const [filters, setFilters] = useState<QueueFilters>(EMPTY_QUEUE_FILTERS);
   const [addUrlValue, setAddUrlValue] = useState("");
   const [addUrlError, setAddUrlError] = useState<string | null>(null);
