@@ -13,11 +13,29 @@
 
 const HTML_TAG_RE = /<[^>]+>/g;
 const NBSP_RE = /&nbsp;/gi;
+const POUND_RE = /&pound;/gi;
+const EURO_RE = /&euro;/gi;
 const AMP_RE = /&amp;/gi;
 const LT_RE = /&lt;/gi;
 const GT_RE = /&gt;/gi;
 const QUOT_RE = /&quot;/gi;
 const APOS_RE = /&#39;|&apos;/gi;
+// Generic numeric character references — decimal (`&#163;`) and hex
+// (`&#xA3;`) — so any entity the named map above misses still decodes.
+const DEC_ENTITY_RE = /&#(\d+);/g;
+const HEX_ENTITY_RE = /&#x([0-9a-f]+);/gi;
+
+/** A numeric code point → its character, or "" when out of the valid range. */
+function fromCodePoint(code: number): string {
+  if (!Number.isFinite(code) || code < 0 || code > 0x10_ffff) {
+    return "";
+  }
+  // Lone surrogates aren't valid scalar values; drop them rather than throw.
+  if (code >= 0xd800 && code <= 0xdfff) {
+    return "";
+  }
+  return String.fromCodePoint(code);
+}
 
 // Block-level tags become paragraph breaks; a lone <br> is a line break,
 // but two-or-more consecutive <br>s read as a paragraph break.
@@ -34,7 +52,11 @@ const PARAGRAPH_SPLIT_RE = /\n{2,}/;
 
 function decodeEntities(input: string): string {
   return input
+    .replace(DEC_ENTITY_RE, (_, dec) => fromCodePoint(Number(dec)))
+    .replace(HEX_ENTITY_RE, (_, hex) => fromCodePoint(Number.parseInt(hex, 16)))
     .replace(NBSP_RE, " ")
+    .replace(POUND_RE, "£")
+    .replace(EURO_RE, "€")
     .replace(AMP_RE, "&")
     .replace(LT_RE, "<")
     .replace(GT_RE, ">")

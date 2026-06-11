@@ -40,6 +40,16 @@ describe("htmlToParagraphs", () => {
     ]);
   });
 
+  it("decodes currency + numeric character references", () => {
+    // Rightmove's fees blurb arrives with `&pound;` and numeric refs; they
+    // must render as glyphs, not as literal `&pound;` / `&#163;`.
+    const html =
+      "Holding deposit: &pound;500. Rent: &#163;1,800. Fee: &#xA3;50. EU: &euro;20.";
+    expect(htmlToPlainText(html)).toBe(
+      "Holding deposit: £500. Rent: £1,800. Fee: £50. EU: €20."
+    );
+  });
+
   it("strips script tags (content survives as inert text, markup does not)", () => {
     const html = "<p>Safe.</p><script>alert(1)</script>";
     const out = htmlToParagraphs(html).join(" ");
