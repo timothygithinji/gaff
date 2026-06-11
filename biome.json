@@ -21,6 +21,7 @@
       "Bun",
       "KVNamespace",
       "R2Bucket",
+      "R2ObjectBody",
       "DurableObject",
       "DurableObjectNamespace",
       "ExportedHandler",
