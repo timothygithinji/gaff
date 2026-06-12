@@ -15,8 +15,8 @@
  * Prefix vs. leaf — the footgun this module exists to prevent:
  *   A zero-arg call to a *dynamic* leaf key (e.g. `reviewNext()`) returns
  *   a fully-specified tuple with `null` discriminators (`["review",
- *   "next", null, null]`), which `invalidateQueries` matches *exactly* —
- *   it will NOT sweep the scoped variants (`["review","next",<searchId>,
+ *   "next", null]`), which `invalidateQueries` matches *exactly* —
+ *   it will NOT sweep the scoped variants (`["review","next",<clusterId>,
  *   …]`). To invalidate a whole family, pass the broad-prefix helper
  *   (`review()`, `shortlist()`, `deferrals()`) instead. Readers keep
  *   using the leaf keys with their real discriminators.
@@ -34,12 +34,10 @@ export const queryKeys = {
   // --- Review ---------------------------------------------------------
   /** Broad prefix — invalidate to sweep every scoped review query. */
   review: () => ["review"] as const,
-  reviewNext: (searchId?: string | null, clusterId?: string | null) =>
-    ["review", "next", searchId ?? null, clusterId ?? null] as const,
-  reviewQueue: (searchId?: string | null) =>
-    ["review", "queue", searchId ?? null] as const,
-  reviewTodayStats: (searchId?: string | null) =>
-    ["review", "today-stats", searchId ?? null] as const,
+  reviewNext: (clusterId?: string | null) =>
+    ["review", "next", clusterId ?? null] as const,
+  reviewQueue: () => ["review", "queue"] as const,
+  reviewTodayStats: () => ["review", "today-stats"] as const,
 
   // --- Matches --------------------------------------------------------
   matchesUnread: () => ["matches", "unread"] as const,

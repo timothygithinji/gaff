@@ -76,7 +76,6 @@ import {
   recordSwipe,
   undoLastSwipe,
 } from "../server/functions/review";
-import { listSearches } from "../server/functions/searches";
 
 // "keep" stays in the swipe_outcome DB enum for back-compat with rows
 // written before B1 collapsed Keep + Shortlist. The UI only ever writes
@@ -89,17 +88,10 @@ type PendingAction = SwipeOutcome | "undo" | "defer" | null;
 // feels live. Cross-device freshness rides `refetchOnWindowFocus`.
 const REVIEW_STALE_TIME = 12_000;
 
-// `searchId` filter and the explicit `clusterId` selection both live
-// in the URL so refresh + back-button preserve them and the filter is
-// shareable. Empty / omitted both collapse to `null` so the queue
-// isn't accidentally scoped to a stale id.
+// The explicit `clusterId` selection lives in the URL so refresh +
+// back-button preserve it. Empty / omitted both collapse to `null` so
+// the hero isn't accidentally pinned to a stale id.
 const reviewSearchSchema = z.object({
-  searchId: z
-    .string()
-    .trim()
-    .min(1)
-    .nullish()
-    .transform((v) => v ?? null),
   /**
    * When set, the hero/center column is pinned to this cluster instead
    * of the top of the queue. Cleared automatically on swipe/undo so the
@@ -113,24 +105,11 @@ const reviewSearchSchema = z.object({
     .transform((v) => v ?? null),
 });
 
-const reviewCardQueryOptions = (
-  searchId: string | null,
-  clusterId: string | null
-) =>
+const reviewCardQueryOptions = (clusterId: string | null) =>
   ({
-    queryKey: queryKeys.reviewNext(searchId, clusterId),
-    queryFn: () => {
-      const input =
-        searchId || clusterId
-          ? {
-              data: {
-                ...(searchId ? { searchId } : {}),
-                ...(clusterId ? { clusterId } : {}),
-              },
-            }
-          : undefined;
-      return getNextReviewCard(input);
-    },
+    queryKey: queryKeys.reviewNext(clusterId),
+    queryFn: () =>
+      getNextReviewCard(clusterId ? { data: { clusterId } } : undefined),
     // A short stale window keeps the SSR-painted / preloaded card on
     // screen across quick back-navigation (Detail → back → Review)
     // instead of refetching on every mount. Cross-device freshness — a
@@ -141,31 +120,19 @@ const reviewCardQueryOptions = (
     refetchOnWindowFocus: true,
   }) as const;
 
-const reviewQueueQueryOptions = (searchId: string | null) =>
-  ({
-    queryKey: queryKeys.reviewQueue(searchId),
-    queryFn: () =>
-      getReviewQueue(searchId ? { data: { searchId } } : undefined),
-    staleTime: REVIEW_STALE_TIME,
-    refetchOnWindowFocus: true,
-  }) as const;
+const reviewQueueQueryOptions = {
+  queryKey: queryKeys.reviewQueue(),
+  queryFn: () => getReviewQueue(),
+  staleTime: REVIEW_STALE_TIME,
+  refetchOnWindowFocus: true,
+} as const;
 
-const reviewTodayStatsQueryOptions = (searchId: string | null) =>
-  ({
-    queryKey: queryKeys.reviewTodayStats(searchId),
-    queryFn: () =>
-      getTodayReviewStats(searchId ? { data: { searchId } } : undefined),
-    staleTime: REVIEW_STALE_TIME,
-    refetchOnWindowFocus: true,
-  }) as const;
-
-const reviewSearchesQueryOptions = {
-  queryKey: queryKeys.searches(),
-  queryFn: () => listSearches(),
-  // 30s to match the Searches screens — same key, so a divergent stale
-  // window here would mean the two screens disagree on freshness.
-  staleTime: 30_000,
-};
+const reviewTodayStatsQueryOptions = {
+  queryKey: queryKeys.reviewTodayStats(),
+  queryFn: () => getTodayReviewStats(),
+  staleTime: REVIEW_STALE_TIME,
+  refetchOnWindowFocus: true,
+} as const;
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Review · Gaff" }] }),
@@ -174,21 +141,15 @@ export const Route = createFileRoute("/")({
     requireSession(context as { currentUserId: string | null }, "/");
   },
   loaderDeps: ({ search }) => ({
-    searchId: search.searchId,
     clusterId: search.clusterId,
   }),
   loader: ({ context, deps }) =>
     Promise.all([
       context.queryClient.ensureQueryData(
-        reviewCardQueryOptions(deps.searchId, deps.clusterId)
+        reviewCardQueryOptions(deps.clusterId)
       ),
-      context.queryClient.ensureQueryData(
-        reviewQueueQueryOptions(deps.searchId)
-      ),
-      context.queryClient.ensureQueryData(
-        reviewTodayStatsQueryOptions(deps.searchId)
-      ),
-      context.queryClient.ensureQueryData(reviewSearchesQueryOptions),
+      context.queryClient.ensureQueryData(reviewQueueQueryOptions),
+      context.queryClient.ensureQueryData(reviewTodayStatsQueryOptions),
     ]),
   pendingComponent: PendingReview,
   component: ReviewPage,
@@ -215,19 +176,17 @@ function PendingReview() {
 function ReviewPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { searchId, clusterId } = Route.useSearch();
-  const cardOpts = reviewCardQueryOptions(searchId, clusterId);
-  const queueOpts = reviewQueueQueryOptions(searchId);
-  const todayOpts = reviewTodayStatsQueryOptions(searchId);
+  const { clusterId } = Route.useSearch();
+  const cardOpts = reviewCardQueryOptions(clusterId);
+  const queueOpts = reviewQueueQueryOptions;
+  const todayOpts = reviewTodayStatsQueryOptions;
   const cardQuery = useQuery(cardOpts);
   const queueQuery = useQuery(queueOpts);
   const todayStatsQuery = useQuery(todayOpts);
-  const searchesQuery = useQuery(reviewSearchesQueryOptions);
   const household = useHouseholdOptional();
   const card = cardQuery.data;
   const queue = queueQuery.data;
   const todayStats = todayStatsQuery.data;
-  const searchesList = searchesQuery.data ?? [];
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   // Queue filter state, shared by the desktop rail and the mobile card
@@ -259,8 +218,8 @@ function ReviewPage() {
     if (!nextItem) {
       return;
     }
-    qc.prefetchQuery(reviewCardQueryOptions(searchId, nextItem.clusterId));
-  }, [card, queue, searchId, qc]);
+    qc.prefetchQuery(reviewCardQueryOptions(nextItem.clusterId));
+  }, [card, queue, qc]);
 
   // Warm the listing-detail payload for the current card. Opening detail
   // ("I" / the Details button) navigates imperatively, so the router's
@@ -312,13 +271,7 @@ function ReviewPage() {
         previousStats,
         args.outcome
       );
-      applyOptimisticCardSwap(
-        qc,
-        cardOpts.queryKey,
-        searchId,
-        nextItem,
-        previousQueue
-      );
+      applyOptimisticCardSwap(qc, cardOpts.queryKey, nextItem, previousQueue);
 
       return { previousCard, previousQueue, previousStats };
     },
@@ -342,10 +295,8 @@ function ReviewPage() {
     },
     onSettled: () => {
       setPendingAction(null);
-      // Invalidate every variant of the review queries (every searchId
-      // bucket) so the next-card pointer and queue refresh regardless
-      // of which filter is active — a swipe inside one search shifts
-      // the cross-search "All" queue too.
+      // Invalidate every variant of the review queries (every pinned-
+      // cluster bucket) so the next-card pointer and queue refresh.
       qc.invalidateQueries({ queryKey: queryKeys.review() });
       // Drop the pinned-cluster selection so the next top-of-queue
       // card surfaces — the swiped one is gone from the queue.
@@ -399,13 +350,7 @@ function ReviewPage() {
         previousQueue,
         args.clusterId
       );
-      applyOptimisticCardSwap(
-        qc,
-        cardOpts.queryKey,
-        searchId,
-        nextItem,
-        previousQueue
-      );
+      applyOptimisticCardSwap(qc, cardOpts.queryKey, nextItem, previousQueue);
       return { previousCard, previousQueue };
     },
     onError: (e: Error, _vars, ctx) => {
@@ -611,9 +556,7 @@ function ReviewPage() {
         isCardLoading,
         queue,
         todayStats,
-        searchesList,
         household,
-        searchId,
         pending,
         pendingAction,
         queryError,
@@ -791,13 +734,12 @@ function applyOptimisticStatsBump(
 function applyOptimisticCardSwap(
   qc: QueryClient,
   key: readonly unknown[],
-  searchId: string | null,
   nextItem: ReviewQueueItem | undefined,
   previousQueue: ReviewQueue | null | undefined
 ) {
   if (nextItem) {
     const prefetched = qc.getQueryData<ReviewCard | null>(
-      queryKeys.reviewNext(searchId, nextItem.clusterId)
+      queryKeys.reviewNext(nextItem.clusterId)
     );
     if (prefetched) {
       qc.setQueryData<ReviewCard>(key, {
@@ -823,9 +765,7 @@ function renderDesktopHero(args: {
   isCardLoading: boolean;
   queue: ReviewQueue | null | undefined;
   todayStats: TodayReviewStats | null | undefined;
-  searchesList: Array<{ id: string; name: string }>;
   household: HouseholdValue | null;
-  searchId: string | null;
   pending: boolean;
   pendingAction: PendingAction;
   queryError: string | null;
@@ -870,16 +810,7 @@ function renderDesktopHero(args: {
   if (args.isCardLoading) {
     return <DesktopReviewSkeleton />;
   }
-  return (
-    <DesktopReviewEmpty
-      activeSearchId={args.searchId}
-      hasQueryError={Boolean(args.queryError)}
-      onClearFilter={() =>
-        args.navigate({ to: "/", search: { searchId: null } })
-      }
-      searchesList={args.searchesList}
-    />
-  );
+  return <DesktopReviewEmpty hasQueryError={Boolean(args.queryError)} />;
 }
 
 function renderMobileHero(args: {
@@ -1143,30 +1074,10 @@ function avatarInitial(nameOrEmail: string | null): string {
  * yet) or one of the review queries errored. Keeps the sidebar shell
  * so the rest of the app's chrome stays consistent.
  */
-function DesktopReviewEmpty({
-  hasQueryError,
-  activeSearchId,
-  searchesList,
-  onClearFilter,
-}: {
-  hasQueryError: boolean;
-  activeSearchId: string | null;
-  searchesList: Array<{ id: string; name: string }>;
-  onClearFilter: () => void;
-}) {
-  const filteredSearchName = activeSearchId
-    ? (searchesList.find((s) => s.id === activeSearchId)?.name ?? null)
-    : null;
-  let body: string;
-  if (hasQueryError) {
-    body =
-      "Check the banner top-right for the underlying error. Refresh once it's resolved.";
-  } else if (filteredSearchName) {
-    body = `Nothing left to swipe in "${filteredSearchName}". Switch to all searches to see the rest of the queue.`;
-  } else {
-    body =
-      "Nothing left to swipe right now. New listings will land here as your searches keep scraping.";
-  }
+function DesktopReviewEmpty({ hasQueryError }: { hasQueryError: boolean }) {
+  const body = hasQueryError
+    ? "Check the banner top-right for the underlying error. Refresh once it's resolved."
+    : "Nothing left to swipe right now. New listings will land here as your searches keep scraping.";
   return (
     <AdminSidebar mode="desktop-only">
       <div className="flex flex-1 items-center justify-center p-10">
@@ -1178,15 +1089,6 @@ function DesktopReviewEmpty({
             {hasQueryError ? "Something went sideways" : "All caught up"}
           </h1>
           <p className="mt-3 text-muted-foreground text-sm">{body}</p>
-          {filteredSearchName ? (
-            <button
-              className="mt-4 inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 font-medium text-primary-foreground text-sm"
-              onClick={onClearFilter}
-              type="button"
-            >
-              Show all searches
-            </button>
-          ) : null}
         </div>
       </div>
     </AdminSidebar>
