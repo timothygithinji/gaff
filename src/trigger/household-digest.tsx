@@ -247,8 +247,8 @@ export const householdDigestTask = task({
         to: member.email,
         subject:
           total === 1
-            ? "1 new place to review"
-            : `${total} new places to review`,
+            ? "1 new place matched your search"
+            : `${total} new places matched your search`,
         react: <DigestEmail count={total} items={items} reviewUrl={reviewUrl} />,
       });
       sentCount += 1;

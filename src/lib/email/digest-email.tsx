@@ -74,7 +74,9 @@ const MOBILE_CSS = `
 
 export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
   const heading =
-    count === 1 ? "1 new place to review" : `${count} new places to review`;
+    count === 1
+      ? "1 new place matched your search"
+      : `${count} new places matched your search`;
   const overflow = count - items.length;
   return (
     <Html>
@@ -107,7 +109,7 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
                 margin: "0 0 6px",
               }}
             >
-              New to review
+              New since your last digest
             </Text>
             <Heading
               className="gaff-h1"
@@ -189,7 +191,7 @@ export function DigestEmail({ count, items, reviewUrl }: DigestEmailProps) {
 
           {overflow > 0 ? (
             <Text style={{ color: STEEL, fontSize: "13px", padding: "4px 8px" }}>
-              + {overflow} more waiting in your queue.
+              + {overflow} more new — open Gaff to see them all.
             </Text>
           ) : null}
 
