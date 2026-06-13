@@ -273,7 +273,7 @@ function ReviewPage() {
       );
       applyOptimisticCardSwap(qc, cardOpts.queryKey, nextItem, previousQueue);
 
-      return { previousCard, previousQueue, previousStats };
+      return { previousCard, previousQueue, previousStats, nextItem };
     },
     onError: (e: Error, _vars, ctx) => {
       if (ctx?.previousCard !== undefined) {
@@ -293,15 +293,21 @@ function ReviewPage() {
       }
       setError(e.message ?? "Couldn't record swipe");
     },
-    onSettled: () => {
+    onSettled: (_data, _err, _vars, ctx) => {
       setPendingAction(null);
       // Invalidate every variant of the review queries (every pinned-
       // cluster bucket) so the next-card pointer and queue refresh.
       qc.invalidateQueries({ queryKey: queryKeys.review() });
-      // Drop the pinned-cluster selection so the next top-of-queue
-      // card surfaces — the swiped one is gone from the queue.
+      // Advance the pin to whatever was next in line so the queue keeps
+      // the user's place instead of snapping back to the top. Only when
+      // nothing follows (queue drained) do we drop the pin, surfacing the
+      // head / "all caught up" state.
       if (clusterId) {
-        navigate({ to: "/", search: (prev) => ({ ...prev, clusterId: null }) });
+        const nextClusterId = ctx?.nextItem?.clusterId ?? null;
+        navigate({
+          to: "/",
+          search: (prev) => ({ ...prev, clusterId: nextClusterId }),
+        });
       }
     },
   });
