@@ -1,8 +1,11 @@
 name: Deploy
 
+# Manual-only. This was a push-to-main auto-deploy when Gaff ran as a live
+# service; on the archived/public repo it's gated behind a manual trigger so a
+# push (or a fork) never auto-deploys. Run it from the Actions tab once you've
+# set your own infra config + secrets. See docs/DEPLOY.md.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
