@@ -19,7 +19,7 @@
  * so no duplicate rows are created.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/reenrich-stale-prompt.ts [--limit N] [--dry-run]
  */
 import { tasks } from "@trigger.dev/sdk";

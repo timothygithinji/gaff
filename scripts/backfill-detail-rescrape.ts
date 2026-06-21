@@ -17,7 +17,7 @@
  * runs (not this script). 59 listings ≈ $0.05 — negligible.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/backfill-detail-rescrape.ts [--limit N] [--dry-run]
  *
  * Flags:

@@ -36,7 +36,7 @@ import {
   user,
 } from "../../db/schema";
 import { getResend } from "../lib/email/client";
-import { FROM_EMAIL, appUrl, emailPhotoUrl } from "../lib/email/config";
+import { appUrl, emailPhotoUrl, fromEmail } from "../lib/email/config";
 import { DigestEmail, type DigestItem } from "../lib/email/digest-email";
 import { loadRankedQueueClusterIds } from "../server/functions/reviewable-queue";
 
@@ -243,7 +243,7 @@ export const householdDigestTask = task({
         continue;
       }
       await resend.emails.send({
-        from: FROM_EMAIL,
+        from: fromEmail(),
         to: member.email,
         subject:
           total === 1

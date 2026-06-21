@@ -8,16 +8,19 @@
 #
 # Prerequisites:
 #   - doppler CLI installed (`brew install dopplerhq/cli/doppler` on macOS)
-#   - You've been added to the Gaff Doppler project
+#   - A Doppler project named `gaff` with `dev` + `prd` configs (you have access)
 #
 # Usage:
 #   bash scripts/setup-doppler.sh
 #
+# By default the Doppler config is scoped to this repo directory, matching the
+# `${DOPPLER_SCOPE:-.}` default in the package.json scripts. Set DOPPLER_SCOPE
+# to keep an isolated scope elsewhere (e.g. ~/.t-stack/orgs/<org>).
 set -euo pipefail
 
 PROJECT="gaff"
 CONFIG="dev"
-SCOPE="$HOME/.t-stack/orgs/timothygithinji"
+SCOPE="${DOPPLER_SCOPE:-$(pwd)}"
 
 if ! command -v doppler >/dev/null 2>&1; then
   echo "doppler CLI not found on PATH." >&2

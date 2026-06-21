@@ -43,7 +43,9 @@ const DOPPLER_CONFIG_BY_ENV: Record<string, string> = {
 };
 
 export default defineConfig({
-  project: "REDACTED_TRIGGER_REF",
+  // Your Trigger.dev project ref (proj_…). Created when you set up the
+  // Trigger.dev project; set TRIGGER_PROJECT_REF in your environment.
+  project: process.env.TRIGGER_PROJECT_REF ?? "proj_REPLACE_ME",
   logLevel: "log",
   maxDuration: 300,
   retries: {
@@ -79,7 +81,10 @@ export default defineConfig({
             "--format=json",
             "--project=gaff",
             `--config=${config}`,
-            `--scope=${process.env.HOME}/.t-stack/orgs/timothygithinji`,
+            // Local Doppler scope. Defaults to the current directory (run
+            // `doppler setup` in the repo); override with DOPPLER_SCOPE to
+            // point at an isolated org scope, e.g. ~/.t-stack/orgs/<org>.
+            `--scope=${process.env.DOPPLER_SCOPE ?? "."}`,
           ],
           { encoding: "utf8" }
         );

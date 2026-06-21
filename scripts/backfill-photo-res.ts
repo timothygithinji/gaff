@@ -16,7 +16,7 @@
  *      at the new object.
  *
  * Run it:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji -- \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> -- \
  *     bun scripts/backfill-photo-res.ts --dry-run        # preview counts
  *   doppler run ... -- bun scripts/backfill-photo-res.ts # execute
  *

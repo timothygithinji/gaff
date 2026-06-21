@@ -8,7 +8,7 @@
  * that fix still carry a literal 0. Set them to NULL so the band filters
  * keep them (NULL = unknown) instead of displaying "0 baths".
  *
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/database/backfill-bathrooms-null.ts
  */
 import { neon } from "@neondatabase/serverless";

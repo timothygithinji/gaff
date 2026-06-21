@@ -69,7 +69,7 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
     pattern: /\bdoppler\s+secrets\s+get\b/,
     reason:
-      "Reading individual secret values is forbidden. Use `doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- <cmd>` to inject them into the process env instead.",
+      "Reading individual secret values is forbidden. Use `doppler run --project gaff --config dev -- <cmd>` to inject them into the process env instead.",
   },
   {
     pattern: /\bdoppler\s+secrets\s+set\b/,

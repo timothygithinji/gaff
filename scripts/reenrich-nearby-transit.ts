@@ -13,7 +13,7 @@
  * worker runs. ~225 clusters.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/reenrich-nearby-transit.ts [--apply]
  */
 import { tasks } from "@trigger.dev/sdk";

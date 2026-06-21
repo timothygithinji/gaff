@@ -24,7 +24,7 @@
  * counties, regions and the England total are skipped.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/neon-env.ts bun scripts/seed-council-tax.ts \
  *        --file ./band-d-2025-26.csv --year 2025-26 [--dry-run]
  *

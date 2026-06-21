@@ -17,7 +17,7 @@
  * Geocode is ~$5/1000, EPC is free. ~106 clusters in prod today.
  *
  * Usage (prod target — the only one this backfill makes sense for):
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/backfill-epc-geocode.ts [--all] [--limit N] [--dry-run]
  *
  * Flags:

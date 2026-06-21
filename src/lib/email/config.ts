@@ -1,16 +1,28 @@
 /**
  * Shared email configuration.
  *
- * Sender is on the Resend-verified `updates.example.com` domain.
- * Links point at the canonical app origin (`BETTER_AUTH_URL`) so an email
- * opened on a phone deep-links straight into the right surface.
+ * The sender must be a Resend-verified address — set `EMAIL_FROM` to it
+ * (e.g. `Gaff <gaff@updates.your-domain.com>`). Links point at the canonical
+ * app origin (`BETTER_AUTH_URL`) so an email opened on a phone deep-links
+ * straight into the right surface.
  */
 import { resolvePhotoUrl } from "../../server/functions/photo-url";
 import { env } from "../env";
 import { sizedPhoto } from "../photo-size";
 
-/** Verified Resend sender. Display name + address. */
-export const FROM_EMAIL = "Gaff <gaff@updates.example.com>";
+/**
+ * Verified Resend sender (display name + address). Prefers the configured
+ * `EMAIL_FROM`; otherwise falls back to a no-reply on the app's own host so
+ * a fresh deploy still has a usable default (point a verified sender at it).
+ */
+export function fromEmail(): string {
+  const configured = env().EMAIL_FROM;
+  if (configured) {
+    return configured;
+  }
+  const host = new URL(env().BETTER_AUTH_URL).host;
+  return `Gaff <gaff@${host}>`;
+}
 
 const TRAILING_SLASH_RE = /\/+$/;
 

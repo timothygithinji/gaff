@@ -8,7 +8,7 @@
  * `scripts/load-ofcom-broadband.ts`.
  *
  * Usage (resolves the per-branch Neon DB via neon-env):
- *   doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- \
+ *   doppler run --project gaff --config dev --scope ~/.t-stack/orgs/<org> -- \
  *     bun scripts/neon-env.ts bun scripts/backfill-broadband.ts [clusterId] [--all]
  *
  * Pass a single clusterId to backfill just that cluster; omit to do every

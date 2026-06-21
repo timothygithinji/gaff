@@ -17,7 +17,7 @@
  * Cost: one postcodes.io lookup per cluster — free, fast, no AI budget.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/neon-env.ts bun scripts/backfill-council-tax-authority.ts [--all] [--limit N] [--dry-run]
  *
  * Flags:

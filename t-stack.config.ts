@@ -1,7 +1,10 @@
 export default {
-  org: "timothygithinji",
+  // Your t-stack org slug (used as the local Doppler scope under
+  // ~/.t-stack/orgs/<org> and the Pulumi org). Change to your own.
+  org: "yourorg",
   archetype: "single-cloudflare",
   projectName: "gaff",
+  // The public hostname the deployed Worker is served on. Change to your own.
   domain: "gaff.example.com",
   structure: "single",
   cloudProvider: "cloudflare",

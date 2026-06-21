@@ -7,7 +7,7 @@
  * parser-gaps.ts but the HTML source is live rather than fixture-backed.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/verify/parser-gaps-live.ts
  *
  * Cost: ~3 Zyte requests (~$0.0024).

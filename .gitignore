@@ -11,8 +11,9 @@ out/
 *.tsbuildinfo
 
 # Cloudflare Workers / Wrangler local state.
-# Note: Doppler is the only source of dev secrets — we don't keep a
-# .dev.vars.example, since `doppler secrets` is the canonical listing.
+# Note: Doppler is the canonical source of dev secrets at runtime. The
+# committed `.env.example` is a documented reference of every variable —
+# the real values live in Doppler (or a local `.dev.vars`), never in git.
 .wrangler/
 .dev.vars
 .dev.vars.*

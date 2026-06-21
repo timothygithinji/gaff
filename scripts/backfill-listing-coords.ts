@@ -21,7 +21,7 @@
  * and the scraped postcode is only an outcode anyway).
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/backfill-listing-coords.ts [--limit N] [--dry-run]
  *
  * Flags:

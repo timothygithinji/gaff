@@ -8,14 +8,20 @@ const accountId = config.require("accountId");
 const zoneId = config.require("zoneId");
 
 const projectName = "gaff";
-const domain = "gaff.example.com";
+// The public domain the Worker + Access app are bound to. Set per stack in
+// Pulumi.<stack>.yaml (`gaff-cloudflare:domain`).
+const domain = config.require("domain");
 
-// Cloudflare resource naming convention: timothygithinji-{appName}-{environment}.
-// Matches the existing `timothygithinji-scout-production` bucket and keeps
-// R2 bucket names globally unique across the org's R2 footprint. KV
-// namespaces are account-scoped (don't need to be globally unique) but
-// reusing the same convention keeps dashboard hygiene consistent.
-const resourceName = `timothygithinji-${projectName}-production`;
+// Cloudflare resource naming convention: {resourcePrefix}-{appName}-production.
+// R2 bucket names must be globally unique across ALL of Cloudflare, so an
+// org-specific prefix avoids collisions; set `gaff-cloudflare:resourcePrefix`
+// to something unique to you. KV namespaces are account-scoped (don't need to
+// be globally unique) but reuse the convention for dashboard hygiene. With no
+// prefix configured we fall back to just the app name.
+const resourcePrefix = config.get("resourcePrefix");
+const resourceName = resourcePrefix
+  ? `${resourcePrefix}-${projectName}-production`
+  : `${projectName}-production`;
 
 // KV namespace bound to the worker as `KV`. Renameable in place — the
 // Worker binding in wrangler.jsonc references the KV by `id`, not by
@@ -126,33 +132,47 @@ const r2Token = new cloudflare.AccountToken(`${projectName}-r2-token`, {
   ],
 });
 
-// Cloudflare Access — restrict the domain to members of the org email,
-// plus explicitly allowlisted individual emails.
+// Cloudflare Access — restrict the domain to an allowlisted email domain
+// and/or a set of individual emails. Configure per stack in
+// Pulumi.<stack>.yaml:
+//   gaff-cloudflare:accessEmailDomain: your-domain.com    # optional
+//   gaff-cloudflare:guestEmails:                          # optional list
+//     - you@example.com
+//     - partner@example.com
+//
 // In @pulumi/cloudflare v6 the policy is declared as a separate resource
 // and then attached via the application's `policies` array.
 //
 // `includes` is OR-matched: a request passes if it matches ANY rule. The
-// emailDomain rule covers the org; the per-email rules let in external
-// guests who don't have a @timothygithinji.com address. Guests sign in
-// via Cloudflare Access One-time PIN (an emailed code) — no GitHub/Google
-// account required — so adding the address here is all that's needed at
-// the gate. Note: a first-time guest lands in their own solo household
-// (see databaseHooks in src/lib/auth.ts) and must accept a household
-// invite to join an existing house-hunt.
+// emailDomain rule covers everyone on your domain; the per-email rules let
+// in individual guests who don't have an address on it. Guests sign in via
+// Cloudflare Access One-time PIN (an emailed code) — no GitHub/Google account
+// required — so adding the address here is all that's needed at the gate.
+// Note: a first-time guest lands in their own solo household (see
+// databaseHooks in src/lib/auth.ts) and must accept a household invite to
+// join an existing house-hunt.
+const accessEmailDomain = config.get("accessEmailDomain");
+const guestEmails = config.getObject<string[]>("guestEmails") ?? [];
+const accessIncludes: cloudflare.types.input.ZeroTrustAccessPolicyInclude[] = [
+  ...(accessEmailDomain ? [{ emailDomain: { domain: accessEmailDomain } }] : []),
+  ...guestEmails.map((email) => ({ email: { email } })),
+];
+if (accessIncludes.length === 0) {
+  throw new Error(
+    "Cloudflare Access has no allowlist: set `accessEmailDomain` and/or " +
+      "`guestEmails` in Pulumi.<stack>.yaml, or the app would be open to anyone."
+  );
+}
+
 const accessPolicy = new cloudflare.ZeroTrustAccessPolicy(
   `${projectName}-access-policy`,
   {
     accountId,
-    name: "Allow timothygithinji.com",
+    name: accessEmailDomain
+      ? `Allow ${accessEmailDomain}`
+      : `Allow ${projectName} guests`,
     decision: "allow",
-    includes: [
-      {
-        emailDomain: { domain: "timothygithinji.com" },
-      },
-      {
-        email: { email: "redacted@example.com" },
-      },
-    ],
+    includes: accessIncludes,
   }
 );
 

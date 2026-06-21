@@ -7,7 +7,7 @@
  * table render non-empty during PR 9.5 verification.
  *
  * Usage (the npm script wires DATABASE_URL for the current git branch):
- *   doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- \
+ *   doppler run --project gaff --config dev --scope ~/.t-stack/orgs/<org> -- \
  *     bun scripts/neon-env.ts bun scripts/admin-smoke-seed.ts
  *
  * NOTE: this is intentionally NOT a recurring fixture — re-running it

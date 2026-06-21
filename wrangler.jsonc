@@ -18,6 +18,9 @@
   "compatibility_flags": ["nodejs_compat"],
 
   // Custom domain route. Managed by Pulumi DNS in infra/cloudflare.
+  // Replace with your own hostname (or drop this block to use the default
+  // *.workers.dev URL). `t-stack provision` keeps this in sync with the
+  // `domain` you set in Pulumi.<stack>.yaml / t-stack.config.ts.
   "routes": [
     {
       "pattern": "gaff.example.com",
@@ -25,19 +28,20 @@
     },
   ],
 
-  // Bindings below are managed by Pulumi via `t-stack provision`. Do not edit manually.
+  // Bindings below are populated by Pulumi via `t-stack provision` — these
+  // placeholder IDs are overwritten with your real KV namespace + R2 bucket
+  // on first provision. Do not edit manually.
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "REDACTED_KV_ID",
+      "id": "00000000000000000000000000000000",
     },
   ],
 
-  // Bindings below are managed by Pulumi via `t-stack provision`. Do not edit manually.
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      "bucket_name": "timothygithinji-gaff-production",
+      "bucket_name": "yourorg-gaff-production",
     },
   ],
   "observability": {

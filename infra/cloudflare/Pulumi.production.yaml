@@ -1,6 +1,21 @@
 config:
-  # CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID are passed via env var by `t-stack provision`.
-  # The Cloudflare provider (v5+) reads them from the environment; no provider-level config here.
-  gaff-cloudflare:accountId: REDACTED_ACCOUNT_ID
+  # CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID are passed via env var by
+  # `t-stack provision`. The Cloudflare provider (v5+) reads them from the
+  # environment; no provider-level config here.
+  #
+  # Replace the placeholders below with your own values before provisioning.
+  #   accountId / zoneId — from the Cloudflare dashboard (your account + the
+  #     zone that owns `domain`).
+  #   domain             — the hostname the Worker + Access app bind to.
+  #   resourcePrefix     — a globally-unique prefix for the R2 bucket name.
+  #   accessEmailDomain  — optional; allow everyone on this email domain.
+  #   guestEmails        — optional; allow these individual emails as guests.
+  # At least one of accessEmailDomain / guestEmails must be set, or the
+  # Access gate would be open to anyone.
+  gaff-cloudflare:accountId: YOUR_CLOUDFLARE_ACCOUNT_ID
+  gaff-cloudflare:zoneId: YOUR_CLOUDFLARE_ZONE_ID
   gaff-cloudflare:domain: gaff.example.com
-  gaff-cloudflare:zoneId: REDACTED_ZONE_ID
+  gaff-cloudflare:resourcePrefix: yourorg
+  gaff-cloudflare:accessEmailDomain: example.com
+  gaff-cloudflare:guestEmails:
+    - you@example.com

@@ -14,7 +14,7 @@
  * zero. Shares the promotion + backlog query with the sweep.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/backfill-geo-enrich.ts [--limit N] [--dry-run]
  */
 import { tasks } from "@trigger.dev/sdk";

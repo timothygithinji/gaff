@@ -11,7 +11,7 @@
  * re-run to pick up failures. Best-effort on phash — an undecodable or 404'd
  * image is left NULL and logged in the tally.
  *
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/backfill-photo-identity.ts [--limit N] [--concurrency K]
  */
 import { Pool } from "@neondatabase/serverless";

@@ -28,7 +28,7 @@ import {
   user,
 } from "../../db/schema";
 import { getResend } from "../lib/email/client";
-import { FROM_EMAIL, appUrl, emailPhotoUrl } from "../lib/email/config";
+import { appUrl, emailPhotoUrl, fromEmail } from "../lib/email/config";
 import { MatchEmail } from "../lib/email/match-email";
 
 /** CSS width the match hero renders at (see match-email.tsx container). */
@@ -141,7 +141,7 @@ export const sendMatchEmailTask = task({
           .map((m) => firstName(m.name))
           .join(" & ") || "Your housemate";
       await resend.emails.send({
-        from: FROM_EMAIL,
+        from: fromEmail(),
         to: member.email,
         subject: `You both want ${address}`,
         react: <MatchEmail partnerName={partnerName} {...props} />,

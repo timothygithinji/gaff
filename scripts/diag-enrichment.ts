@@ -6,7 +6,7 @@
  * breakdown of ai_runs, so we can tell whether the gap is budget caps,
  * missing rawJson, or never-fired tasks.
  *
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/diag-enrichment.ts
  */
 import { sql } from "drizzle-orm";

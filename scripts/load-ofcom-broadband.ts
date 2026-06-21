@@ -19,7 +19,7 @@
  *    the exact figure. (Re-run after adding precise postcodes.)
  *
  * Usage (resolves the per-branch Neon DB via neon-env):
- *   doppler run --project gaff --config dev --scope ~/.t-stack/orgs/timothygithinji -- \
+ *   doppler run --project gaff --config dev --scope ~/.t-stack/orgs/<org> -- \
  *     bun scripts/neon-env.ts bun scripts/load-ofcom-broadband.ts <path-to-unzipped-folder>
  *
  * Add `--all-units` to also load every UK unit postcode (~1.6M rows).

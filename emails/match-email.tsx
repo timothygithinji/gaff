@@ -11,7 +11,7 @@ const APP = "https://gaff.example.com";
 export default function MatchEmailPreview() {
   return (
     <MatchEmail
-      partnerName="Alex"
+      partnerName="Sam"
       address="Lavender Hill"
       price="£1,750/mo"
       beds={2}

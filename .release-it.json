@@ -26,6 +26,6 @@
     }
   },
   "hooks": {
-    "before:init": ["bun run lint", "bun run typecheck", "bun run test"]
+    "before:init": ["bun run lint", "bun run typecheck", "bunx vitest run"]
   }
 }

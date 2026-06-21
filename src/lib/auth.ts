@@ -45,7 +45,15 @@ export function createAuth(env: AuthEnv) {
     // statically `false` in the production Worker build, so this never widens
     // trusted origins in real prod.
     ...(import.meta.env.DEV
-      ? { trustedOrigins: ["http://localhost:3000"] }
+      ? {
+          trustedOrigins: ["http://localhost:3000"],
+          // Prod `baseURL` is https, so Better Auth defaults to `__Secure-`
+          // cookies — which a browser refuses to store over plain http. When
+          // running locally against prod data (`dev:prod`), drop the secure
+          // flag so sign-in actually sticks on http://localhost. Statically
+          // false in the Worker build, so prod always keeps secure cookies.
+          advanced: { useSecureCookies: false },
+        }
       : {}),
     emailAndPassword: {
       enabled: true,

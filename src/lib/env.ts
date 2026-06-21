@@ -84,6 +84,12 @@ const envSchema = z.object({
   // Trigger.dev
   TRIGGER_SECRET_KEY: z.string().min(1),
 
+  // Transactional-email sender — OPTIONAL. The "From" address used for the
+  // match + digest emails, e.g. `Gaff <gaff@updates.example.com>`. Must be a
+  // Resend-verified sender. When unset, falls back to a no-reply on the app's
+  // own host derived from BETTER_AUTH_URL (see src/lib/email/config.ts).
+  EMAIL_FROM: z.string().min(1).optional(),
+
   // Resend (transactional email) — OPTIONAL, same reasoning as R2 below.
   // Only the notification tasks (send-match-email, household-digest) read it,
   // and they run on Trigger.dev workers. Marking it required would make
@@ -142,7 +148,7 @@ export function parseEnv(
 ${detail}
 
 Check the appropriate Doppler config:
-  doppler secrets --project gaff --config <dev|prd> --scope ~/.t-stack/orgs/timothygithinji --only-names
+  doppler secrets --project gaff --config <dev|prd> --only-names
 `
   );
 }

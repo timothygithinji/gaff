@@ -1196,11 +1196,11 @@ export const DESKTOP_REVIEW_PLACEHOLDER: DesktopReviewData = {
     },
   ],
   today: {
-    youInitial: "T",
-    partnerInitial: "P",
+    youInitial: "A",
+    partnerInitial: "S",
     cells: [
       { value: "8", label: "kept by you" },
-      { value: "5", label: "by Partner" },
+      { value: "5", label: "by Sam" },
       { value: "3", label: "both kept", accent: true },
     ],
   },

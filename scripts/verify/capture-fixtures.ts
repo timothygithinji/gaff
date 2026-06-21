@@ -9,7 +9,7 @@
  *
  * Usage:
  *   doppler run --project gaff --config dev \
- *     --scope ~/.t-stack/orgs/timothygithinji -- \
+ *     --scope ~/.t-stack/orgs/<org> -- \
  *     bun run scripts/verify/capture-fixtures.ts
  */
 import { mkdir, writeFile } from "node:fs/promises";

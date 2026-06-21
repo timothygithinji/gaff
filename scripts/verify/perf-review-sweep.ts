@@ -2,7 +2,7 @@
 /**
  * Deep read-only prod sweep for the "is what we're getting correct?" review.
  *
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/verify/perf-review-sweep.ts
  *
  * Sections:

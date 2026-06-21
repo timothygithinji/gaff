@@ -12,7 +12,7 @@
  * so the two can't disagree about what's un-enriched.
  *
  * Usage:
- *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/timothygithinji \
+ *   doppler run --project gaff --config prd --scope ~/.t-stack/orgs/<org> \
  *     -- bun scripts/backfill-ai-enrich.ts [--limit N] [--dry-run]
  *
  * Flags:
