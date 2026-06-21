@@ -56,9 +56,9 @@ Every clustered property opens to a full dossier — gallery, cross-portal price
 map with transit times, and the public records (EPC, broadband, council tax, amenities)
 pulled in by the enrichment pipeline.
 
-| Gallery & cross-portal | Map, transit & records |
+| Photo gallery | Cross-portal price, council tax & map |
 |--|--|
-| ![](docs/screenshots/05-listing-mid.png) | ![](docs/screenshots/06-listing-map.png) |
+| ![](docs/screenshots/04-listing-hero.png) | ![](docs/screenshots/05-listing-mid.png) |
 
 ## How it works
 
