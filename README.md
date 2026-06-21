@@ -9,8 +9,6 @@ the facts that actually decide a tenancy: commute, council tax, broadband, energ
 two people swipe through the results and build a shared shortlist. When you both keep the same
 place, it becomes a match.
 
-<sub>TanStack Start · Cloudflare Workers · Neon · Trigger.dev</sub>
-
 </div>
 
 > [!NOTE]
@@ -83,10 +81,17 @@ can never promise listings the queue would then filter out.
 
 ## Stack
 
-TanStack Start (React 19) on Cloudflare Workers, Neon Postgres with Drizzle, Trigger.dev for
-background jobs, Better Auth behind Cloudflare Access, R2 for cached photos, Claude for the
-written summaries, Resend + React Email for mail, Doppler for secrets, Pulumi for infra. Bun,
-Biome and Vitest for tooling.
+- **[TanStack Start](https://tanstack.com/start)** (React 19) - full-stack web framework, the app itself
+- **[Cloudflare Workers](https://workers.cloudflare.com)** - serverless runtime the app is deployed to
+- **[Neon](https://neon.tech)** + **[Drizzle](https://orm.drizzle.team)** - serverless Postgres and the type-safe ORM
+- **[Trigger.dev](https://trigger.dev)** - background jobs: scrape, cluster, enrich, email
+- **[Better Auth](https://better-auth.com)** behind **Cloudflare Access** - sign-in and the Zero Trust gate
+- **Cloudflare R2** - object storage for cached, resized listing photos
+- **[Claude](https://www.anthropic.com/claude)** - writes each listing's highlights and watch-outs
+- **[Resend](https://resend.com)** + **[React Email](https://react.email)** - the match and digest emails
+- **[Doppler](https://doppler.com)** - secret storage and runtime injection
+- **[Pulumi](https://pulumi.com)** - Cloudflare infrastructure as code (KV, R2, DNS, Access)
+- **Bun · Biome · Vitest** - package manager, linter, tests
 
 ## Develop
 
